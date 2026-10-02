@@ -17,6 +17,39 @@ Let Claude and Codex work as partners — each can ask the other for help, revie
 └──────────────┘                      └──────────────┘
 ```
 
+## Background jobs (recommended)
+
+The synchronous tools below block the caller until the other CLI finishes, so long tasks hit client timeouts and
+cannot be cancelled. The **jobs** server delegates instead: `bridge_start` returns a job id immediately, a detached
+worker runs the task, and the job keeps going even if your session ends.
+
+| Tool             | What it does                                                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `bridge_start`   | Start a job on `codex` or `claude` (`read-only` by default, `write` opt-in). `continue` resumes a finished job's session |
+| `bridge_wait`    | Block until done or the wait expires; expiring does not stop the job                                                     |
+| `bridge_observe` | Non-blocking snapshot of status and recent output                                                                        |
+| `bridge_result`  | Read the stored result                                                                                                   |
+| `bridge_cancel`  | Stop a job, keeping partial output                                                                                       |
+| `bridge_list`    | Recent jobs                                                                                                              |
+
+```bash
+claude mcp add bridge -s user -- npx agents-bridge-mcp serve jobs      # as MCP tools
+npx agents-bridge-mcp jobs start codex "review the diff on this branch"   # or from the shell
+npx agents-bridge-mcp jobs wait <id>                                      # exit 0 done · 1 failed · 2 still running
+```
+
+As a Claude Code plugin (adds the `delegate` skill and registers the MCP server):
+
+```bash
+claude plugin marketplace add naldomadeira/agents-bridge-mcp
+claude plugin install agents-bridge@agents-bridge
+```
+
+Jobs are stored under `~/.agents-bridge/jobs/<id>/` (override with `AGENTS_BRIDGE_HOME`). A job has a 60 minute
+deadline by default (max 120). `AGENTS_BRIDGE_CODEX_BIN` / `AGENTS_BRIDGE_CLAUDE_BIN` point at alternative executables.
+
+> Claude jobs return their result at the end only (`--output-format json`), so `observe` shows less for them than for Codex.
+
 ## Prerequisites
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) — installed and authenticated

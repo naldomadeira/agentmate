@@ -10,6 +10,8 @@ const main = defineCommand({
     serve: () => import("./commands/serve.js").then((r) => r.default),
     setup: () => import("./commands/setup.js").then((r) => r.default),
     install: () => import("./commands/install.js").then((r) => r.default),
+    jobs: () => import("./commands/jobs.js").then((r) => r.default),
+    worker: () => import("./commands/worker.js").then((r) => r.default),
   },
 });
 

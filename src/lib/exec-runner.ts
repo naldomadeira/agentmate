@@ -117,6 +117,7 @@ function execOnce(options: ExecOptions): Promise<ExecResult> {
     const stderrChunks: Buffer[] = [];
     let timedOut = false;
     let settled = false;
+    let aborted = false;
 
     child.stdout.on("data", (chunk: Buffer) => {
       stdoutChunks.push(chunk);
@@ -144,6 +145,16 @@ function execOnce(options: ExecOptions): Promise<ExecResult> {
       }, 5_000);
     }, timeoutMs);
 
+    const onAbort = () => {
+      aborted = true;
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (!settled) child.kill("SIGKILL");
+      }, 5_000).unref();
+    };
+    if (options.signal?.aborted) onAbort();
+    else options.signal?.addEventListener("abort", onAbort, { once: true });
+
     child.on("error", (err: NodeJS.ErrnoException) => {
       clearTimeout(timer);
       settled = true;
@@ -162,11 +173,13 @@ function execOnce(options: ExecOptions): Promise<ExecResult> {
     child.on("close", (code) => {
       clearTimeout(timer);
       settled = true;
+      options.signal?.removeEventListener("abort", onAbort);
       resolve({
         exitCode: code ?? 1,
         stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
         stderr: Buffer.concat(stderrChunks).toString("utf-8"),
         timedOut,
+        aborted,
       });
     });
   });
@@ -184,7 +197,7 @@ export async function execCommand(options: ExecOptions): Promise<ExecResult> {
   for (let attempt = 0; ; attempt++) {
     const result = await execOnce(options);
 
-    if (attempt < maxRetries && isTransientError(result)) {
+    if (attempt < maxRetries && !result.aborted && isTransientError(result)) {
       const delay = retryDelayMs(attempt);
       logger.warn(
         `Transient error detected (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`,

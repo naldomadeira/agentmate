@@ -1,0 +1,13 @@
+{
+  "name": "agents-bridge",
+  "owner": { "name": "Naldo Madeira", "url": "https://github.com/naldomadeira" },
+  "description": "agents-bridge: background delegation between Claude Code and Codex CLI.",
+  "plugins": [
+    {
+      "name": "agents-bridge",
+      "source": "./",
+      "description": "Start, wait on, observe and cancel background jobs on codex or claude, as MCP tools and a delegate skill.",
+      "tags": ["mcp", "delegation", "codex", "claude"]
+    }
+  ]
+}
