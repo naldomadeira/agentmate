@@ -2,7 +2,7 @@
 
 [English](./INSTALL_FOR_AGENTS.md)
 
-Este guia instala o plugin híbrido do Agents Bridge no Claude Code ou no Codex. O plugin fornece a skill `delegate` e registra o servidor MCP de jobs (`bridge_start`, `bridge_wait`, `bridge_observe`, `bridge_result`, `bridge_cancel` e `bridge_list`). Quando o MCP não estiver carregado, a skill usa o CLI do pacote npm e mantém o mesmo contrato de jobs.
+Este guia instala o plugin híbrido do Agents Bridge no Claude Code ou no Codex. O plugin fornece dez skills (`ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `jobs`, `delegate`, `codex` e `claude`), quatro agentes que usam o Codex no Claude Code (`codex-teammate`, `codex-reviewer`, `codex-researcher` e `codex-teamlead`) e registra o servidor MCP de jobs (`bridge_start`, `bridge_ask`, `bridge_review`, `bridge_research`, `bridge_plan`, `bridge_implement`, `bridge_teamlead`, `bridge_wait`, `bridge_observe`, `bridge_result`, `bridge_cancel` e `bridge_list`). Quando o MCP não estiver carregado, as skills usam o CLI do pacote npm e mantêm o mesmo contrato de jobs.
 
 ## Pré-requisitos
 
@@ -21,7 +21,7 @@ claude plugin marketplace add naldomadeira/agents-bridge-mcp
 claude plugin install agents-bridge@agents-bridge
 ```
 
-Reinicie o Claude Code. A skill fica disponível como `agents-bridge:delegate`, e o plugin inicia somente o MCP de jobs.
+Reinicie o Claude Code. As skills ficam disponíveis como `/agents-bridge:ask`, `/agents-bridge:review` e assim por diante, os quatro agentes são adicionados, e o plugin inicia somente o MCP de jobs.
 
 ### Codex
 
@@ -30,7 +30,7 @@ codex plugin marketplace add naldomadeira/agents-bridge-mcp
 codex plugin add agents-bridge@agents-bridge
 ```
 
-Reinicie o Codex. A skill `delegate` e as ferramentas `bridge_*` são carregadas pelo plugin. A instalação registra o marketplace pelo CLI; não exige editar `~/.codex/config.toml`.
+Reinicie o Codex. As skills (cite uma com `$ask` ou use o menu de skills) e as ferramentas `bridge_*` são carregadas pelo plugin. A instalação registra o marketplace pelo CLI; não exige editar `~/.codex/config.toml`.
 
 ### Desenvolvimento local
 
@@ -61,13 +61,21 @@ No Codex, atualize o snapshot do marketplace e reinicie:
 codex plugin marketplace upgrade agents-bridge
 ```
 
-O Codex recarrega o plugin após reiniciar. Confirme a versão ativa com `codex plugin list`; no Claude Code use `claude plugin list`. O CLI publicado também mostra sua versão com `npx -y agents-bridge-mcp --version`.
+O Codex recarrega o plugin após reiniciar. Confirme a versão ativa com `codex plugin list`; no Claude Code use `claude plugin list`. O CLI publicado também mostra sua versão com `npx -y agents-bridge-mcp --version`. A versão 0.2.0 adiciona as skills e ferramentas por papel; veja o [changelog](../CHANGELOG.md).
 
 ## Smoke test de leitura
 
-Depois do reinício, delegue uma tarefa curta e sem escrita ao outro CLI. Pelo MCP, inicie o job com `bridge_start` usando `provider` igual a `codex` ou `claude`, `mode` igual a `read-only` e um prompt como `Responda somente OK`. Espere usando `bridge_wait` e entregue o resultado retornado para o mesmo ID.
+Depois do reinício, faça uma pergunta curta e sem escrita ao outro CLI. Pelo MCP, chame `bridge_ask` com `provider` igual a `codex` ou `claude` e uma pergunta como `Responda somente OK`. A ferramenta espera a resposta e a devolve na mesma chamada.
 
-Quando as ferramentas MCP ainda não estiverem disponíveis, execute o fallback da skill:
+Quando as ferramentas MCP ainda não estiverem disponíveis, execute o fallback pelo CLI:
+
+```bash
+npx -y agents-bridge-mcp jobs ask codex "Responda somente OK" --wait 120s
+```
+
+`jobs ask` imprime a resposta. Se a espera expirar, imprime o ID do job e o deixa em execução; colete-o com `jobs wait <id>`.
+
+Para exercitar também o caminho genérico de jobs, inicie e espere explicitamente. Pelo MCP, chame `bridge_start` com `mode` igual a `read-only` e depois `bridge_wait` com o mesmo ID. Sem MCP:
 
 ```bash
 npx -y agents-bridge-mcp jobs start codex "Responda somente OK"
@@ -75,21 +83,30 @@ npx -y agents-bridge-mcp jobs start codex "Responda somente OK"
 npx -y agents-bridge-mcp jobs wait <id>
 ```
 
-`wait` encerra com código `0` quando concluído, `1` se falhar ou for cancelado e `2` quando a espera expira. Código `2` não cancela o job: execute o mesmo `wait` novamente. Use `jobs result <id>` após uma espera interrompida. Chame `bridge_observe` ou `jobs observe <id>` somente quando a pessoa pedir progresso.
+`wait` e `ask` encerram com código `0` quando concluídos, `1` se falharem ou forem cancelados e `2` quando a espera expira. Código `2` não cancela o job: execute o mesmo `wait` novamente. Use `jobs result <id>` após uma espera interrompida. Chame `bridge_observe` ou `jobs observe <id>` somente quando a pessoa pedir progresso.
 
-O modo padrão é `read-only`. Passe `mode: write` ou `--mode write` apenas quando a tarefa autorizar explicitamente a edição de arquivos.
+O modo padrão é `read-only`. Passe `mode: write` ou `--mode write` apenas quando a tarefa autorizar explicitamente a edição de arquivos; a skill `implement` e `bridge_implement` fazem isso por você.
+
+## Rodar o doctor
+
+```bash
+npx -y agents-bridge-mcp doctor
+```
+
+O `doctor` verifica se o Node.js é 18 ou superior, se `codex` e `claude` estão no `PATH` (com a versão, quando disponível), se o diretório de estado dos jobs é gravável, quantos jobs existem e se algum job `running` perdeu o worker, e se ainda há um registro legado de `setup`. Cada item é reportado como `ok`, `warn` ou `fail`, com uma dica. Ele sai com código `1` se algum item falhar e funciona quando `codex` ou `claude` não estão instalados (reportado como aviso).
 
 ## Diagnóstico
 
-1. Rode `claude plugin list` ou `codex plugin list` para conferir se `agents-bridge@agents-bridge` está habilitado e qual versão foi instalada.
-2. Reinicie o host após instalar ou atualizar; a sessão atual não recarrega skills e ferramentas já registradas.
-3. Rode `npx -y agents-bridge-mcp jobs list` para verificar se o fallback CLI está funcional.
-4. Se o job falhar, confirme que o CLI de destino está autenticado e disponível no `PATH` do host que iniciou o job.
-5. Se MCP estiver ausente mas o CLI funcionar, use o fallback; não registre automaticamente nenhum servidor na configuração pessoal do usuário.
+1. Rode `npx -y agents-bridge-mcp doctor` e siga as dicas.
+2. Rode `claude plugin list` ou `codex plugin list` para conferir se `agents-bridge@agents-bridge` está habilitado e qual versão foi instalada.
+3. Reinicie o host após instalar ou atualizar; a sessão atual não recarrega skills e ferramentas já registradas.
+4. Rode `npx -y agents-bridge-mcp jobs list` para verificar se o fallback CLI está funcional.
+5. Se o job falhar, confirme que o CLI de destino está autenticado e disponível no `PATH` do host que iniciou o job.
+6. Se MCP estiver ausente mas o CLI funcionar, use o fallback; não registre automaticamente nenhum servidor na configuração pessoal do usuário.
 
 ## Migrar instalações antigas de `setup`
 
-`npx agents-bridge-mcp setup` continua sendo suportado para instalações legadas, mas não integra o fluxo principal do plugin. Ele pode ter criado os servidores síncronos antigos e as skills `/codex` e `/claude`.
+`npx agents-bridge-mcp setup` continua sendo suportado para instalações legadas, mas não integra o fluxo principal do plugin. Ele pode ter criado os servidores síncronos antigos e as skills `/codex` e `/claude`; o `doctor` reporta esses registros como avisos.
 
 Antes de remover algo, use `claude mcp list`, `claude plugin list`, `codex plugin list` e abra os arquivos candidatos. Remova somente entradas que apontem exatamente para `agents-bridge-mcp serve codex` ou `agents-bridge-mcp serve claude`:
 

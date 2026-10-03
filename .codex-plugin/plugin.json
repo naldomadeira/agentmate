@@ -1,7 +1,7 @@
 {
   "name": "agents-bridge",
-  "version": "0.1.0",
-  "description": "Delegate background jobs between Claude Code and Codex CLI.",
+  "version": "0.2.0",
+  "description": "Let Codex and Claude Code ask, review, research, plan, implement and lead each other as background jobs.",
   "author": {
     "name": "Naldo Madeira",
     "url": "https://github.com/naldomadeira"
@@ -9,16 +9,28 @@
   "repository": "https://github.com/naldomadeira/agents-bridge-mcp",
   "homepage": "https://github.com/naldomadeira/agents-bridge-mcp",
   "license": "MIT",
-  "keywords": ["mcp", "claude", "codex", "delegation", "jobs"],
+  "keywords": [
+    "mcp",
+    "claude",
+    "claude-code",
+    "codex",
+    "codex-cli",
+    "delegation",
+    "multi-agent",
+    "jobs"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Agents Bridge",
-    "shortDescription": "Delegate jobs between Claude Code and Codex",
-    "longDescription": "Start, wait for, inspect, and cancel background jobs on Claude Code or Codex CLI.",
+    "shortDescription": "Ask, review, research, plan, implement and lead across Codex and Claude Code",
+    "longDescription": "Skills and MCP tools to ask the other CLI a question, request reviews, research and plans, delegate write-enabled implementation, or run a team lead that delegates to the other model, all as durable background jobs.",
     "developerName": "Naldo Madeira",
     "category": "Engineering",
     "capabilities": ["Instructions", "MCP"],
-    "defaultPrompt": ["Delegate a read-only task to the other CLI."]
+    "defaultPrompt": [
+      "Ask the other CLI for a second opinion on this change.",
+      "Review my current diff with the other CLI."
+    ]
   }
 }

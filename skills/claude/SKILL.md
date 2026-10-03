@@ -1,36 +1,46 @@
 ---
 name: claude
-description: Ask Claude Code for a second opinion — code reviews, explanations, plan critiques, performance analysis, or general questions
+description: Route a task or question to Claude Code — quick questions, reviews, research, plans, scoped implementation or a team lead — by picking the matching Agents Bridge tool. Use when the user says to ask, check with or hand something to Claude Code.
+argument-hint: "<task or question>"
 ---
 
-You are invoking Claude Code to get a second opinion. Route the user's request to the most appropriate Claude MCP tool.
+# Work with Claude Code
 
-## Tool Selection
+Shortcut for "do this with Claude Code". Read the user's request, pick the role it matches and run the matching `bridge_*` tool with `provider: claude`. Do not ask the user which tool to use.
 
-Pick the best tool based on the user's request:
+## Route by intent
 
-| Request Type                | Tool                               | Key Parameters                              |
-| --------------------------- | ---------------------------------- | ------------------------------------------- |
-| Code review, diff review    | `mcp__claude__claude_review_code`  | `target` (diff range or file), `focusAreas` |
-| Plan critique               | `mcp__claude__claude_review_plan`  | `plan`, `codebasePath`                      |
-| Explain code                | `mcp__claude__claude_explain_code` | `target` (file/function), `depth`           |
-| Performance analysis        | `mcp__claude__claude_plan_perf`    | `target`, `metrics`                         |
-| Implement/fix (writes code) | `mcp__claude__claude_implement`    | `task`                                      |
-| General question            | `mcp__claude__claude_query`        | `prompt`                                    |
+| The user wants                                   | MCP tool           | Skill with the full rules |
+| ------------------------------------------------ | ------------------ | ------------------------- |
+| A direct answer or second opinion                | `bridge_ask`       | `ask`                     |
+| A review of a diff, files or a plan              | `bridge_review`    | `review`                  |
+| An investigation, comparison or root-cause hunt  | `bridge_research`  | `research`                |
+| A plan, or a critique of one                     | `bridge_plan`      | `plan`                    |
+| A code change (explicit permission to edit only) | `bridge_implement` | `implement`               |
+| A broad objective that needs coordination        | `bridge_teamlead`  | `teamlead`                |
+| Anything else                                    | `bridge_start`     | `delegate`                |
 
-## Instructions
+When the request is ambiguous, default to `bridge_ask` (read-only, answers in the same turn).
 
-1. Parse the user's request to determine the task type
-2. If the user references files, read them first for context
-3. Call the most specific Claude tool — prefer specialized tools over `claude_query`
-4. Always pass `workingDirectory` to every tool call
-5. Synthesize the response: summarize key findings, highlight important points, give actionable recommendations
-6. Only use `claude_implement` if the user explicitly asks Claude to make changes
+## CLI fallback
+
+If the `bridge_*` tools are not loaded, use the same roles from a shell:
+
+```bash
+npx -y agents-bridge-mcp jobs ask claude "<question>" --wait 120s
+npx -y agents-bridge-mcp jobs start claude "<briefing>" --role <review|research|plan|implement|teamlead>
+npx -y agents-bridge-mcp jobs wait <id> --timeout 10m   # exit 0 done, 1 failed, 2 still running
+```
+
+## Briefing and result
+
+- Claude Code has no memory of this session. Put the goal, the files or diff, constraints and the wanted answer shape in the briefing; read referenced files first so you can name them exactly.
+- Run read-only unless the user clearly authorized edits. Never use `bridge_implement` or `mode: write` on an ambiguous request.
+- Summarize the result in your own words, verify anything you will act on, and own the decision. Do not paste raw output.
 
 ## Examples
 
-- `/claude review my recent changes` → `claude_review_code` with target "HEAD~1..HEAD"
-- `/claude explain src/lib/exec.ts` → `claude_explain_code` with target "src/lib/exec.ts"
-- `/claude is my approach to caching correct?` → `claude_query` with the question
-- `/claude optimize the response parsing` → `claude_plan_perf` with target
-- `/claude implement error handling for timeouts` → `claude_implement` with task
+- `review my recent changes` -> `bridge_review` with `target` "HEAD~1..HEAD"
+- `is my caching approach correct?` -> `bridge_ask` with the question and the relevant files as `context`
+- `find out how library X handles retries` -> `bridge_research`
+- `implement timeout handling in src/lib/exec.ts` -> `bridge_implement`, after confirming edits are allowed

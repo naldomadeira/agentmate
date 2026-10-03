@@ -82,3 +82,34 @@ test/
 - [x] `pnpm publish --dry-run` — package publishable (13.9 kB)
 - [ ] Live test: Claude calls Codex (requires MCP config)
 - [ ] Live test: Codex calls Claude (requires MCP config)
+
+## v0.2 — Roles, commands and agents
+
+**Status: Complete** (pending release; detailed plan in `docs/superpowers/plans/2026-10-03-papeis-comandos-agentes.md`)
+
+### Context
+
+v0.1 shipped generic background jobs, but only with a free-form prompt. Skills and the `codex-teammate` agent still pointed at the legacy synchronous `mcp__codex__*` / `mcp__claude__*` tools that the plugin does not register, there was no quick synchronous question, no way to put one model in charge of delegating to the other, and no install diagnostic.
+
+### What v0.2 adds
+
+- **Roles.** A job carries `role` (`custom`, `ask`, `review`, `research`, `plan`, `implement`, `teamlead`), `depth` and `parentJob`. Per-role prompt builders live in `src/lib/prompt-builder.ts`; the rendered prompt is stored in the job.
+- **MCP tools.** `bridge_ask` (waits up to 120 s), `bridge_review`, `bridge_research`, `bridge_plan`, `bridge_implement`, `bridge_teamlead`, plus `parent` on `bridge_list` and child jobs in `bridge_observe`.
+- **CLI.** `jobs start --role`, `jobs ask`, `jobs list --parent`, `jobs observe` with children, and `doctor`.
+- **Skills.** `ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `jobs`; `delegate`, `codex` and `claude` rewritten to point at `bridge_*` tools.
+- **Agents (Claude Code).** `codex-teammate` rewritten; `codex-reviewer`, `codex-researcher` and `codex-teamlead` added.
+- **Safety.** Delegation depth limit of 2 (`AGENTS_BRIDGE_DEPTH`, `AGENTS_BRIDGE_JOB_ID`), sandbox and tool allowlist per role, `danger-full-access` only for a Codex team lead, web tools only for Claude research.
+- **Packaging.** Version 0.2.0 across `package.json`, the manifests and `src/lib/version.ts`; a `CHANGELOG.md`; an adoption-oriented README.
+
+### Workstreams
+
+- [x] **A — Runtime, MCP and CLI**: store and API (`role`, `depth`, `parentJob`, `askJob`, `childJobs`), prompt builders, provider flags per role, `bridge_*` role tools, `jobs ask`, `doctor`.
+- [x] **B — Skills, agents, manifests and documentation**: ten skills, four agents, manifests, `package.json`, README (EN, pt-BR), installation guides, changelog, documentation and package tests.
+
+### Verification checklist
+
+- [x] `pnpm test` — unit, CLI and documentation tests
+- [x] `claude plugin validate .` — `Validation passed`
+- [x] `pnpm fmt`, `pnpm lint`, `pnpm build`, `pnpm publint`
+- [ ] Live test: Claude `bridge_ask` to Codex, and Codex `$ask` to Claude, on a machine with both CLIs authenticated
+- [ ] Live test: a Codex team lead that delegates a `review` job to Claude and reports the child ids

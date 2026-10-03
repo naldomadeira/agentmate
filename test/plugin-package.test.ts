@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = resolve(import.meta.dirname, "..");
@@ -13,6 +13,7 @@ type PluginManifest = {
   name: string;
   version: string;
   skills?: string;
+  agents?: string[];
   mcpServers?: string | Record<string, McpServer>;
 };
 
@@ -23,7 +24,7 @@ describe("plugin package", () => {
 
     expect(manifest).toMatchObject({
       name: "agents-bridge",
-      version: "0.1.0",
+      version: "0.2.0",
       skills: "./skills/",
       mcpServers: "./.mcp.json",
     });
@@ -74,5 +75,129 @@ describe("plugin package", () => {
     expect(codex.version).toBe(pkg.version);
     expect(claude.version).toBe(pkg.version);
     expect(codexMarketplace.version).toBe(pkg.version);
+  });
+
+  it("keeps the shared runtime version aligned with the npm package", () => {
+    const pkg = json<{ version: string }>("package.json");
+    const source = readFileSync(resolve(root, "src/lib/version.ts"), "utf8");
+
+    expect(pkg.version).toBe("0.2.0");
+    expect(source).toMatch(/VERSION\s*=\s*"0\.2\.0"/);
+  });
+
+  it("points package metadata at the public repository", () => {
+    const pkg = json<{ repository: { url: string }; keywords: string[]; description: string }>(
+      "package.json",
+    );
+
+    expect(pkg.repository.url).toBe("git+https://github.com/naldomadeira/agents-bridge-mcp.git");
+    expect(pkg.keywords).toEqual(
+      expect.arrayContaining(["claude-code", "codex-cli", "multi-agent", "delegation", "plugin"]),
+    );
+    expect(pkg.description).toContain("ask, review, research, plan, implement and lead");
+  });
+
+  it("declares the skills directory and every agent file in the Claude plugin manifest", () => {
+    const manifest = json<PluginManifest>(".claude-plugin/plugin.json");
+
+    expect(manifest.skills).toBe("./skills/");
+    // Claude Code requires explicit agent files (a directory path fails validation).
+    expect(manifest.agents).toEqual(AGENTS.map((name) => `./agents/${name}.md`));
+  });
+});
+
+/** Reads the `key: value` pairs of a Markdown file's YAML frontmatter. */
+function frontmatter(path: string): Record<string, string> {
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(readFileSync(path, "utf8"));
+  if (!match) throw new Error(`${path} has no YAML frontmatter`);
+  const fields: Record<string, string> = {};
+  for (const line of match[1]!.split("\n")) {
+    const separator = line.indexOf(":");
+    if (separator === -1) continue;
+    fields[line.slice(0, separator).trim()] = line
+      .slice(separator + 1)
+      .trim()
+      .replace(/^"(.*)"$/, "$1");
+  }
+  return fields;
+}
+
+function filesUnder(relativeDir: string): string[] {
+  const dir = resolve(root, relativeDir);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { recursive: true, withFileTypes: false })
+    .map((entry) => join(dir, String(entry)))
+    .filter((path) => statSync(path).isFile());
+}
+
+const SKILLS = [
+  "ask",
+  "review",
+  "research",
+  "plan",
+  "implement",
+  "teamlead",
+  "jobs",
+  "delegate",
+  "codex",
+  "claude",
+];
+const AGENTS = ["codex-teammate", "codex-reviewer", "codex-researcher", "codex-teamlead"];
+
+describe("skills", () => {
+  it("ships the ten skills", () => {
+    const names = readdirSync(resolve(root, "skills"), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+
+    expect(names.sort()).toEqual([...SKILLS].sort());
+  });
+
+  it.each(SKILLS)("%s has complete frontmatter and a compact body", (name) => {
+    const path = resolve(root, "skills", name, "SKILL.md");
+    const fields = frontmatter(path);
+
+    expect(fields.name).toBe(name);
+    expect(fields.description?.length ?? 0).toBeGreaterThan(20);
+    expect(fields["argument-hint"]).toBeTruthy();
+    expect(fields["allowed-tools"]).toBeUndefined();
+    expect(readFileSync(path, "utf8").split("\n").length).toBeLessThanOrEqual(80);
+  });
+
+  it("keeps the project-local codex skill identical to the shared one", () => {
+    expect(readFileSync(resolve(root, ".claude/skills/codex/SKILL.md"), "utf8")).toBe(
+      readFileSync(resolve(root, "skills/codex/SKILL.md"), "utf8"),
+    );
+  });
+});
+
+describe("agents", () => {
+  it("ships the four agents", () => {
+    const names = readdirSync(resolve(root, "agents"))
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => basename(file, ".md"));
+
+    expect(names.sort()).toEqual([...AGENTS].sort());
+  });
+
+  it.each(AGENTS)("%s has frontmatter that mentions Codex and omits tools", (name) => {
+    const fields = frontmatter(resolve(root, "agents", `${name}.md`));
+
+    expect(fields.name).toBe(name);
+    expect(fields.description).toContain("Codex");
+    expect(fields.tools).toBeUndefined();
+  });
+});
+
+describe("legacy tool references", () => {
+  it("does not reference the legacy synchronous MCP servers", () => {
+    const files = ["skills", "agents", ".claude/skills"].flatMap(filesUnder);
+
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const content = readFileSync(file, "utf8");
+      expect(content, file).not.toContain("mcp__codex__");
+      expect(content, file).not.toContain("mcp__claude__");
+    }
   });
 });

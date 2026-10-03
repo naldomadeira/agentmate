@@ -1,35 +1,43 @@
 ---
 name: setup
-description: Set up agents-bridge-mcp for Claude Code and/or Codex CLI
+description: Legacy setup for agents-bridge-mcp. Prefer the plugin install; use this only to maintain an existing synchronous-server installation.
 argument-hint: "[both|claude|codex]"
 allowed-tools: "Read, Edit, Write, Bash, Glob, Grep"
 ---
 
-Set up agents-bridge-mcp so Claude Code and Codex CLI can call each other as MCP partners.
+Agents Bridge is installed as a plugin. This `setup` skill is **legacy**: it registers the old synchronous MCP servers (`serve codex`, `serve claude`) and copies shortcuts into the user's configuration. Use it only for an existing installation that already depends on them.
 
-The user may pass an argument: `both` (default), `claude`, or `codex`.
+## Recommended: install the plugin
 
-## Setup Claude Code -> Codex (let Claude call Codex)
+Tell the user to install the plugin in the host they use. It adds the `ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `jobs`, `delegate`, `codex` and `claude` skills, the four Codex agents (Claude Code) and the jobs MCP server, with no manual edits to configuration files.
 
-Run this command to register the codex MCP server:
+```bash
+# Claude Code
+claude plugin marketplace add naldomadeira/agents-bridge-mcp
+claude plugin install agents-bridge@agents-bridge
+
+# Codex
+codex plugin marketplace add naldomadeira/agents-bridge-mcp
+codex plugin add agents-bridge@agents-bridge
+```
+
+Restart the host, then verify with `npx -y agents-bridge-mcp doctor`. Full guide: `docs/INSTALL_FOR_AGENTS.md`.
+
+## Legacy: Claude Code -> Codex (synchronous server)
+
+The user may pass `both` (default), `claude` or `codex`. Only continue if the user explicitly wants the legacy servers.
 
 ```bash
 claude mcp add codex -s user -- npx agents-bridge-mcp serve codex
-```
-
-After running, verify it was added by checking:
-
-```bash
 claude mcp list
 ```
 
 Confirm that `codex` appears in the list.
 
-## Setup Codex -> Claude (let Codex call Claude)
+## Legacy: Codex -> Claude (synchronous server)
 
-1. First check if `~/.codex/config.toml` exists. If not, create the directory and file.
-
-2. Read the existing file content. Then append or add the following TOML block (only if `[mcp_servers.claude]` is not already present):
+1. Check whether `~/.codex/config.toml` exists. If not, create the directory and file.
+2. Read the existing content. Add this block only if `[mcp_servers.claude]` is not already present; if it is, ask the user before changing it.
 
 ```toml
 [mcp_servers.claude]
@@ -38,43 +46,16 @@ args = ["agents-bridge-mcp", "serve", "claude"]
 tool_timeout_sec = 600
 ```
 
-Be careful not to duplicate the section if it already exists. If it exists, ask the user if they want to update it.
-
-## Install Codex Teammate Agent (optional)
-
-The codex-teammate agent lets you spawn Codex as a Claude Code subagent/teammate. It knows how to use all 6 codex bridge tools automatically.
-
-Run:
+## Legacy: copy the skills and agent
 
 ```bash
-npx agents-bridge-mcp install agent --global
+npx agents-bridge-mcp install skill claude --global   # /codex skill for Claude Code
+npx agents-bridge-mcp install skill codex --global    # /claude skill for Codex
+npx agents-bridge-mcp install agent --global          # codex-teammate agent (--local for this project)
 ```
 
-Or for project-local:
+These shortcuts route to the `bridge_*` job tools, which come from the jobs server (`npx -y agents-bridge-mcp serve jobs`) that the plugin registers. Without the plugin, they fall back to the `npx -y agents-bridge-mcp jobs ...` CLI.
 
-```bash
-npx agents-bridge-mcp install agent --local
-```
+## After setup
 
-Verify the agent is available by starting a new Claude Code session. The agent will appear as `codex-teammate` subagent type in the Task tool.
-
-## Install /codex Skill for Claude Code (optional)
-
-```bash
-npx agents-bridge-mcp install skill claude --global
-```
-
-## Install /claude Skill for Codex (optional)
-
-```bash
-npx agents-bridge-mcp install skill codex --global
-```
-
-## After Setup
-
-Tell the user:
-
-- For Claude Code: restart Claude Code or start a new session for the MCP server to be available
-- For Codex: restart Codex for the MCP server to be available
-- Available tools: `codex_query`, `codex_review_code`, `codex_review_plan`, `codex_explain_code`, `codex_plan_perf`, `codex_implement` (from Claude), and `claude_query`, `claude_review_code`, `claude_review_plan`, `claude_explain_code`, `claude_plan_perf`, `claude_implement` (from Codex)
-- **Codex Teammate Agent**: If installed, you can spawn Codex as a teammate with `Task(subagent_type: "codex-teammate", prompt: "your task here")`
+Tell the user to restart the host and run `npx -y agents-bridge-mcp doctor`; it flags legacy registrations and suggests how to move to the plugin. The legacy servers expose `codex_query`, `codex_review_code`, `codex_review_plan`, `codex_explain_code`, `codex_plan_perf` and `codex_implement` (to Claude) and the matching `claude_*` tools (to Codex).
