@@ -5,8 +5,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { defineCommand } from "citty";
 import { userFacing } from "../lib/errors.js";
-import { binary } from "../jobs/providers.js";
-import { homeDir, isAlive, listJobIds, readJob, type Provider } from "../jobs/store.js";
+import { AGENT_IDS, getAgent } from "../agents/registry.js";
+import type { AgentId } from "../agents/types.js";
+import { homeDir, isAlive, listJobIds, readJob } from "../jobs/store.js";
 
 const execFileAsync = promisify(execFile);
 const VERSION_TIMEOUT_MS = 5_000;
@@ -56,16 +57,17 @@ function checkNode(): Check {
     : fail("node", `v${process.versions.node}`, `Install Node.js ${MIN_NODE_MAJOR} or newer.`);
 }
 
-const INSTALL_HINTS: Record<Provider, string> = {
+const INSTALL_HINTS: Record<AgentId, string> = {
   codex: "Install the Codex CLI (npm install -g @openai/codex) to delegate to codex.",
   claude: "Install Claude Code (https://claude.com/claude-code) to delegate to claude.",
 };
 
-async function checkProvider(provider: Provider): Promise<Check> {
-  const version = await run(binary(provider), ["--version"], VERSION_TIMEOUT_MS);
+async function checkAgent(id: AgentId): Promise<Check> {
+  const agent = getAgent(id);
+  const version = await run(agent.binary(), agent.versionArgs, VERSION_TIMEOUT_MS);
   if (version === null)
-    return warn(provider, "not found on PATH or not responding", INSTALL_HINTS[provider]);
-  return ok(provider, version.split("\n")[0] ?? version);
+    return warn(id, `${agent.displayName} not found on PATH or not responding`, INSTALL_HINTS[id]);
+  return ok(id, version.split("\n")[0] ?? version);
 }
 
 function checkStateDir(): Check {
@@ -107,7 +109,7 @@ function checkJobs(): Check {
 async function checkLegacyClaude(claudeAvailable: boolean): Promise<Check> {
   const name = "legacy claude registration";
   if (!claudeAvailable) return ok(name, "skipped (claude not available)");
-  const list = await run(binary("claude"), ["mcp", "list"], MCP_LIST_TIMEOUT_MS);
+  const list = await run(getAgent("claude").binary(), ["mcp", "list"], MCP_LIST_TIMEOUT_MS);
   if (list === null) return warn(name, "could not run `claude mcp list`", "Run it manually.");
   return /(?:agents-bridge-mcp|agentmate) serve codex/.test(list)
     ? warn(
@@ -141,11 +143,11 @@ function checkLegacyCodex(): Check {
 
 /** Never throws: every probe degrades to a warning. */
 export async function collectChecks(): Promise<Check[]> {
-  const [codex, claude] = await Promise.all([checkProvider("codex"), checkProvider("claude")]);
+  const agents = await Promise.all(AGENT_IDS.map(checkAgent));
+  const claude = agents[AGENT_IDS.indexOf("claude")]!;
   return [
     checkNode(),
-    codex,
-    claude,
+    ...agents,
     checkStateDir(),
     checkJobs(),
     await checkLegacyClaude(claude.status === "ok"),

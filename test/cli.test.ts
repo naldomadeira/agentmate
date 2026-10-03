@@ -57,6 +57,7 @@ describe("cli", () => {
   it("lists ask among the jobs subcommands", async () => {
     const result = await runCli(["jobs", "--help"]);
     expect(result.stdout).toContain("ask");
+    expect(result.stdout).toContain("events");
   });
 
   it("shows doctor help", async () => {

@@ -24,7 +24,7 @@ describe("plugin package", () => {
 
     expect(manifest).toMatchObject({
       name: "mate",
-      version: "0.4.0",
+      version: "0.5.0",
       skills: "./skills/",
       mcpServers: "./.mcp.json",
     });
@@ -94,8 +94,8 @@ describe("plugin package", () => {
     const pkg = json<{ version: string }>("package.json");
     const source = readFileSync(resolve(root, "src/lib/version.ts"), "utf8");
 
-    expect(pkg.version).toBe("0.4.0");
-    expect(source).toMatch(/VERSION\s*=\s*"0\.4\.0"/);
+    expect(pkg.version).toBe("0.5.0");
+    expect(source).toMatch(/VERSION\s*=\s*"0\.5\.0"/);
   });
 
   it("points package metadata at the public repository", () => {

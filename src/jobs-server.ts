@@ -2,8 +2,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import type { EventLevel } from "./agents/types.js";
 import {
   cancelJob,
+  getJob,
   isTerminal,
   listJobs,
   observeJob,
@@ -14,7 +16,8 @@ import {
   type RoleFields,
   type StartOptions,
 } from "./jobs/api.js";
-import { renderList, renderObservation, renderResult } from "./jobs/render.js";
+import { readEvents } from "./jobs/events.js";
+import { renderEvents, renderList, renderObservation, renderResult } from "./jobs/render.js";
 import { JOB_ROLES, type JobMode, type Provider } from "./jobs/store.js";
 import { logger } from "./lib/logger.js";
 import { VERSION } from "./lib/version.js";
@@ -259,15 +262,56 @@ server.registerTool(
   }),
 );
 
+const eventLevels = z
+  .array(z.enum(["important", "status", "fyi"]))
+  .optional()
+  .describe(
+    "Event levels to include: important (messages, errors, finish), status (files changed), fyi (commands run)",
+  );
+
 server.registerTool(
   "mate_observe",
   {
     title: "Observe a running job",
     description:
-      "Non-blocking snapshot of a job's status, recent output and, for a team lead, the jobs it started with their status. Use only when progress was asked for.",
-    inputSchema: { id: jobId },
+      "Non-blocking snapshot of a job's status, its recent important and status events (not raw output) and, for a team lead, the jobs it started with their status. Pass raw to also get the stdout/stderr tails, or levels to widen the events. Use only when progress was asked for.",
+    inputSchema: {
+      id: jobId,
+      raw: z.boolean().optional().describe("Also include the raw stdout/stderr tails"),
+      levels: eventLevels,
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .max(500)
+        .optional()
+        .describe("Newest N events, default 30"),
+    },
   },
-  guard(({ id }) => renderObservation(observeJob(id))),
+  guard(({ id, raw, levels, limit }) =>
+    renderObservation(observeJob(id, { raw, levels: levels as EventLevel[] | undefined, limit })),
+  ),
+);
+
+server.registerTool(
+  "mate_events",
+  {
+    title: "Read a job's events",
+    description:
+      "Read a job's event log, oldest first, one line per event; filter by level, or pass since (an ISO timestamp) to read only what is new. Cheaper than raw output.",
+    inputSchema: {
+      id: jobId,
+      since: z.string().optional().describe("Only events after this ISO timestamp"),
+      levels: eventLevels,
+      limit: z.number().int().positive().max(500).optional().describe("Newest N events"),
+    },
+  },
+  guard(({ id, since, levels, limit }) => {
+    getJob(id);
+    return renderEvents(
+      readEvents(id, { since, levels: levels as EventLevel[] | undefined, limit }),
+    );
+  }),
 );
 
 server.registerTool(

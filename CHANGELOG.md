@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - Unreleased
+
+### Added
+
+- Agent adapters in `src/agents/` (Codex and Claude behind one `AgentAdapter` interface and a registry); the runtime no longer branches on agent names.
+- Job events: every job writes an append-only `events.jsonl` with `important`, `status` and `fyi` levels (started, message, file, command, finished, error). Codex events stream while the job runs; Claude, which has no stream, records one message at the end.
+- MCP tool `mate_events` and CLI `jobs events <id> [--since <iso>] [--level <a,b>] [--follow]`.
+- `mate_observe` and `jobs observe` accept `raw` / `--raw` to include the stdout/stderr tails, and `levels` / `--level` to widen the events.
+- `docs/ARCHITECTURE.md` describing the runtime, adapters, jobs and events.
+
+### Changed
+
+- `observe` shows filtered events (`important` and `status`, last 30) instead of the raw stdout/stderr tails; pass `raw` for the tails.
+- `cancel` kills the whole worker process group, so grandchildren do not outlive a canceled job.
+- `AGENTMATE_HOME=""` is treated as unset.
+- A recycled PID is no longer mistaken for a live worker (the process command line must match the job).
+
 ## [0.4.0] - 2026-10-03
 
 ### Changed / Breaking

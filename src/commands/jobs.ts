@@ -2,6 +2,8 @@ import { defineCommand } from "citty";
 import {
   askJob,
   cancelJob,
+  getJob,
+  isTerminal,
   listJobs,
   observeJob,
   readResult,
@@ -9,8 +11,16 @@ import {
   summarize,
   waitJob,
 } from "../jobs/api.js";
+import type { EventLevel } from "../agents/types.js";
+import { readEvents } from "../jobs/events.js";
 import { userFacing } from "../lib/errors.js";
-import { renderList, renderObservation, renderResult } from "../jobs/render.js";
+import {
+  renderEvent,
+  renderEvents,
+  renderList,
+  renderObservation,
+  renderResult,
+} from "../jobs/render.js";
 import { JOB_ROLES, TERMINAL, type JobMode, type JobRole, type Provider } from "../jobs/store.js";
 
 /** Exit codes: 0 done, 1 failed or canceled, 2 wait expired with the job still running. */
@@ -29,6 +39,23 @@ function parseDuration(value: string): number {
   if (!match) throw new Error("duration must look like 90s or 10m");
   return Number(match[1]) * (match[2] === "s" ? 1_000 : 60_000);
 }
+
+const EVENT_LEVELS: readonly EventLevel[] = ["important", "status", "fyi"];
+
+/** Parses `--level important,status`; undefined means "use the default". */
+function parseLevels(value: string | undefined): EventLevel[] | undefined {
+  if (value === undefined) return undefined;
+  const levels = value
+    .split(",")
+    .map((level) => level.trim())
+    .filter(Boolean);
+  const bad = levels.find((level) => !EVENT_LEVELS.includes(level as EventLevel));
+  if (bad || levels.length === 0)
+    throw new Error(`level must be a comma list of: ${EVENT_LEVELS.join(", ")}`);
+  return levels as EventLevel[];
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 function exitFor(status: string): number {
   if (status === "done") return 0;
@@ -118,10 +145,65 @@ export default defineCommand({
       }),
     }),
     observe: defineCommand({
-      meta: { name: "observe", description: "Snapshot of a job's status and recent output" },
-      args: idArg,
+      meta: {
+        name: "observe",
+        description:
+          "Snapshot of a job's status and recent events (--raw adds stdout/stderr tails)",
+      },
+      args: {
+        ...idArg,
+        raw: { type: "boolean", description: "Also print the raw stdout/stderr tails" },
+        level: {
+          type: "string",
+          description: "Event levels to show, comma-separated (default important,status)",
+        },
+      },
       run: userFacing(({ args }) => {
-        console.log(renderObservation(observeJob(args.id)));
+        console.log(
+          renderObservation(
+            observeJob(args.id, { raw: args.raw, levels: parseLevels(args.level) }),
+          ),
+        );
+      }),
+    }),
+    events: defineCommand({
+      meta: {
+        name: "events",
+        description: "Print a job's events; --follow streams new ones until the job ends",
+      },
+      args: {
+        ...idArg,
+        since: { type: "string", description: "Only events after this ISO timestamp" },
+        level: {
+          type: "string",
+          description: "Levels to show, comma-separated: important,status,fyi (default all)",
+        },
+        follow: { type: "boolean", description: "Poll every second until the job is terminal" },
+      },
+      run: userFacing(async ({ args }) => {
+        const levels = parseLevels(args.level);
+        const read = () => readEvents(args.id, { since: args.since, levels });
+        if (!args.follow) {
+          getJob(args.id);
+          console.log(renderEvents(read()));
+          return;
+        }
+        let printed = 0;
+        const flush = () => {
+          const events = read();
+          for (const event of events.slice(printed)) console.log(renderEvent(event));
+          printed = events.length;
+        };
+        for (;;) {
+          const job = getJob(args.id);
+          flush();
+          if (isTerminal(job)) {
+            flush();
+            process.exitCode = exitFor(job.status);
+            return;
+          }
+          await sleep(1_000);
+        }
       }),
     }),
     result: defineCommand({

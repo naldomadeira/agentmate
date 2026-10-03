@@ -181,11 +181,14 @@ AgentMate treats delegated work as a durable background job:
 
 The jobs MCP server (`npx -y agentmate serve jobs`, registered by the plugin) and the `jobs` CLI share one runtime. State lives under `~/.agentmate`. A detached worker runs the provider CLI and records the output, so an expired wait never stops a job.
 
+Every job also writes an append-only event log (`events.jsonl`). Events carry one of three levels: `important` (the agent's messages, errors, start and finish), `status` (files changed) and `fyi` (commands run). `mate_observe` and `jobs observe` show only `important` and `status` events, so progress checks stay small; ask for `fyi` with `levels` / `--level`, read the full log with `mate_events` / `jobs events <id>`, and pull the raw stdout/stderr tails only when needed with `raw` / `--raw`. See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the runtime, adapters and event model.
+
 | Capability           | MCP                                                                                                                    | CLI                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | Start work           | `mate_start`, `mate_ask`, `mate_review`, `mate_research`, `mate_plan`, `mate_implement`, `mate_teamlead` | `jobs start`, `jobs ask`             |
 | Wait or fetch output | `mate_wait`, `mate_result`                                                                                         | `jobs wait <id>`, `jobs result <id>` |
-| Request progress     | `mate_observe`                                                                                                       | `jobs observe <id>`                  |
+| Request progress     | `mate_observe`                                                                                                       | `jobs observe <id> [--raw]`          |
+| Read job events      | `mate_events`                                                                                                        | `jobs events <id> [--follow]`        |
 | Cancel work          | `mate_cancel`                                                                                                        | `jobs cancel <id>`                   |
 | Find jobs            | `mate_list`                                                                                                          | `jobs list [--cwd] [--parent <id>]`  |
 

@@ -176,11 +176,14 @@ O AgentMate trata o trabalho delegado como um job durável em segundo plano:
 
 O servidor MCP de jobs (`npx -y agentmate serve jobs`, registrado pelo plugin) e o CLI `jobs` compartilham o mesmo runtime. O estado fica em `~/.agentmate`. Um worker desacoplado executa o CLI do provider e grava a saída, então uma espera expirada nunca interrompe um job.
 
+Cada job também grava um log de eventos append-only (`events.jsonl`). Os eventos têm um de três níveis: `important` (mensagens do agente, erros, início e fim), `status` (arquivos alterados) e `fyi` (comandos executados). `mate_observe` e `jobs observe` mostram apenas eventos `important` e `status`, então verificar o progresso custa pouco contexto; peça `fyi` com `levels` / `--level`, leia o log completo com `mate_events` / `jobs events <id>` e traga os trechos brutos de stdout/stderr só quando necessário com `raw` / `--raw`. Veja [docs/ARCHITECTURE.md](./ARCHITECTURE.md) (em inglês) para o runtime, os adapters e o modelo de eventos.
+
 | Capacidade               | MCP                                                                                                                    | CLI                                  |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | Iniciar trabalho         | `mate_start`, `mate_ask`, `mate_review`, `mate_research`, `mate_plan`, `mate_implement`, `mate_teamlead` | `jobs start`, `jobs ask`             |
 | Esperar ou obter a saída | `mate_wait`, `mate_result`                                                                                         | `jobs wait <id>`, `jobs result <id>` |
-| Pedir progresso          | `mate_observe`                                                                                                       | `jobs observe <id>`                  |
+| Pedir progresso          | `mate_observe`                                                                                                       | `jobs observe <id> [--raw]`          |
+| Ler eventos do job       | `mate_events`                                                                                                        | `jobs events <id> [--follow]`        |
 | Cancelar trabalho        | `mate_cancel`                                                                                                        | `jobs cancel <id>`                   |
 | Encontrar jobs           | `mate_list`                                                                                                          | `jobs list [--cwd] [--parent <id>]`  |
 

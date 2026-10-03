@@ -26,6 +26,8 @@ describe("project documentation", () => {
     expect(readme).toContain("explicit deny of `Edit`");
     expect(readme).toContain("AGENTMATE_CLAUDE_WRITE_TOOLS");
     expect(readme).toContain("waitSeconds: 45");
+    expect(readme).toContain("docs/ARCHITECTURE.md");
+    expect(readme).toContain("mate_events");
 
     const portugueseReadme = read("docs/README.pt-BR.md");
     expect(portugueseReadme).toContain("## Exemplos de uso");
@@ -37,6 +39,8 @@ describe("project documentation", () => {
     expect(portugueseReadme).toContain("AGENTMATE_CLAUDE_WRITE_TOOLS");
     expect(portugueseReadme).toContain("waitSeconds: 45");
     expect(portugueseReadme).toContain("git clone");
+    expect(portugueseReadme).toContain("ARCHITECTURE.md");
+    expect(portugueseReadme).toContain("mate_events");
   });
 
   it("documents the slash commands in both READMEs and both install guides", () => {
@@ -153,6 +157,7 @@ describe("project documentation", () => {
   it("keeps a changelog with the current release", () => {
     const changelog = read("CHANGELOG.md");
 
+    expect(changelog).toContain("## [0.5.0]");
     expect(changelog).toContain("## [0.4.0]");
     expect(changelog).toContain("mate@agentmate");
     expect(changelog).toContain("## [0.2.0]");

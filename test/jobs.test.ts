@@ -16,7 +16,9 @@ import {
 } from "../src/jobs/api.js";
 import { buildInvocation } from "../src/jobs/providers.js";
 import { VERSION } from "../src/lib/version.js";
-import { updateJob, type Job } from "../src/jobs/store.js";
+import { readEvents } from "../src/jobs/events.js";
+import { renderObservation } from "../src/jobs/render.js";
+import { stdoutFile, updateJob, type Job } from "../src/jobs/store.js";
 
 // A stand-in for the codex CLI. The prompt (last argument) selects the behavior.
 const FAKE_CODEX = `#!/usr/bin/env node
@@ -27,6 +29,8 @@ if (prompt === "sleep") { emit({ type: "thread.started", thread_id: "t-sleep" })
 else if (prompt === "fail") { console.error("boom"); process.exit(1); }
 else {
   emit({ type: "thread.started", thread_id: "t-1" });
+  emit({ type: "item.completed", item: { type: "command_execution", command: "ls", exit_code: 0 } });
+  emit({ type: "item.completed", item: { type: "file_change", kind: "add", path: "a.ts" } });
   const env = " depth=" + process.env.AGENTMATE_DEPTH + " job=" + process.env.AGENTMATE_JOB_ID + " parentMode=" + process.env.AGENTMATE_PARENT_MODE;
   emit({ type: "item.completed", item: { id: "i", type: "agent_message", text: "args=" + args.join(" ") + env } });
 }
@@ -76,6 +80,48 @@ describe("jobs", () => {
     const { text } = readResult(job.id);
     expect(text).toContain("exec --json --skip-git-repo-check --sandbox read-only hello");
   }, 30_000);
+
+  it("records job events and filters them for observe", async () => {
+    const job = start("hello");
+    await waitJob(job.id, 20_000);
+
+    const events = readEvents(job.id);
+    expect(events.map((e) => e.kind)).toEqual([
+      "started",
+      "command",
+      "file",
+      "message",
+      "finished",
+    ]);
+    expect(events.every((e) => e.job === job.id)).toBe(true);
+    const level = (kind: string) => events.find((e) => e.kind === kind)?.level;
+    expect(level("started")).toBe("important");
+    expect(level("command")).toBe("fyi");
+    expect(level("file")).toBe("status");
+    expect(level("message")).toBe("important");
+    expect(level("finished")).toBe("important");
+    expect(events.find((e) => e.kind === "finished")?.text).toMatch(/^done · \d+s$/);
+    expect(readEvents(job.id, { levels: ["fyi"] }).map((e) => e.kind)).toEqual(["command"]);
+    expect(readEvents(job.id, { limit: 2 }).map((e) => e.kind)).toEqual(["message", "finished"]);
+    const afterFirst = readEvents(job.id, { since: events[0]!.ts });
+    expect(afterFirst.every((e) => e.ts > events[0]!.ts)).toBe(true);
+
+    const observed = observeJob(job.id);
+    expect(observed.events.map((e) => e.kind)).toEqual(["started", "file", "message", "finished"]);
+    expect(observed.stdoutTail).toBe("");
+    expect(observed.stderrTail).toBe("");
+    expect(renderObservation(observed)).toMatch(/events:\n\d\d:\d\d:\d\d {2}important/);
+
+    expect(observeJob(job.id, { raw: true }).stdoutTail).toContain("thread.started");
+    const all = observeJob(job.id, { levels: ["fyi"] }).events;
+    expect(all.map((e) => e.kind)).toEqual(["command"]);
+    expect(all[0]?.text).toContain("ls");
+    expect(fs.existsSync(stdoutFile(job.id))).toBe(true);
+  }, 30_000);
+
+  it("tolerates a missing or truncated events file", () => {
+    expect(readEvents("never-existed")).toEqual([]);
+  });
 
   it("maps write mode and model onto the provider flags", async () => {
     const job = start("hello", { mode: "write", model: "m-x" });

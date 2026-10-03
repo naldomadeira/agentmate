@@ -2,8 +2,9 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { AgentId } from "../agents/types.js";
 
-export type Provider = "codex" | "claude";
+export type Provider = AgentId;
 export type JobMode = "read-only" | "write";
 export type JobStatus = "queued" | "running" | "done" | "error" | "canceled" | "timeout";
 
@@ -49,7 +50,8 @@ export interface Job {
 
 /** Jobs live outside any repo so ids resolve from any session or cwd. */
 export function homeDir(): string {
-  return process.env["AGENTMATE_HOME"] ?? path.join(os.homedir(), ".agentmate");
+  const env = process.env["AGENTMATE_HOME"];
+  return env && env.trim() ? env : path.join(os.homedir(), ".agentmate");
 }
 
 export function jobDir(id: string): string {
@@ -80,7 +82,7 @@ function ensureDirs(id: string): void {
 /** Atomic replace: readers never observe a half-written job.json. */
 export function writeJob(job: Job): void {
   ensureDirs(job.id);
-  const tmp = `${jobFile(job.id)}.${process.pid}.tmp`;
+  const tmp = `${jobFile(job.id)}.${process.pid}.${randomBytes(3).toString("hex")}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(job, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, jobFile(job.id));
 }
@@ -112,12 +114,23 @@ export function listJobIds(): string[] {
   }
 }
 
+/** Command line of a process (NUL separators turned into spaces); null where it cannot be read. */
+export function workerCommandLine(pid: number): string | null {
+  try {
+    return fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").join(" ").trim();
+  } catch {
+    return null;
+  }
+}
+
+/** A live pid counts only when, where readable, it is still a worker and not a recycled pid. */
 export function isAlive(pid: number | undefined): boolean {
   if (!pid) return false;
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
+  const cmdline = workerCommandLine(pid);
+  return cmdline === null || cmdline.includes("worker");
 }
