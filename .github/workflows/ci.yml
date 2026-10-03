@@ -22,3 +22,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm smoke:pack
+      - run: pnpm smoke:cli
+      - run: pnpm version:check

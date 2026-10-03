@@ -30,7 +30,24 @@ jobs:
 
       - run: pnpm i
       - run: pnpm build
+      - run: pnpm version:check
+      - run: pnpm smoke:pack
+      - run: pnpm smoke:cli
 
       # Trusted Publishing (OIDC): npm >= 11.5.1 authenticates through the id-token, no NPM_TOKEN.
       - run: npm install -g npm@latest
       - run: npm publish --access public
+
+      - name: Verify the release on the npm registry
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          for attempt in 1 2 3 4 5; do
+            if [ "$(npm view "agentmate@${VERSION}" version 2>/dev/null)" = "${VERSION}" ]; then
+              echo "agentmate@${VERSION} is on the registry"
+              exit 0
+            fi
+            echo "agentmate@${VERSION} not visible yet (attempt ${attempt}/5)"
+            sleep 15
+          done
+          echo "agentmate@${VERSION} never appeared on the registry" >&2
+          exit 1

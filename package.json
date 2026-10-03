@@ -1,6 +1,6 @@
 {
   "name": "agentmate",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "AI agents work better together. AgentMate connects AI coding agents so they can collaborate, delegate, review, and help each other complete tasks.",
   "keywords": [
     "agents",
@@ -29,8 +29,6 @@
     "url": "git+https://github.com/naldomadeira/agentmate.git"
   },
   "bin": {
-    "agentmate-claude": "./dist/claude-server.mjs",
-    "agentmate-codex": "./dist/codex-server.mjs",
     "agentmate": "./dist/cli.mjs"
   },
   "files": [
@@ -38,13 +36,12 @@
     "agents",
     "skills",
     "assets",
-    "templates"
+    "templates",
+    "hooks"
   ],
   "type": "module",
   "scripts": {
     "build": "tsdown",
-    "dev:codex-server": "tsx src/codex-server.ts",
-    "dev:claude-server": "tsx src/claude-server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint --type-check",
@@ -52,7 +49,11 @@
     "fmt:check": "oxfmt --check src/ test/",
     "publint": "publint",
     "prepublishOnly": "pnpm build",
-    "release": "bumpp",
+    "smoke:pack": "node scripts/smoke-pack.mjs",
+    "smoke:cli": "node scripts/smoke-built-cli.mjs",
+    "version:bump": "node scripts/bump-version.mjs",
+    "version:check": "node scripts/bump-version.mjs --check",
+    "release": "node scripts/bump-version.mjs",
     "prepare": "husky"
   },
   "dependencies": {
