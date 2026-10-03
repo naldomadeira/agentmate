@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "agents-bridge": {
+      "command": "npx",
+      "args": ["-y", "agents-bridge-mcp", "serve", "jobs"]
+    }
+  }
+}
