@@ -1,16 +1,17 @@
-# Instalar o Agents Bridge como plugin
+# Install Agents Bridge as a plugin
 
-Este guia instala o plugin híbrido do Agents Bridge no Claude Code ou no Codex. O plugin fornece a skill `delegate` e registra o servidor MCP de jobs (`bridge_start`, `bridge_wait`, `bridge_observe`, `bridge_result`, `bridge_cancel` e `bridge_list`). Quando o MCP não estiver carregado, a skill usa o CLI do pacote npm e mantém o mesmo contrato de jobs.
+[Português (Brasil)](./INSTALL_FOR_AGENTS.pt-BR.md)
 
-## Pré-requisitos
+Agents Bridge packages the `delegate` skill with a background-jobs MCP server. When MCP is not available in a host session, the skill uses the package CLI and preserves the same start, wait, result, observe, and cancel workflow.
 
-- Node.js 18 ou superior;
-- Claude Code ou Codex CLI, autenticado;
-- acesso ao npm para executar `npx -y agents-bridge-mcp`.
+## Requirements
 
-O host que recebe uma delegação também precisa conseguir executar o outro CLI. Por exemplo, para delegar ao Codex a partir do Claude Code, `codex` deve estar no `PATH` do processo do Claude.
+- Node.js 18 or later
+- An authenticated Claude Code or Codex CLI
+- Network access to npm for `npx -y agents-bridge-mcp`
+- The CLI that receives delegated work available on the initiating host's `PATH`
 
-## Instalação limpa
+## Install on a clean machine
 
 ### Claude Code
 
@@ -19,7 +20,7 @@ claude plugin marketplace add naldomadeira/agents-bridge-mcp
 claude plugin install agents-bridge@agents-bridge
 ```
 
-Reinicie o Claude Code. A skill fica disponível como `agents-bridge:delegate`, e o plugin inicia somente o MCP de jobs.
+Restart Claude Code. The installed plugin exposes `agents-bridge:delegate` and starts only the jobs MCP server.
 
 ### Codex
 
@@ -28,71 +29,67 @@ codex plugin marketplace add naldomadeira/agents-bridge-mcp
 codex plugin add agents-bridge@agents-bridge
 ```
 
-Reinicie o Codex. A skill `delegate` e as ferramentas `bridge_*` são carregadas pelo plugin. A instalação registra o marketplace pelo CLI; não exige editar `~/.codex/config.toml`.
+Restart Codex. The plugin provides the `delegate` skill and `bridge_*` tools without a manual `config.toml` edit.
 
-### Desenvolvimento local
+### Local development
 
-Use a raiz do checkout como marketplace quando estiver validando uma alteração ainda não enviada ao GitHub:
+Point each host at the checkout while testing unpublished changes:
 
 ```bash
-claude plugin marketplace add /caminho/absoluto/agents-bridge-mcp
+claude plugin marketplace add /absolute/path/to/agents-bridge-mcp
 claude plugin install agents-bridge@agents-bridge
 
-codex plugin marketplace add /caminho/absoluto/agents-bridge-mcp
+codex plugin marketplace add /absolute/path/to/agents-bridge-mcp
 codex plugin add agents-bridge@agents-bridge
 ```
 
-Remova um marketplace local antes de testar o repositório remoto com o mesmo nome.
+Remove a local marketplace before adding the remote repository under the same name.
 
-## Atualização
-
-No Claude Code, atualize o marketplace e o plugin:
+## Upgrade
 
 ```bash
+# Claude Code
 claude plugin marketplace update agents-bridge
 claude plugin update agents-bridge@agents-bridge
-```
 
-No Codex, atualize o snapshot do marketplace e reinicie:
-
-```bash
+# Codex
 codex plugin marketplace upgrade agents-bridge
 ```
 
-O Codex recarrega o plugin após reiniciar. Confirme a versão ativa com `codex plugin list`; no Claude Code use `claude plugin list`. O CLI publicado também mostra sua versão com `npx -y agents-bridge-mcp --version`.
+Restart the host after an upgrade. Confirm the active plugin with `claude plugin list` or `codex plugin list`; check the CLI version with `npx -y agents-bridge-mcp --version`.
 
-## Smoke test de leitura
+## Smoke test
 
-Depois do reinício, delegue uma tarefa curta e sem escrita ao outro CLI. Pelo MCP, inicie o job com `bridge_start` usando `provider` igual a `codex` ou `claude`, `mode` igual a `read-only` e um prompt como `Responda somente OK`. Espere usando `bridge_wait` e entregue o resultado retornado para o mesmo ID.
+After restarting, delegate a short read-only task to the other CLI. With MCP available, call `bridge_start` with `provider` set to `codex` or `claude`, `mode` set to `read-only`, and a prompt such as `Reply only with OK`. Call `bridge_wait` with the same job ID.
 
-Quando as ferramentas MCP ainda não estiverem disponíveis, execute o fallback da skill:
+Without MCP, use the CLI fallback:
 
 ```bash
-npx -y agents-bridge-mcp jobs start codex "Responda somente OK"
-# guarde o ID impresso pelo comando
+npx -y agents-bridge-mcp jobs start codex "Reply only with OK"
+# retain the printed ID
 npx -y agents-bridge-mcp jobs wait <id>
 ```
 
-`wait` encerra com código `0` quando concluído, `1` se falhar ou for cancelado e `2` quando a espera expira. Código `2` não cancela o job: execute o mesmo `wait` novamente. Use `jobs result <id>` após uma espera interrompida. Chame `bridge_observe` ou `jobs observe <id>` somente quando a pessoa pedir progresso.
+`wait` exits `0` when complete, `1` when failed or canceled, and `2` when the wait expires. Exit code `2` leaves the job running; repeat the same wait. Use `jobs result <id>` after an interrupted wait. Request progress with `bridge_observe` or `jobs observe <id>` only when a person asks for it.
 
-O modo padrão é `read-only`. Passe `mode: write` ou `--mode write` apenas quando a tarefa autorizar explicitamente a edição de arquivos.
+Jobs are read-only by default. Pass `mode: write` or `--mode write` only for an explicitly authorized editing task.
 
-## Diagnóstico
+## Diagnose an installation
 
-1. Rode `claude plugin list` ou `codex plugin list` para conferir se `agents-bridge@agents-bridge` está habilitado e qual versão foi instalada.
-2. Reinicie o host após instalar ou atualizar; a sessão atual não recarrega skills e ferramentas já registradas.
-3. Rode `npx -y agents-bridge-mcp jobs list` para verificar se o fallback CLI está funcional.
-4. Se o job falhar, confirme que o CLI de destino está autenticado e disponível no `PATH` do host que iniciou o job.
-5. Se MCP estiver ausente mas o CLI funcionar, use o fallback; não registre automaticamente nenhum servidor na configuração pessoal do usuário.
+1. Run `claude plugin list` or `codex plugin list` and confirm that `agents-bridge@agents-bridge` is enabled.
+2. Restart the host after any install or update; a running session does not reload skills or tools.
+3. Run `npx -y agents-bridge-mcp jobs list` to confirm the CLI fallback is available.
+4. If a job fails, confirm that the destination CLI is authenticated and reachable on `PATH`.
+5. If MCP is unavailable while the CLI works, use the fallback. Do not register an MCP server automatically.
 
-## Migrar instalações antigas de `setup`
+## Move from a legacy `setup` install
 
-`npx agents-bridge-mcp setup` continua sendo suportado para instalações legadas, mas não integra o fluxo principal do plugin. Ele pode ter criado os servidores síncronos antigos e as skills `/codex` e `/claude`.
+`npx -y agents-bridge-mcp setup` remains supported for existing users, but plugins are the supported installation path. Legacy setup may have registered synchronous servers and installed `/codex` and `/claude` shortcuts.
 
-Antes de remover algo, use `claude mcp list`, `claude plugin list`, `codex plugin list` e abra os arquivos candidatos. Remova somente entradas que apontem exatamente para `agents-bridge-mcp serve codex` ou `agents-bridge-mcp serve claude`:
+Before removing anything, inspect `claude mcp list`, `claude plugin list`, `codex plugin list`, and the candidate files. Remove only entries that point exactly to `agents-bridge-mcp serve codex` or `agents-bridge-mcp serve claude`:
 
-- Claude Code: `claude mcp remove codex -s user` remove o registro legado com esse nome.
-- Codex: apague apenas a seção `[mcp_servers.claude]` que contenha `agents-bridge-mcp serve claude` de `~/.codex/config.toml`.
-- Skills e agente antigos: remova somente cópias reconhecidas de `.claude/skills/codex/`, `.claude/agents/codex-teammate.md` e `.agents/skills/claude/` depois de conferir que não foram personalizadas.
+- Claude Code: `claude mcp remove codex -s user` removes the legacy server with that name.
+- Codex: remove only the `[mcp_servers.claude]` section that contains `agents-bridge-mcp serve claude` from `~/.codex/config.toml`.
+- Legacy skills and agent: remove only recognized, unmodified copies of `.claude/skills/codex/`, `.claude/agents/codex-teammate.md`, and `.agents/skills/claude/`.
 
-Não remova registros com outro nome, outra origem ou conteúdo personalizado. Instale o plugin e reinicie o host antes de limpar registros legados, para manter uma rota de delegação disponível durante a transição.
+Do not remove entries with another name, origin, or customized content. Install the plugin and restart the host before cleaning legacy entries so a working delegation route remains available.

@@ -43,7 +43,7 @@ describe("plugin package", () => {
     expect(marketplace.plugins).toContainEqual(
       expect.objectContaining({
         name: "agents-bridge",
-        source: { source: "local", path: "." },
+        source: { source: "local", path: "./" },
       }),
     );
   });
@@ -62,7 +62,7 @@ describe("plugin package", () => {
   it("ships the CLI runtime and delegation skill in the npm package", () => {
     const pkg = json<{ files: string[] }>("package.json");
 
-    expect(pkg.files).toEqual(expect.arrayContaining(["dist", "skills", "agents"]));
+    expect(pkg.files).toEqual(expect.arrayContaining(["dist", "skills", "agents", "assets"]));
   });
 
   it("keeps plugin and marketplace versions aligned with the npm package", () => {
