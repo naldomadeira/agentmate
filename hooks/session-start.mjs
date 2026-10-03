@@ -2,6 +2,7 @@
 // AgentMate SessionStart hook: tells a new Claude Code session which background jobs
 // finished (or went stale) in this directory since the last session here.
 // Plain Node ESM, no dependencies, fail-open: any error exits 0 without output.
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   mkdirSync,
@@ -44,9 +45,20 @@ function pidAlive(pid) {
   } catch (error) {
     if (error?.code !== "EPERM") return false;
   }
-  // Recycled-pid guard: when the command line is readable it must belong to a worker.
+  // Recycled-pid guard: when the command line is readable (/proc on Linux, ps on macOS) it must
+  // belong to a worker.
   try {
     return readFileSync(`/proc/${pid}/cmdline`, "utf8").includes("worker");
+  } catch {
+    // fall through to ps
+  }
+  try {
+    const line = execFileSync("ps", ["-o", "command=", "-p", String(pid)], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+    }).trim();
+    return line ? line.includes("worker") : true;
   } catch {
     return true;
   }
