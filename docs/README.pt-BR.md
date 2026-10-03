@@ -26,12 +26,14 @@ codex plugin marketplace add naldomadeira/agents-bridge-mcp
 codex plugin add agents-bridge@agents-bridge
 ```
 
-Pergunte algo ao outro modelo. No Claude Code, as skills de plugin têm namespace; no Codex você cita a skill com `$` ou a escolhe no menu de skills:
+Pergunte algo ao outro modelo. No Claude Code, as skills de plugin têm o namespace `/agents-bridge:<skill>`; no Codex você cita a skill com `$` ou a escolhe no menu `/skills`:
 
 ```text
 /agents-bridge:ask codex É seguro rodar esta migração duas vezes? Veja db/migrate/0042.sql
 $ask claude Este loop de retry em src/queue.ts tem uma condição de corrida?
 ```
+
+Quer comandos mais curtos (`/ask`, `/prompts:ask`)? Veja [Comandos de barra](#comandos-de-barra).
 
 Verifique a instalação:
 
@@ -67,6 +69,25 @@ Outras quatro skills completam o conjunto:
 No Claude Code, o plugin também adiciona quatro agentes que usam o Codex: `codex-teammate` (perguntas e delegação geral), `codex-reviewer`, `codex-researcher` e `codex-teamlead`. Eles escrevem o briefing, verificam o que o Codex devolve e reportam a própria conclusão em vez de repassar a saída bruta.
 
 Todo comando da tabela funciona sem MCP. Use o prefixo `npx -y agents-bridge-mcp` nos comandos de CLI.
+
+## Comandos de barra
+
+Sete papéis (`ask`, `review`, `research`, `plan`, `implement`, `teamlead` e `jobs`) podem ser iniciados como comando nos dois hosts. Os dois recebem primeiro o provider e depois o pedido.
+
+| Host e estilo       | Como chamar                           | Como obter                                                            |
+| ------------------- | ------------------------------------- | --------------------------------------------------------------------- |
+| Claude Code plugin  | `/agents-bridge:ask codex <pergunta>` | Instalado com o plugin.                                               |
+| Claude Code simples | `/ask codex <pergunta>`               | `npx -y agents-bridge-mcp install commands claude --global`           |
+| Codex skill         | `$ask claude <pergunta>`              | Instalado com o plugin; ou escolha `ask` no menu `/skills`.           |
+| Codex barra         | `/prompts:ask claude <pergunta>`      | `npx -y agents-bridge-mcp install commands codex` e reinicie o Codex. |
+
+Por que dois passos: o Claude Code sempre prefixa as skills de plugin com o nome do plugin, então um `/ask` simples exige um arquivo de comando no nível do usuário. Plugins do Codex trazem skills, mas não comandos de barra; por isso `/prompts:<nome>` vem de um custom prompt em `$CODEX_HOME/prompts/` (padrão `~/.codex/prompts/`).
+
+`npx -y agents-bridge-mcp install commands [claude|codex|both] [--global|--local]` copia os modelos do pacote (`templates/claude-commands/` e `templates/codex-prompts/`) e imprime os nomes dos comandos instalados. O alvo padrão é `both`. O comando pergunta antes de sobrescrever um arquivo existente. `--local` instala os comandos do Claude Code em `./.claude/commands/`; os custom prompts do Codex são somente no nível do usuário, então sempre são instalados globalmente.
+
+> **Os custom prompts do Codex estão obsoletos (deprecated).** A OpenAI os marca como obsoletos em favor das skills. Eles ainda funcionam hoje, e a skill `$ask` não exige instalação extra; use o que preferir. Reinicie o Codex depois de instalar os prompts.
+
+Cada comando chama a mesma ferramenta `bridge_*` da skill, usa o CLI `npx -y agents-bridge-mcp jobs ...` quando o MCP não está carregado e aponta para a skill para as regras completas. O `jobs` recebe um verbo em vez de um provider: `/jobs list`, `/jobs observe <id>`, `/jobs result <id>`, `/jobs cancel <id>`.
 
 ## Modo team lead
 

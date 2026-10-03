@@ -1,6 +1,6 @@
 {
   "name": "agents-bridge",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Let Codex and Claude Code ask, review, research, plan, implement and lead each other as background jobs.",
   "author": {
     "name": "Naldo Madeira",

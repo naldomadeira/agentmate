@@ -1,7 +1,9 @@
 import { defineCommand } from "citty";
 import {
   installClaudeAgent,
+  installClaudeCommands,
   installClaudeSkill,
+  installCodexPrompts,
   installCodexSkill,
   promptScope,
   resolveScope,
@@ -10,7 +12,7 @@ import {
 export default defineCommand({
   meta: {
     name: "install",
-    description: "Install skills and agents",
+    description: "Install skills, agents and slash commands",
   },
   subCommands: {
     skill: defineCommand({
@@ -51,6 +53,56 @@ export default defineCommand({
         const scope = resolveScope(args.global, args.local) ?? (await promptScope());
         console.log("Installing codex-teammate agent for Claude Code...");
         await installClaudeAgent(scope);
+      },
+    }),
+    commands: defineCommand({
+      meta: {
+        name: "commands",
+        description:
+          "Install slash commands: bare /ask for Claude Code, /prompts:ask for Codex (both by default)",
+      },
+      args: {
+        target: {
+          type: "positional",
+          description: "Host: claude, codex or both (default)",
+          required: false,
+        },
+        global: {
+          type: "boolean",
+          description: "Install globally (~/.claude/commands/, $CODEX_HOME/prompts/)",
+        },
+        local: {
+          type: "boolean",
+          description: "Install to .claude/commands/ in the current project (Claude Code only)",
+        },
+      },
+      async run({ args }) {
+        const target = args.target ?? "both";
+        if (target !== "claude" && target !== "codex" && target !== "both") {
+          console.error(`Unknown target: ${target}. Use "claude", "codex" or "both".`);
+          process.exit(1);
+        }
+        // Codex custom prompts are user-level only, so a codex-only install has no scope to ask for.
+        const scope =
+          resolveScope(args.global, args.local) ??
+          (target === "codex" ? "global" : await promptScope());
+
+        const installed: string[] = [];
+        if (target === "claude" || target === "both") {
+          console.log("Installing slash commands for Claude Code...");
+          installed.push(...(await installClaudeCommands(scope)));
+        }
+        if (target === "codex" || target === "both") {
+          console.log("Installing custom prompts for Codex...");
+          installed.push(...(await installCodexPrompts(scope)));
+        }
+
+        if (installed.length > 0) {
+          console.log(`\nInstalled commands: ${installed.join(", ")}`);
+          console.log("Restart the host to load them.");
+        } else {
+          console.log("\nNo commands installed.");
+        }
       },
     }),
   },

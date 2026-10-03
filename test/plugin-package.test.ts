@@ -24,7 +24,7 @@ describe("plugin package", () => {
 
     expect(manifest).toMatchObject({
       name: "agents-bridge",
-      version: "0.2.0",
+      version: "0.2.1",
       skills: "./skills/",
       mcpServers: "./.mcp.json",
     });
@@ -63,7 +63,9 @@ describe("plugin package", () => {
   it("ships the CLI runtime and delegation skill in the npm package", () => {
     const pkg = json<{ files: string[] }>("package.json");
 
-    expect(pkg.files).toEqual(expect.arrayContaining(["dist", "skills", "agents", "assets"]));
+    expect(pkg.files).toEqual(
+      expect.arrayContaining(["dist", "skills", "agents", "assets", "templates"]),
+    );
   });
 
   it("keeps plugin and marketplace versions aligned with the npm package", () => {
@@ -81,8 +83,8 @@ describe("plugin package", () => {
     const pkg = json<{ version: string }>("package.json");
     const source = readFileSync(resolve(root, "src/lib/version.ts"), "utf8");
 
-    expect(pkg.version).toBe("0.2.0");
-    expect(source).toMatch(/VERSION\s*=\s*"0\.2\.0"/);
+    expect(pkg.version).toBe("0.2.1");
+    expect(source).toMatch(/VERSION\s*=\s*"0\.2\.1"/);
   });
 
   it("points package metadata at the public repository", () => {
@@ -208,6 +210,59 @@ describe("legacy tool references", () => {
       const content = readFileSync(file, "utf8");
       expect(content, file).not.toContain("mcp__codex__");
       expect(content, file).not.toContain("mcp__claude__");
+    }
+  });
+});
+
+const COMMANDS: Record<string, string> = {
+  ask: "bridge_ask",
+  review: "bridge_review",
+  research: "bridge_research",
+  plan: "bridge_plan",
+  implement: "bridge_implement",
+  teamlead: "bridge_teamlead",
+  jobs: "bridge_list",
+};
+const TEMPLATE_DIRS = ["templates/claude-commands", "templates/codex-prompts"];
+
+describe("command templates", () => {
+  it.each(TEMPLATE_DIRS)("%s ships exactly the seven command files", (dir) => {
+    const names = readdirSync(resolve(root, dir))
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => basename(file, ".md"));
+
+    expect(names.sort()).toEqual(Object.keys(COMMANDS).sort());
+  });
+
+  it("keeps templates out of the directories the hosts scan", () => {
+    expect(existsSync(resolve(root, "commands"))).toBe(false);
+    expect(existsSync(resolve(root, "prompts"))).toBe(false);
+  });
+
+  describe.each(TEMPLATE_DIRS)("%s", (dir) => {
+    it.each(Object.entries(COMMANDS))("%s has frontmatter and mentions %s", (name, tool) => {
+      const path = resolve(root, dir, `${name}.md`);
+      const fields = frontmatter(path);
+      const content = readFileSync(path, "utf8");
+
+      expect(fields.description?.length ?? 0).toBeGreaterThan(20);
+      expect(fields["argument-hint"]).toBeTruthy();
+      expect(content).toContain(tool);
+      expect(content.split("\n").length).toBeLessThanOrEqual(25 + 5);
+    });
+  });
+
+  it("uses positional $1 for Claude Code and only $ARGUMENTS for Codex", () => {
+    for (const name of Object.keys(COMMANDS)) {
+      const claude = readFileSync(resolve(root, TEMPLATE_DIRS[0]!, `${name}.md`), "utf8");
+      const codex = readFileSync(resolve(root, TEMPLATE_DIRS[1]!, `${name}.md`), "utf8");
+
+      expect(claude, name).toContain("$ARGUMENTS");
+      expect(claude, name).toContain("$1");
+      expect(claude, name).toContain(`/agents-bridge:${name}`);
+      expect(codex, name).toContain("$ARGUMENTS");
+      expect(codex, name).not.toMatch(/\$1\b/);
+      expect(codex, name).toContain(`$${name}`);
     }
   });
 });

@@ -117,6 +117,58 @@ export async function installCodexSkill(scope: InstallScope): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Slash commands (Claude Code commands, Codex custom prompts)
+// ---------------------------------------------------------------------------
+
+/** The commands that ship in `templates/claude-commands` and `templates/codex-prompts`. */
+export const COMMAND_NAMES = [
+  "ask",
+  "review",
+  "research",
+  "plan",
+  "implement",
+  "teamlead",
+  "jobs",
+] as const;
+
+/** Copies each command's template into `destDir`; returns the names that were installed. */
+async function installTemplates(templateDir: string, destDir: string): Promise<string[]> {
+  const installed: string[] = [];
+  for (const name of COMMAND_NAMES) {
+    const content = await readTemplate(`${templateDir}/${name}.md`);
+    if (await installFile(destDir, `${name}.md`, content)) installed.push(name);
+  }
+  return installed;
+}
+
+/** Bare `/<name>` commands for Claude Code: `~/.claude/commands/` or `./.claude/commands/`. */
+export async function installClaudeCommands(scope: InstallScope): Promise<string[]> {
+  const base = scope === "global" ? homedir() : process.cwd();
+  const names = await installTemplates(
+    "templates/claude-commands",
+    join(base, ".claude", "commands"),
+  );
+  return names.map((name) => `/${name}`);
+}
+
+/** Directory Codex reads custom prompts from: `$CODEX_HOME/prompts`, default `~/.codex/prompts`. */
+export function codexPromptsDir(): string {
+  return join(process.env["CODEX_HOME"] || join(homedir(), ".codex"), "prompts");
+}
+
+/**
+ * `/prompts:<name>` custom prompts for Codex. Codex reads them only from the user-level prompts
+ * directory, so the local scope still installs globally.
+ */
+export async function installCodexPrompts(scope: InstallScope): Promise<string[]> {
+  if (scope === "local") {
+    console.log("  Codex custom prompts are user-level only; installing globally instead.");
+  }
+  const names = await installTemplates("templates/codex-prompts", codexPromptsDir());
+  return names.map((name) => `/prompts:${name}`);
+}
+
+// ---------------------------------------------------------------------------
 // Setup MCP servers
 // ---------------------------------------------------------------------------
 

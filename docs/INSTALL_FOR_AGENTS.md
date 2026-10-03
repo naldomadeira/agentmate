@@ -31,6 +31,23 @@ codex plugin add agents-bridge@agents-bridge
 
 Restart Codex. The plugin provides the skills (mention one with `$ask`, or use the skills menu) and the `bridge_*` tools without a manual `config.toml` edit.
 
+### Optional: slash commands
+
+Plugin skills are always namespaced in Claude Code, and Codex plugins cannot ship slash commands. To get shorter commands, install the command templates that ship in the npm package:
+
+```bash
+# Claude Code: bare /ask, /review, /research, /plan, /implement, /teamlead, /jobs
+npx -y agents-bridge-mcp install commands claude --global
+
+# Codex: /prompts:ask, /prompts:review, ... (restart Codex afterwards)
+npx -y agents-bridge-mcp install commands codex
+
+# Both hosts
+npx -y agents-bridge-mcp install commands both --global
+```
+
+Claude Code commands go to `~/.claude/commands/` (`--local`: `./.claude/commands/`); Codex prompts go to `$CODEX_HOME/prompts/` (default `~/.codex/prompts/`) and are always user-level. The installer asks before overwriting an existing file and prints the command names it installed. OpenAI marks Codex custom prompts deprecated in favour of skills; they still work, and the `$ask` skill needs no extra install.
+
 ### Local development
 
 Point each host at the checkout while testing unpublished changes:

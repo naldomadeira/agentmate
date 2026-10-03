@@ -32,6 +32,28 @@ describe("project documentation", () => {
     expect(portugueseReadme).toContain("git clone");
   });
 
+  it("documents the slash commands in both READMEs and both install guides", () => {
+    const readme = read("README.md");
+    expect(readme).toContain("## Slash commands");
+    expect(readme).toContain("/agents-bridge:ask");
+    expect(readme).toContain("/prompts:ask");
+    expect(readme).toContain("install commands");
+    expect(readme).toContain("deprecated");
+    expect(readme.indexOf("## Slash commands")).toBeGreaterThan(
+      readme.indexOf("## What you can do"),
+    );
+    expect(readme.indexOf("## Slash commands")).toBeLessThan(readme.indexOf("## Team lead mode"));
+
+    const portuguese = read("docs/README.pt-BR.md");
+    expect(portuguese).toContain("## Comandos de barra");
+    expect(portuguese).toContain("/prompts:ask");
+    expect(portuguese).toContain("install commands");
+
+    for (const guide of ["docs/INSTALL_FOR_AGENTS.md", "docs/INSTALL_FOR_AGENTS.pt-BR.md"]) {
+      expect(read(guide), guide).toContain("install commands");
+    }
+  });
+
   it("provides installation guides in English and Portuguese", () => {
     expect(read("docs/INSTALL_FOR_AGENTS.md")).toContain("# Install Agents Bridge as a plugin");
     expect(read("docs/INSTALL_FOR_AGENTS.pt-BR.md")).toContain(
@@ -90,6 +112,7 @@ describe("project documentation", () => {
   it("keeps a changelog with the current release", () => {
     const changelog = read("CHANGELOG.md");
 
+    expect(changelog).toContain("## [0.2.1]");
     expect(changelog).toContain("## [0.2.0]");
     expect(changelog).toContain("## [0.1.0]");
     expect(changelog).toContain("--allowedTools");

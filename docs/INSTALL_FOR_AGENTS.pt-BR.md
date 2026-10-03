@@ -32,6 +32,23 @@ codex plugin add agents-bridge@agents-bridge
 
 Reinicie o Codex. As skills (cite uma com `$ask` ou use o menu de skills) e as ferramentas `bridge_*` são carregadas pelo plugin. A instalação registra o marketplace pelo CLI; não exige editar `~/.codex/config.toml`.
 
+### Opcional: comandos de barra
+
+No Claude Code as skills de plugin sempre têm namespace, e os plugins do Codex não trazem comandos de barra. Para ter comandos mais curtos, instale os modelos de comando que acompanham o pacote npm:
+
+```bash
+# Claude Code: /ask, /review, /research, /plan, /implement, /teamlead e /jobs simples
+npx -y agents-bridge-mcp install commands claude --global
+
+# Codex: /prompts:ask, /prompts:review, ... (reinicie o Codex depois)
+npx -y agents-bridge-mcp install commands codex
+
+# Os dois hosts
+npx -y agents-bridge-mcp install commands both --global
+```
+
+Os comandos do Claude Code vão para `~/.claude/commands/` (`--local`: `./.claude/commands/`); os prompts do Codex vão para `$CODEX_HOME/prompts/` (padrão `~/.codex/prompts/`) e são sempre no nível do usuário. O instalador pergunta antes de sobrescrever um arquivo existente e imprime os nomes dos comandos instalados. A OpenAI marca os custom prompts do Codex como obsoletos em favor das skills; eles ainda funcionam, e a skill `$ask` não exige instalação extra.
+
 ### Desenvolvimento local
 
 Use a raiz do checkout como marketplace quando estiver validando uma alteração ainda não enviada ao GitHub:

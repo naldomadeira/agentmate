@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-10-03
+
+### Added
+
+- Slash-command templates in a new `templates/` directory (shipped in the npm package, not scanned by either host): `templates/claude-commands/` for Claude Code and `templates/codex-prompts/` for Codex, each with `ask`, `review`, `research`, `plan`, `implement`, `teamlead` and `jobs`.
+- `install commands <claude|codex|both> [--global|--local]` copies them: bare `/ask`, `/review`, ... to `~/.claude/commands/` (or `./.claude/commands/`) for Claude Code, and `/prompts:ask`, `/prompts:review`, ... to `$CODEX_HOME/prompts/` (default `~/.codex/prompts/`) for Codex. Codex custom prompts are user-level only, so the local scope installs them globally. It asks before overwriting and prints the installed command names.
+
+### Changed
+
+- README (English and Portuguese) has a new "Slash commands" section and a quickstart that shows the real invocation forms: `/agents-bridge:ask codex ...` in Claude Code and `$ask claude ...` in Codex. It notes that OpenAI marks Codex custom prompts deprecated in favour of skills.
+- Both installation guides document the optional `install commands` step.
+- npm package, plugin manifests and marketplace moved to 0.2.1.
+
 ## [0.2.0] - 2026-10-03
 
 ### Added
