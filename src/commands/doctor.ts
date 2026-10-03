@@ -106,16 +106,22 @@ function checkJobs(): Check {
     : ok("jobs", detail);
 }
 
+/** The synchronous servers were removed in 0.6.0; a leftover registration now points at nothing. */
+const LEGACY_REMOVED_HINT = "remove it; the synchronous servers were removed in 0.6.0";
+const LEGACY_SERVE_ARGS = /(?:agents-bridge-mcp|agentmate) serve (codex|claude)\b/;
+const LEGACY_SERVE_TOML = /(?:agents-bridge-mcp|agentmate)["',\s]+serve["',\s]+(codex|claude)\b/;
+
 async function checkLegacyClaude(claudeAvailable: boolean): Promise<Check> {
   const name = "legacy claude registration";
   if (!claudeAvailable) return ok(name, "skipped (claude not available)");
   const list = await run(getAgent("claude").binary(), ["mcp", "list"], MCP_LIST_TIMEOUT_MS);
   if (list === null) return warn(name, "could not run `claude mcp list`", "Run it manually.");
-  return /(?:agents-bridge-mcp|agentmate) serve codex/.test(list)
+  const match = LEGACY_SERVE_ARGS.exec(list);
+  return match
     ? warn(
         name,
-        "the synchronous `serve codex` server is registered in Claude Code",
-        "Remove it with `claude mcp remove codex` and install the plugin instead.",
+        `the synchronous \`serve ${match[1]}\` server is registered in Claude Code`,
+        `${LEGACY_REMOVED_HINT}; run \`claude mcp remove <name>\` (usually \`codex\`) and install the plugin instead.`,
       )
     : ok(name, "none");
 }
@@ -132,11 +138,12 @@ function checkLegacyCodex(): Check {
   } catch {
     return ok(name, "none");
   }
-  return /(?:agents-bridge-mcp|agentmate)["',\s]+serve["',\s]+claude/.test(text)
+  const match = LEGACY_SERVE_TOML.exec(text);
+  return match
     ? warn(
         name,
-        `the synchronous \`serve claude\` server is registered in ${config}`,
-        "Remove that [mcp_servers] entry and install the plugin instead.",
+        `the synchronous \`serve ${match[1]}\` server is registered in ${config}`,
+        `${LEGACY_REMOVED_HINT}; delete that [mcp_servers] entry from config.toml and install the plugin instead.`,
       )
     : ok(name, "none");
 }

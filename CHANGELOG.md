@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - Unreleased
+
+### Added
+
+<!-- phase 2 additions -->
+
+### Changed
+
+- The package now exposes a single binary, `agentmate`. `serve` has only the `jobs` subcommand, and `tsdown` builds only `src/cli.ts` and `src/jobs-server.ts`.
+- `doctor` keeps flagging legacy registrations, now for `agentmate serve codex|claude` and `agents-bridge-mcp serve codex|claude` alike, with the hint "remove it; the synchronous servers were removed in 0.6.0".
+- Version 0.6.0 across `package.json`, `src/lib/version.ts`, both plugin manifests and the Codex marketplace.
+
+### Removed
+
+- The synchronous servers: `serve codex` and `serve claude` (`src/codex-server.ts`, `src/claude-server.ts`) and the `agentmate-codex` and `agentmate-claude` binaries, plus the `dev:codex-server` and `dev:claude-server` scripts.
+- The `setup` command (`src/commands/setup.ts`), `setupClaude` / `setupCodex` and their helpers in `src/lib/installer.ts` (`install skill|agent|commands` stay), the deprecation notice (`src/lib/deprecation.ts`) and the project-local `.claude/skills/setup/` skill.
+- `buildExplainCodePrompt` and `buildPlanPerfPrompt` (with `ExplainDepth` and `PerfMetric`), `CODEX_MODELS` and `CLAUDE_MODELS` (with their types) and `createProgressReporter` / `ProgressReporter`.
+- The "Legacy setup" README section and the "Move from a legacy `setup` install" guide sections, replaced by short "Removed in 0.6.0" notes. To clean up a leftover registration, run `claude mcp remove codex -s user` or delete the `[mcp_servers.claude]` section from `~/.codex/config.toml`; `doctor` flags both.
+
 ## [0.5.0] - Unreleased
 
 ### Added

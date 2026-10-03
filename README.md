@@ -58,7 +58,7 @@ Want shorter commands (`/ask`, `/prompts:ask`)? See [Slash commands](#slash-comm
 npx -y agentmate doctor
 ```
 
-`doctor` verifies Node.js, that the `codex` and `claude` CLIs are on your `PATH` and respond to `--version`, the job state directory, stale `running` jobs (it lists their ids) and legacy registrations, and prints a fix for each problem. It does not check authentication: if a job fails right away, log in to the destination CLI yourself. See the [installation guide](./docs/INSTALL_FOR_AGENTS.md) for upgrades, a local-development install and migration from legacy `setup` installs.
+`doctor` verifies Node.js, that the `codex` and `claude` CLIs are on your `PATH` and respond to `--version`, the job state directory, stale `running` jobs (it lists their ids) and legacy registrations, and prints a fix for each problem. It does not check authentication: if a job fails right away, log in to the destination CLI yourself. See the [installation guide](./docs/INSTALL_FOR_AGENTS.md) for upgrades, a local-development install and cleaning up leftover legacy registrations.
 
 ### For agents
 
@@ -314,7 +314,7 @@ npx -y agentmate jobs start codex "Address the highest-priority finding." --cont
   | `teamlead` (Codex lead, read-only or write)               | `danger-full-access` | not applicable                                                                            |
   | `teamlead` (Claude lead)                                  | not applicable       | the rows above, plus CLI access limited to `agentmate jobs *` (installed version) |
 
-  The read-only allowlist is `Read`, `Grep`, `Glob`, `git diff`, `git log`, `git show` and `git status`. The write-mode allowlist adds `pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add` and `git commit` so a worker can run verification commands. Extend it with the environment variable `AGENTMATE_CLAUDE_WRITE_TOOLS`, a comma-separated list of Claude permission patterns. A Claude team lead cannot run `setup` or `install`, only `agentmate jobs *`.
+  The read-only allowlist is `Read`, `Grep`, `Glob`, `git diff`, `git log`, `git show` and `git status`. The write-mode allowlist adds `pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add` and `git commit` so a worker can run verification commands. Extend it with the environment variable `AGENTMATE_CLAUDE_WRITE_TOOLS`, a comma-separated list of Claude permission patterns. A Claude team lead cannot run `install`, only `agentmate jobs *`.
 
 - **A Codex team lead is not sandboxed.** It runs with `--sandbox danger-full-access` in either mode, because it must spawn worker processes and write job state. "Read-only" for a Codex lead means that the runtime refuses any `write` child job (a read-only parent cannot start write children) and that the prompt forbids edits; it does not restrict the lead's own process. Lead with `claude` when this matters.
 - **Delegation depth limit of 2.** A session starts a team lead (depth 0), the lead starts child jobs (depth 1), and children cannot start jobs. The runtime refuses a third level and refuses a team lead or a cross-review started by a worker.
@@ -329,13 +329,13 @@ Start with `npx -y agentmate doctor`. It prints `ok`, `warn` or `fail` for each 
 
 | Symptom                                             | Likely cause and fix                                                                                                                   |
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `mate_*` tools or skills do not appear            | Restart the host after installing; check `claude plugin list` or `codex plugin list`.                                                  |
+| `mate_*` tools or skills do not appear              | Restart the host after installing; check `claude plugin list` or `codex plugin list`.                                                  |
 | A job fails immediately                             | The destination CLI is missing from `PATH` (`doctor` reports this) or not authenticated (`doctor` does not check; log in to it).       |
 | `wait` or `ask` exits `2`                           | The job is still running. Repeat `jobs wait <id>`; do not start a duplicate.                                                           |
 | A job shows `running` but nothing happens           | The worker process died. `doctor` lists the ids of these jobs; `jobs cancel <id>` clears them.                                         |
 | `Delegation depth limit reached`                    | A job started by a worker tried to start another job (a third level). Return the findings to the session that started the job instead. |
 | `Only a top-level session can start a teamlead job` | A worker tried to start a team lead (or a cross-review: `... a crossreview job`). Start it from your own session.                      |
-| Duplicated or conflicting tools                     | A legacy `setup` install is still registered. `doctor` flags it; see the migration section of the guide.                               |
+| Duplicated or conflicting tools                     | A legacy registration (`serve codex` / `serve claude`) is still present. `doctor` flags it; see "Removed in 0.6.0".                    |
 
 ## Requirements
 
@@ -343,11 +343,11 @@ Start with `npx -y agentmate doctor`. It prints `ok`, `warn` or `fail` for each 
 - Claude Code and/or Codex CLI, authenticated
 - The destination CLI available on the initiating host's `PATH`
 
-## Legacy setup
+## Removed in 0.6.0
 
-> **Deprecated, removed in 0.6.0.** `npx -y agentmate setup` and the synchronous servers `serve codex` and `serve claude` still work in 0.5.0 but print a deprecation warning to stderr, and 0.6.0 removes them. Install the plugin (`mate@agentmate`) and use the `mate_*` job tools instead.
-
-`npx -y agentmate setup` remains available for existing installations that use the synchronous bridge servers or the legacy `/codex` and `/claude` shortcuts. New installations should use the plugin. The [installation guide](./docs/INSTALL_FOR_AGENTS.md#move-from-a-legacy-setup-install) explains how to remove only the legacy entries that belong to AgentMate.
+The deprecated synchronous servers (`serve codex`, `serve claude`), the `setup` command, the `agentmate-codex` / `agentmate-claude` binaries and the legacy `/codex` and `/claude` setup skill are gone; the plugin and the `mate_*` job tools replace them.
+To remove a leftover registration, run `claude mcp remove codex -s user` for Claude Code, or delete the `[mcp_servers.claude]` section from `~/.codex/config.toml` for Codex.
+`npx -y agentmate doctor` flags both. See the [installation guide](./docs/INSTALL_FOR_AGENTS.md#removed-in-060-legacy-setup-installs) for the details.
 
 ## Development
 

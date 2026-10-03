@@ -113,3 +113,5 @@ v0.1 shipped generic background jobs, but only with a free-form prompt. Skills a
 - [x] `pnpm fmt`, `pnpm lint`, `pnpm build`, `pnpm publint`
 - [ ] Live test: Claude `bridge_ask` to Codex, and Codex `$bridge:ask` to Claude, on a machine with both CLIs authenticated
 - [ ] Live test: a Codex team lead that delegates a `review` job to Claude and reports the child ids
+
+> **0.6.0:** the synchronous `codex-server` / `claude-server` entry points and `setup` described in the early stages above were removed; the runtime is the jobs server only (see `CHANGELOG.md`).

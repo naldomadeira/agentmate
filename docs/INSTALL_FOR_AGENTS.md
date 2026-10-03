@@ -110,7 +110,7 @@ Jobs are read-only by default. The `implement` skill and `mate_implement` always
 npx -y agentmate doctor
 ```
 
-`doctor` checks that Node.js is 18 or later, that `codex` and `claude` are on `PATH` and respond to `--version`, that the job state directory is writable, how many jobs exist and which `running` jobs lost their worker (it lists their ids), and whether a legacy `setup` registration is still present. Each item is reported as `ok`, `warn` or `fail` with a hint. It exits `1` if any item fails, and it works when `codex` or `claude` is not installed (reported as a warning). It does not check authentication: if a job fails right away, log in to the destination CLI yourself.
+`doctor` checks that Node.js is 18 or later, that `codex` and `claude` are on `PATH` and respond to `--version`, that the job state directory is writable, how many jobs exist and which `running` jobs lost their worker (it lists their ids), and whether a legacy `serve codex` / `serve claude` registration is still present. Each item is reported as `ok`, `warn` or `fail` with a hint. It exits `1` if any item fails, and it works when `codex` or `claude` is not installed (reported as a warning). It does not check authentication: if a job fails right away, log in to the destination CLI yourself.
 
 ## Diagnose an installation
 
@@ -121,9 +121,9 @@ npx -y agentmate doctor
 5. If a job fails, confirm that the destination CLI is reachable on `PATH` (`doctor` checks this) and authenticated (`doctor` does not check this).
 6. If MCP is unavailable while the CLI works, use the fallback. Do not register an MCP server automatically.
 
-## Move from a legacy `setup` install
+## Removed in 0.6.0: legacy `setup` installs
 
-`npx -y agentmate setup` and the synchronous servers (`serve codex`, `serve claude`) are deprecated: they still work in 0.5.0, print a deprecation warning to stderr, and are removed in 0.6.0. Plugins are the supported installation path. Legacy setup may have registered synchronous servers and installed `/codex` and `/claude` shortcuts. `doctor` reports these registrations as warnings.
+The deprecated `npx -y agentmate setup` command, the synchronous servers (`serve codex`, `serve claude`) and the `agentmate-codex` / `agentmate-claude` binaries were removed in 0.6.0. Plugins are the only installation path. `doctor` still warns when a leftover registration is present.
 
 Before removing anything, inspect `claude mcp list`, `claude plugin list`, `codex plugin list`, and the candidate files. Remove only entries that point exactly to `agents-bridge-mcp serve codex` or `agents-bridge-mcp serve claude` (or `agentmate serve ...`):
 
@@ -131,4 +131,4 @@ Before removing anything, inspect `claude mcp list`, `claude plugin list`, `code
 - Codex: remove only the `[mcp_servers.claude]` section that contains `agents-bridge-mcp serve claude` or `agentmate serve claude` from `~/.codex/config.toml`.
 - Legacy skills and agent: remove only recognized, unmodified copies of `.claude/skills/codex/`, `.claude/agents/codex-teammate.md`, and `.agents/skills/claude/`.
 
-Do not remove entries with another name, origin, or customized content. Install the plugin and restart the host before cleaning legacy entries so a working delegation route remains available.
+Do not remove entries with another name, origin, or customized content. Install the plugin and restart the host before cleaning leftover entries so a working delegation route remains available.

@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { execCommand } from "../src/lib/exec-runner.js";
-import { LEGACY_DEPRECATION_NOTICE } from "../src/lib/deprecation.js";
 import { VERSION } from "../src/lib/version.js";
 
 const CLI_PATH = new URL("../src/cli.ts", import.meta.url).pathname;
@@ -20,8 +19,8 @@ describe("cli", () => {
     expect(result.exitCode).not.toBe(0);
     const output = result.stdout + result.stderr;
     expect(output).toContain("serve");
-    expect(output).toContain("setup");
     expect(output).toContain("install");
+    expect(output).not.toMatch(/^\s*setup\b/m);
   });
 
   it("exits with error for unknown subcommand", async () => {
@@ -30,39 +29,25 @@ describe("cli", () => {
     expect(result.stderr).toContain("Unknown command");
   });
 
-  it("starts codex server on 'serve codex'", async () => {
-    const result = await runCli(["serve", "codex"]);
-    // The server starts on stdio and blocks waiting for input,
-    // so it will be killed by timeout. Check that it started successfully.
-    expect(result.stderr).toContain("agentmate MCP server started");
-    expect(result.stderr).toContain(LEGACY_DEPRECATION_NOTICE);
-  });
-
-  it("starts claude server on 'serve claude'", async () => {
-    const result = await runCli(["serve", "claude"]);
-    expect(result.stderr).toContain("agentmate-claude MCP server started");
-    expect(result.stderr).toContain(LEGACY_DEPRECATION_NOTICE);
-  });
-
-  it("prints the deprecation notice to stderr only, and exactly as specified", async () => {
-    expect(LEGACY_DEPRECATION_NOTICE).toBe(
-      "Deprecated: the synchronous servers (serve codex, serve claude) and setup are removed in 0.6.0; install the plugin (mate@agentmate) and use the mate_* job tools instead.",
-    );
-    const result = await runCli(["serve", "codex"]);
-    expect(result.stdout).not.toContain("Deprecated");
-    expect(result.stderr.match(/^Deprecated: /gm)).toHaveLength(1);
-  });
-
-  it("does not warn about the deprecation for the jobs server", async () => {
+  it("starts the jobs server on 'serve jobs'", async () => {
     const result = await runCli(["serve", "jobs"]);
     expect(result.stderr).toContain("agentmate jobs server started");
     expect(result.stderr).not.toContain("Deprecated");
   });
 
-  it("shows serve help with codex and claude subcommands", async () => {
+  it("lists only the jobs subcommand in serve help", async () => {
     const result = await runCli(["serve", "--help"]);
-    expect(result.stdout).toContain("codex");
-    expect(result.stdout).toContain("claude");
+    expect(result.stdout).toContain("jobs");
+    expect(result.stdout).not.toMatch(/^\s*codex\b/m);
+    expect(result.stdout).not.toMatch(/^\s*claude\b/m);
+  });
+
+  it("no longer offers the synchronous servers or setup", async () => {
+    for (const args of [["serve", "codex"], ["serve", "claude"], ["setup"]]) {
+      const result = await runCli(args);
+      expect(result.exitCode, args.join(" ")).not.toBe(0);
+      expect(result.stderr + result.stdout, args.join(" ")).not.toContain("MCP server started");
+    }
   });
 
   it("shows install help with skill and agent subcommands", async () => {

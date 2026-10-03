@@ -15,6 +15,7 @@ type PluginManifest = {
   version: string;
   skills?: string;
   agents?: string[];
+  hooks?: string;
   mcpServers?: string | Record<string, McpServer>;
 };
 
@@ -25,7 +26,7 @@ describe("plugin package", () => {
 
     expect(manifest).toMatchObject({
       name: "mate",
-      version: "0.5.0",
+      version: "0.6.0",
       skills: "./skills/",
       mcpServers: "./.mcp.json",
     });
@@ -72,12 +73,42 @@ describe("plugin package", () => {
     });
   });
 
+  it("exposes only the agentmate binary", () => {
+    const pkg = json<{ bin: Record<string, string> }>("package.json");
+
+    expect(pkg.bin).toEqual({ agentmate: "./dist/cli.mjs" });
+  });
+
   it("ships the CLI runtime and delegation skill in the npm package", () => {
     const pkg = json<{ files: string[] }>("package.json");
 
     expect(pkg.files).toEqual(
-      expect.arrayContaining(["dist", "skills", "agents", "assets", "templates"]),
+      expect.arrayContaining(["dist", "skills", "agents", "assets", "templates", "hooks"]),
     );
+  });
+
+  it("declares the SessionStart hook in the Claude plugin manifest", () => {
+    const manifest = json<PluginManifest>(".claude-plugin/plugin.json");
+    const hooks = json<{
+      hooks: Record<
+        string,
+        Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }>
+      >;
+    }>("hooks/hooks.json");
+
+    expect(manifest.hooks).toBe("./hooks/hooks.json");
+    expect(existsSync(resolve(root, "hooks/session-start.mjs"))).toBe(true);
+    expect(hooks.hooks["SessionStart"]).toEqual([
+      {
+        matcher: "*",
+        hooks: [
+          {
+            type: "command",
+            command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs"',
+          },
+        ],
+      },
+    ]);
   });
 
   it("keeps plugin and marketplace versions aligned with the npm package", () => {
@@ -95,8 +126,8 @@ describe("plugin package", () => {
     const pkg = json<{ version: string }>("package.json");
     const source = readFileSync(resolve(root, "src/lib/version.ts"), "utf8");
 
-    expect(pkg.version).toBe("0.5.0");
-    expect(source).toMatch(/VERSION\s*=\s*"0\.5\.0"/);
+    expect(pkg.version).toBe("0.6.0");
+    expect(source).toMatch(/VERSION\s*=\s*"0\.6\.0"/);
   });
 
   it("points package metadata at the public repository", () => {

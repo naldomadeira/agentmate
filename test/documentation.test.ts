@@ -28,13 +28,16 @@ describe("project documentation", () => {
     expect(readme).toContain("waitSeconds: 45");
     expect(readme).toContain("docs/ARCHITECTURE.md");
     expect(readme).toContain("mate_events");
+    expect(readme).not.toContain("## Legacy setup");
+    expect(readme).toContain("Removed in 0.6.0");
 
     const portugueseReadme = read("docs/README.pt-BR.md");
     expect(portugueseReadme).toContain("## Exemplos de uso");
     expect(portugueseReadme).toContain("--mode write");
     expect(portugueseReadme).toContain("--continue <job-id>");
     expect(portugueseReadme).toContain("## Requisitos");
-    expect(portugueseReadme).toContain("## Configuração legada");
+    expect(portugueseReadme).not.toContain("## Configuração legada");
+    expect(portugueseReadme).toContain("## Removido na 0.6.0");
     expect(portugueseReadme).toContain("negação explícita de `Edit`");
     expect(portugueseReadme).toContain("AGENTMATE_CLAUDE_WRITE_TOOLS");
     expect(portugueseReadme).toContain("waitSeconds: 45");
@@ -189,6 +192,8 @@ describe("project documentation", () => {
   it("keeps a changelog with the current release", () => {
     const changelog = read("CHANGELOG.md");
 
+    expect(changelog).toContain("## [0.6.0]");
+    expect(changelog).toContain("### Removed");
     expect(changelog).toContain("## [0.5.0]");
     expect(changelog).toContain("## [0.4.0]");
     expect(changelog).toContain("crossreview");

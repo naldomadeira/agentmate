@@ -53,7 +53,7 @@ Quer comandos mais curtos (`/ask`, `/prompts:ask`)? Veja [Comandos de barra](#co
 npx -y agentmate doctor
 ```
 
-O `doctor` confere o Node.js, se os CLIs `codex` e `claude` estão no `PATH` e respondem a `--version`, o diretório de estado dos jobs, jobs `running` obsoletos (ele lista os IDs) e registros legados, e mostra a correção de cada problema. Ele não verifica a autenticação: se um job falhar logo ao iniciar, faça login você mesmo no CLI de destino. Consulte o [guia de instalação](./INSTALL_FOR_AGENTS.pt-BR.md) para atualizar, testar localmente e migrar instalações legadas de `setup`.
+O `doctor` confere o Node.js, se os CLIs `codex` e `claude` estão no `PATH` e respondem a `--version`, o diretório de estado dos jobs, jobs `running` obsoletos (ele lista os IDs) e registros legados, e mostra a correção de cada problema. Ele não verifica a autenticação: se um job falhar logo ao iniciar, faça login você mesmo no CLI de destino. Consulte o [guia de instalação](./INSTALL_FOR_AGENTS.pt-BR.md) para atualizar, testar localmente e limpar registros legados que sobraram.
 
 ### Para agentes
 
@@ -311,7 +311,7 @@ npx -y agentmate jobs start codex "Resolva o achado de maior prioridade." --cont
   | `teamlead` (líder Codex, leitura ou escrita)                  | `danger-full-access` | não se aplica                                                                                |
   | `teamlead` (líder Claude)                                     | não se aplica        | as linhas acima, mais acesso ao CLI limitado a `agentmate jobs *` (versão instalada) |
 
-  A lista de somente leitura é `Read`, `Grep`, `Glob`, `git diff`, `git log`, `git show` e `git status`. A lista do modo de escrita acrescenta `pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add` e `git commit`, para que o worker rode comandos de verificação. Amplie-a com a variável de ambiente `AGENTMATE_CLAUDE_WRITE_TOOLS`, uma lista separada por vírgulas de padrões de permissão do Claude. Um team lead no Claude não pode executar `setup` nem `install`, apenas `agentmate jobs *`.
+  A lista de somente leitura é `Read`, `Grep`, `Glob`, `git diff`, `git log`, `git show` e `git status`. A lista do modo de escrita acrescenta `pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add` e `git commit`, para que o worker rode comandos de verificação. Amplie-a com a variável de ambiente `AGENTMATE_CLAUDE_WRITE_TOOLS`, uma lista separada por vírgulas de padrões de permissão do Claude. Um team lead no Claude não pode executar `install`, apenas `agentmate jobs *`.
 
 - **Um team lead no Codex não fica em sandbox.** Ele roda com `--sandbox danger-full-access` nos dois modos, porque precisa iniciar processos worker e gravar o estado dos jobs. "Somente leitura" para um líder Codex significa que o runtime recusa qualquer job filho `write` (um pai somente leitura não pode iniciar filhos de escrita) e que o prompt proíbe edições; isso não restringe o processo do próprio líder. Lidere com o `claude` quando isso importar.
 - **Limite de profundidade de delegação igual a 2.** Uma sessão inicia um team lead (profundidade 0), o líder inicia jobs filhos (profundidade 1), e os filhos não podem iniciar jobs. O runtime recusa um terceiro nível e recusa um team lead ou uma revisão cruzada iniciados por um worker.
@@ -324,15 +324,15 @@ npx -y agentmate jobs start codex "Resolva o achado de maior prioridade." --cont
 
 Comece por `npx -y agentmate doctor`. Ele imprime `ok`, `warn` ou `fail` para cada verificação, com uma dica, e sai com código `1` se alguma verificação falhar. Funciona sem `codex` ou `claude` instalados e reporta o CLI ausente como aviso. Ele confere se cada CLI responde a `--version`, não se você está autenticado.
 
-| Sintoma                                             | Causa provável e correção                                                                                                    |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Ferramentas `mate_*` ou skills não aparecem       | Reinicie o host após instalar; confira `claude plugin list` ou `codex plugin list`.                                          |
-| Um job falha imediatamente                          | O CLI de destino não está no `PATH` (o `doctor` reporta) ou não está autenticado (o `doctor` não verifica; faça login nele). |
-| `wait` ou `ask` termina com código `2`              | O job continua ativo. Repita `jobs wait <id>`; não inicie um job duplicado.                                                  |
-| Um job aparece como `running` mas nada acontece     | O processo worker morreu. O `doctor` lista os IDs desses jobs; `jobs cancel <id>` os encerra.                                |
-| `Delegation depth limit reached`                    | Um job iniciado por um worker tentou iniciar outro job (um terceiro nível). Devolva os achados à sessão que iniciou o job.   |
+| Sintoma                                             | Causa provável e correção                                                                                                         |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Ferramentas `mate_*` ou skills não aparecem         | Reinicie o host após instalar; confira `claude plugin list` ou `codex plugin list`.                                               |
+| Um job falha imediatamente                          | O CLI de destino não está no `PATH` (o `doctor` reporta) ou não está autenticado (o `doctor` não verifica; faça login nele).      |
+| `wait` ou `ask` termina com código `2`              | O job continua ativo. Repita `jobs wait <id>`; não inicie um job duplicado.                                                       |
+| Um job aparece como `running` mas nada acontece     | O processo worker morreu. O `doctor` lista os IDs desses jobs; `jobs cancel <id>` os encerra.                                     |
+| `Delegation depth limit reached`                    | Um job iniciado por um worker tentou iniciar outro job (um terceiro nível). Devolva os achados à sessão que iniciou o job.        |
 | `Only a top-level session can start a teamlead job` | Um worker tentou iniciar um team lead (ou uma revisão cruzada: `... a crossreview job`). Inicie-o a partir da sua própria sessão. |
-| Ferramentas duplicadas ou conflitantes              | Uma instalação legada de `setup` ainda está registrada. O `doctor` aponta; veja a seção de migração.                         |
+| Ferramentas duplicadas ou conflitantes              | Um registro legado (`serve codex` / `serve claude`) ainda existe. O `doctor` aponta; veja "Removido na 0.6.0".                    |
 
 ## Requisitos
 
@@ -340,11 +340,11 @@ Comece por `npx -y agentmate doctor`. Ele imprime `ok`, `warn` ou `fail` para ca
 - Claude Code e/ou Codex CLI, autenticado
 - O CLI de destino disponível no `PATH` do host que inicia o job
 
-## Configuração legada
+## Removido na 0.6.0
 
-> **Obsoleto (deprecated), removido na 0.6.0.** `npx -y agentmate setup` e os servidores síncronos `serve codex` e `serve claude` ainda funcionam na 0.5.0, mas imprimem um aviso de depreciação no stderr, e a 0.6.0 os remove. Instale o plugin (`mate@agentmate`) e use as ferramentas de job `mate_*`.
-
-`npx -y agentmate setup` continua disponível para instalações existentes que usam os servidores síncronos da ponte ou os atalhos legados `/codex` e `/claude`. Novas instalações devem usar o plugin. O [guia de instalação](./INSTALL_FOR_AGENTS.pt-BR.md#migrar-instalações-antigas-de-setup) explica como remover apenas as entradas legadas que pertencem ao AgentMate.
+Os servidores síncronos descontinuados (`serve codex`, `serve claude`), o comando `setup`, os binários `agentmate-codex` / `agentmate-claude` e a skill legada `setup` foram removidos; o plugin e as ferramentas de job `mate_*` os substituem.
+Para remover um registro que sobrou, rode `claude mcp remove codex -s user` no Claude Code ou apague a seção `[mcp_servers.claude]` de `~/.codex/config.toml` no Codex.
+`npx -y agentmate doctor` aponta os dois casos. Veja o [guia de instalação](./INSTALL_FOR_AGENTS.pt-BR.md#removido-na-060-instalações-legadas-de-setup).
 
 ## Desenvolvimento
 
