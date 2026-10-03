@@ -27,7 +27,7 @@ if (prompt === "sleep") { emit({ type: "thread.started", thread_id: "t-sleep" })
 else if (prompt === "fail") { console.error("boom"); process.exit(1); }
 else {
   emit({ type: "thread.started", thread_id: "t-1" });
-  const env = " depth=" + process.env.AGENTS_BRIDGE_DEPTH + " job=" + process.env.AGENTS_BRIDGE_JOB_ID + " parentMode=" + process.env.AGENTS_BRIDGE_PARENT_MODE;
+  const env = " depth=" + process.env.AGENTMATE_DEPTH + " job=" + process.env.AGENTMATE_JOB_ID + " parentMode=" + process.env.AGENTMATE_PARENT_MODE;
   emit({ type: "item.completed", item: { id: "i", type: "agent_message", text: "args=" + args.join(" ") + env } });
 }
 `;
@@ -39,9 +39,9 @@ beforeAll(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), "abm-test-"));
   const bin = path.join(home, "fake-codex");
   fs.writeFileSync(bin, FAKE_CODEX, { mode: 0o755 });
-  process.env["AGENTS_BRIDGE_HOME"] = path.join(home, "state");
-  process.env["AGENTS_BRIDGE_CODEX_BIN"] = bin;
-  process.env["AGENTS_BRIDGE_CLI"] = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+  process.env["AGENTMATE_HOME"] = path.join(home, "state");
+  process.env["AGENTMATE_CODEX_BIN"] = bin;
+  process.env["AGENTMATE_CLI"] = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 });
 
 afterAll(() => {
@@ -124,7 +124,7 @@ describe("jobs", () => {
 
   it("links jobs started from a worker to their parent and lists children", async () => {
     const parent = start("hello");
-    withEnv({ AGENTS_BRIDGE_DEPTH: "1", AGENTS_BRIDGE_JOB_ID: parent.id }, () => {
+    withEnv({ AGENTMATE_DEPTH: "1", AGENTMATE_JOB_ID: parent.id }, () => {
       const child = start("hello");
       expect(child.depth).toBe(1);
       expect(child.parentJob).toBe(parent.id);
@@ -139,13 +139,13 @@ describe("jobs", () => {
   }, 40_000);
 
   it("refuses to start at the delegation depth limit", () => {
-    withEnv({ AGENTS_BRIDGE_DEPTH: "2" }, () => {
+    withEnv({ AGENTMATE_DEPTH: "2" }, () => {
       expect(() => start("hello")).toThrow(/Delegation depth limit reached/);
     });
   });
 
   it("refuses a teamlead below the top level", () => {
-    withEnv({ AGENTS_BRIDGE_DEPTH: "1", AGENTS_BRIDGE_JOB_ID: "x" }, () => {
+    withEnv({ AGENTMATE_DEPTH: "1", AGENTMATE_JOB_ID: "x" }, () => {
       expect(() => start("", { role: "teamlead", fields: { objective: "o" } })).toThrow(
         /Only a top-level session can start a teamlead job/,
       );
@@ -164,8 +164,8 @@ describe("jobs", () => {
 
   it("hands the job mode to the worker and blocks write children of a read-only parent", () => {
     const parent = start("hello", { mode: "read-only" });
-    withEnv({ AGENTS_BRIDGE_DEPTH: "1", AGENTS_BRIDGE_JOB_ID: parent.id }, () => {
-      process.env["AGENTS_BRIDGE_PARENT_MODE"] = "read-only";
+    withEnv({ AGENTMATE_DEPTH: "1", AGENTMATE_JOB_ID: parent.id }, () => {
+      process.env["AGENTMATE_PARENT_MODE"] = "read-only";
       try {
         expect(() => start("x", { mode: "write" })).toThrow(
           "The parent job is read-only, so this job cannot use mode write.",
@@ -173,13 +173,13 @@ describe("jobs", () => {
         expect(() => start("x", { role: "implement" })).toThrow(/parent job is read-only/);
         expect(start("x").mode).toBe("read-only");
       } finally {
-        delete process.env["AGENTS_BRIDGE_PARENT_MODE"];
+        delete process.env["AGENTMATE_PARENT_MODE"];
       }
-      process.env["AGENTS_BRIDGE_PARENT_MODE"] = "write";
+      process.env["AGENTMATE_PARENT_MODE"] = "write";
       try {
         expect(start("x", { mode: "write" }).mode).toBe("write");
       } finally {
-        delete process.env["AGENTS_BRIDGE_PARENT_MODE"];
+        delete process.env["AGENTMATE_PARENT_MODE"];
       }
     });
   });
@@ -315,9 +315,9 @@ describe("provider flags", () => {
 
   it("lets a claude team lead run the pinned bridge jobs CLI, in either mode", () => {
     const patterns = [
-      `Bash(npx -y agents-bridge-mcp@${VERSION} jobs *)`,
-      `Bash(npx agents-bridge-mcp@${VERSION} jobs *)`,
-      "Bash(agents-bridge-mcp jobs *)",
+      `Bash(npx -y agentmate@${VERSION} jobs *)`,
+      `Bash(npx agentmate@${VERSION} jobs *)`,
+      "Bash(agentmate jobs *)",
     ];
     const readOnly = buildInvocation(job({ role: "teamlead" })).args;
     expect(tools(readOnly)).toEqual(expect.arrayContaining(patterns));
@@ -346,7 +346,7 @@ describe("provider flags", () => {
       "Bash(git add *)",
       "Bash(git commit *)",
     ]);
-    withEnv({ AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS: "Bash(cargo *), Bash(go *),," }, () => {
+    withEnv({ AGENTMATE_CLAUDE_WRITE_TOOLS: "Bash(cargo *), Bash(go *),," }, () => {
       const extended = tools(buildInvocation(job({ mode: "write" })).args);
       expect(extended).toEqual([...write, "Bash(cargo *)", "Bash(go *)"]);
       // read-only jobs ignore it

@@ -84,7 +84,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 /** Where the detached worker re-enters the CLI: built `cli.mjs` next to this chunk, or `src/cli.ts` under tsx. */
 function workerCommand(id: string): { command: string; args: string[] } {
-  const override = process.env["AGENTS_BRIDGE_CLI"];
+  const override = process.env["AGENTMATE_CLI"];
   const built = fileURLToPath(new URL("./cli.mjs", import.meta.url));
   const source = fileURLToPath(new URL("../cli.ts", import.meta.url));
   const entry = override ?? (fs.existsSync(built) ? built : source);
@@ -141,7 +141,7 @@ function renderPrompt(options: StartOptions, role: JobRole, provider: Provider, 
 
 /** Nesting level of the calling process, set by the worker that spawned it. */
 function currentDepth(): number {
-  const depth = Number.parseInt(process.env["AGENTS_BRIDGE_DEPTH"] ?? "0", 10);
+  const depth = Number.parseInt(process.env["AGENTMATE_DEPTH"] ?? "0", 10);
   return Number.isFinite(depth) && depth > 0 ? depth : 0;
 }
 
@@ -154,7 +154,7 @@ export function startJob(options: StartOptions): Job {
     );
   if (role === "teamlead" && depth > 0)
     throw new Error("Only a top-level session can start a teamlead job.");
-  const parentJob = process.env["AGENTS_BRIDGE_JOB_ID"] || undefined;
+  const parentJob = process.env["AGENTMATE_JOB_ID"] || undefined;
 
   let provider = options.provider;
   let sessionNote: string | undefined;
@@ -177,7 +177,7 @@ export function startJob(options: StartOptions): Job {
   if (role === "implement" && options.mode === "read-only")
     throw new Error("Role implement needs mode write.");
   const mode = options.mode ?? (role === "implement" ? "write" : "read-only");
-  if (mode === "write" && process.env["AGENTS_BRIDGE_PARENT_MODE"] === "read-only")
+  if (mode === "write" && process.env["AGENTMATE_PARENT_MODE"] === "read-only")
     throw new Error("The parent job is read-only, so this job cannot use mode write.");
   const job: Job = {
     id: newJobId(),
@@ -201,9 +201,9 @@ export function startJob(options: StartOptions): Job {
     cwd: job.cwd,
     env: {
       ...process.env,
-      AGENTS_BRIDGE_DEPTH: String(depth + 1),
-      AGENTS_BRIDGE_JOB_ID: job.id,
-      AGENTS_BRIDGE_PARENT_MODE: job.mode,
+      AGENTMATE_DEPTH: String(depth + 1),
+      AGENTMATE_JOB_ID: job.id,
+      AGENTMATE_PARENT_MODE: job.mode,
     },
     detached: true,
     stdio: "ignore",

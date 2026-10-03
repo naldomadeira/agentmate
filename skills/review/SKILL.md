@@ -1,6 +1,6 @@
 ---
 name: review
-description: Get an independent code review of a diff, branch, files or a plan from Codex or Claude, with findings ranked by severity. Use when the user says /bridge:review, 'have codex review this', 'peça ao claude para revisar', or wants a second reviewer before merging.
+description: Get an independent code review of a diff, branch, files or a plan from Codex or Claude, with findings ranked by severity. Use when the user says /mate:review, 'have codex review this', 'peça ao claude para revisar', or wants a second reviewer before merging.
 argument-hint: "<codex|claude> [target] [focus]"
 ---
 
@@ -10,12 +10,12 @@ Ask the other model to review work you or the user produced. The first argument 
 
 ## How to run it
 
-1. **MCP (preferred)** — call `bridge_review` with `provider`, `target`, optional `focus` (for example "concurrency", "security", "public API compatibility") and optional `context`. It returns a job id immediately; collect the result with `bridge_wait`. Pass `waitSeconds` to wait inside the same call.
+1. **MCP (preferred)** — call `mate_review` with `provider`, `target`, optional `focus` (for example "concurrency", "security", "public API compatibility") and optional `context`. It returns a job id immediately; collect the result with `mate_wait`. Pass `waitSeconds` to wait inside the same call.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agents-bridge-mcp jobs start <provider> "<review briefing>" --role review
-   npx -y agents-bridge-mcp jobs wait <id> --timeout 10m
+   npx -y agentmate jobs start <provider> "<review briefing>" --role review
+   npx -y agentmate jobs wait <id> --timeout 10m
    ```
 
    `wait` exits `0` done, `1` failed or canceled, `2` still running (repeat it). Read the output with `jobs result <id>`.

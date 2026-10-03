@@ -49,7 +49,7 @@ export interface Job {
 
 /** Jobs live outside any repo so ids resolve from any session or cwd. */
 export function homeDir(): string {
-  return process.env["AGENTS_BRIDGE_HOME"] ?? path.join(os.homedir(), ".agents-bridge");
+  return process.env["AGENTMATE_HOME"] ?? path.join(os.homedir(), ".agentmate");
 }
 
 export function jobDir(id: string): string {

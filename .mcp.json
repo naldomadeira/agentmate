@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "agents-bridge": {
+    "agentmate": {
       "command": "npx",
-      "args": ["-y", "agents-bridge-mcp", "serve", "jobs"]
+      "args": ["-y", "agentmate", "serve", "jobs"]
     }
   }
 }

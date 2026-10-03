@@ -9,7 +9,7 @@ import { writeJob, type Job } from "../src/jobs/store.js";
 const FAKE_CLAUDE = `#!/usr/bin/env node
 const args = process.argv.slice(2);
 if (args[0] === "--version") console.log("9.9.9 (Claude Code)");
-else if (args[0] === "mcp") console.log("codex: npx -y agents-bridge-mcp serve codex - connected");
+else if (args[0] === "mcp") console.log("codex: npx -y agentmate serve codex - connected");
 `;
 
 let home: string;
@@ -19,9 +19,9 @@ beforeAll(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), "abm-doctor-"));
   const bin = path.join(home, "fake-claude");
   fs.writeFileSync(bin, FAKE_CLAUDE, { mode: 0o755 });
-  process.env["AGENTS_BRIDGE_HOME"] = path.join(home, "state");
-  process.env["AGENTS_BRIDGE_CLAUDE_BIN"] = bin;
-  process.env["AGENTS_BRIDGE_CODEX_BIN"] = path.join(home, "missing-codex");
+  process.env["AGENTMATE_HOME"] = path.join(home, "state");
+  process.env["AGENTMATE_CLAUDE_BIN"] = bin;
+  process.env["AGENTMATE_CODEX_BIN"] = path.join(home, "missing-codex");
   process.env["CODEX_HOME"] = path.join(home, "codex-home");
 });
 
@@ -47,7 +47,7 @@ describe("doctor", () => {
     fs.mkdirSync(process.env["CODEX_HOME"]!, { recursive: true });
     fs.writeFileSync(
       path.join(process.env["CODEX_HOME"]!, "config.toml"),
-      '[mcp_servers.claude]\nargs = ["-y", "agents-bridge-mcp", "serve", "claude"]\n',
+      '[mcp_servers.claude]\nargs = ["-y", "agentmate", "serve", "claude"]\n',
     );
     const checks = await collectChecks();
     expect(find(checks, "legacy claude registration").status).toBe("warn");
@@ -79,7 +79,7 @@ describe("doctor", () => {
   it("fails when the state directory is not writable and exits 1", async () => {
     const blocker = path.join(home, "blocker");
     fs.writeFileSync(blocker, "");
-    process.env["AGENTS_BRIDGE_HOME"] = path.join(blocker, "state");
+    process.env["AGENTMATE_HOME"] = path.join(blocker, "state");
     const checks = await collectChecks();
     expect(find(checks, "state directory").status).toBe("fail");
     expect(exitCodeFor(checks)).toBe(1);

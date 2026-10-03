@@ -1,17 +1,17 @@
 {
-  "name": "agents-bridge",
-  "version": "0.3.0",
-  "description": "Agents Bridge plugin for Claude Code and Codex: ask, review, research, plan, implement and lead across both.",
+  "name": "agentmate",
+  "version": "0.4.0",
+  "description": "AgentMate plugin for Claude Code and Codex: ask, review, research, plan, implement and lead across both.",
   "owner": {
     "name": "Naldo Madeira",
     "url": "https://github.com/naldomadeira"
   },
   "interface": {
-    "displayName": "Agents Bridge"
+    "displayName": "AgentMate"
   },
   "plugins": [
     {
-      "name": "bridge",
+      "name": "mate",
       "source": {
         "source": "local",
         "path": "./"

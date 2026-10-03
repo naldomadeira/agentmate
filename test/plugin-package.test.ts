@@ -23,14 +23,14 @@ describe("plugin package", () => {
     const mcp = json<{ mcpServers: Record<string, McpServer> }>(".mcp.json");
 
     expect(manifest).toMatchObject({
-      name: "bridge",
-      version: "0.3.0",
+      name: "mate",
+      version: "0.4.0",
       skills: "./skills/",
       mcpServers: "./.mcp.json",
     });
-    expect(mcp.mcpServers["agents-bridge"]).toEqual({
+    expect(mcp.mcpServers["agentmate"]).toEqual({
       command: "npx",
-      args: ["-y", "agents-bridge-mcp", "serve", "jobs"],
+      args: ["-y", "agentmate", "serve", "jobs"],
     });
   });
 
@@ -40,33 +40,33 @@ describe("plugin package", () => {
       plugins: Array<{ name: string; source: { source: string; path: string } }>;
     }>(".agents/plugins/marketplace.json");
 
-    expect(marketplace.name).toBe("agents-bridge");
+    expect(marketplace.name).toBe("agentmate");
     expect(marketplace.plugins).toContainEqual(
       expect.objectContaining({
-        name: "bridge",
+        name: "mate",
         source: { source: "local", path: "./" },
       }),
     );
   });
 
-  it("names the plugin bridge in the Claude manifest and marketplace, keeping the marketplace name", () => {
+  it("names the plugin mate in the Claude manifest and marketplace, keeping the marketplace name", () => {
     const manifest = json<PluginManifest>(".claude-plugin/plugin.json");
     const marketplace = json<{ name: string; plugins: Array<{ name: string }> }>(
       ".claude-plugin/marketplace.json",
     );
 
-    expect(manifest.name).toBe("bridge");
-    expect(marketplace.name).toBe("agents-bridge");
-    expect(marketplace.plugins.map((plugin) => plugin.name)).toEqual(["bridge"]);
+    expect(manifest.name).toBe("mate");
+    expect(marketplace.name).toBe("agentmate");
+    expect(marketplace.plugins.map((plugin) => plugin.name)).toEqual(["mate"]);
   });
 
   it("registers only the jobs server in the Claude plugin", () => {
     const manifest = json<PluginManifest>(".claude-plugin/plugin.json");
 
     expect(manifest.mcpServers).toEqual({
-      "agents-bridge": {
+      agentmate: {
         command: "npx",
-        args: ["-y", "agents-bridge-mcp", "serve", "jobs"],
+        args: ["-y", "agentmate", "serve", "jobs"],
       },
     });
   });
@@ -94,8 +94,8 @@ describe("plugin package", () => {
     const pkg = json<{ version: string }>("package.json");
     const source = readFileSync(resolve(root, "src/lib/version.ts"), "utf8");
 
-    expect(pkg.version).toBe("0.3.0");
-    expect(source).toMatch(/VERSION\s*=\s*"0\.3\.0"/);
+    expect(pkg.version).toBe("0.4.0");
+    expect(source).toMatch(/VERSION\s*=\s*"0\.4\.0"/);
   });
 
   it("points package metadata at the public repository", () => {
@@ -103,11 +103,11 @@ describe("plugin package", () => {
       "package.json",
     );
 
-    expect(pkg.repository.url).toBe("git+https://github.com/naldomadeira/agents-bridge-mcp.git");
+    expect(pkg.repository.url).toBe("git+https://github.com/naldomadeira/agentmate.git");
     expect(pkg.keywords).toEqual(
       expect.arrayContaining(["claude-code", "codex-cli", "multi-agent", "delegation", "plugin"]),
     );
-    expect(pkg.description).toContain("ask, review, research, plan, implement and lead");
+    expect(pkg.description).toContain("AI agents work better together");
   });
 
   it("declares the skills directory and every agent file in the Claude plugin manifest", () => {
@@ -172,7 +172,7 @@ describe("skills", () => {
 
     expect(fields.name).toBe(name);
     expect(fields.description?.length ?? 0).toBeGreaterThan(20);
-    expect(fields.description).toContain("/bridge:");
+    expect(fields.description).toContain("/mate:");
     expect(fields["argument-hint"]).toBeTruthy();
     expect(fields["allowed-tools"]).toBeUndefined();
     expect(readFileSync(path, "utf8").split("\n").length).toBeLessThanOrEqual(80);
@@ -227,13 +227,13 @@ describe("legacy tool references", () => {
 });
 
 const COMMANDS: Record<string, string> = {
-  ask: "bridge_ask",
-  review: "bridge_review",
-  research: "bridge_research",
-  plan: "bridge_plan",
-  implement: "bridge_implement",
-  teamlead: "bridge_teamlead",
-  jobs: "bridge_list",
+  ask: "mate_ask",
+  review: "mate_review",
+  research: "mate_research",
+  plan: "mate_plan",
+  implement: "mate_implement",
+  teamlead: "mate_teamlead",
+  jobs: "mate_list",
 };
 const TEMPLATE_DIRS = ["templates/claude-commands", "templates/codex-prompts"];
 
@@ -271,10 +271,10 @@ describe("command templates", () => {
 
       expect(claude, name).toContain("$ARGUMENTS");
       expect(claude, name).toContain("$1");
-      expect(claude, name).toContain(`/bridge:${name}`);
+      expect(claude, name).toContain(`/mate:${name}`);
       expect(codex, name).toContain("$ARGUMENTS");
       expect(codex, name).not.toMatch(/\$1\b/);
-      expect(codex, name).toContain(`$bridge:${name}`);
+      expect(codex, name).toContain(`$mate:${name}`);
     }
   });
 });

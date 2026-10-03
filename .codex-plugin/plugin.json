@@ -1,13 +1,13 @@
 {
-  "name": "bridge",
-  "version": "0.3.0",
-  "description": "Let Codex and Claude Code ask, review, research, plan, implement and lead each other as background jobs.",
+  "name": "mate",
+  "version": "0.4.0",
+  "description": "AI agents work better together. AgentMate connects AI coding agents so they can collaborate, delegate, review, and help each other complete tasks.",
   "author": {
     "name": "Naldo Madeira",
     "url": "https://github.com/naldomadeira"
   },
-  "repository": "https://github.com/naldomadeira/agents-bridge-mcp",
-  "homepage": "https://github.com/naldomadeira/agents-bridge-mcp",
+  "repository": "https://github.com/naldomadeira/agentmate",
+  "homepage": "https://github.com/naldomadeira/agentmate",
   "license": "MIT",
   "keywords": [
     "mcp",
@@ -22,7 +22,7 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Agents Bridge",
+    "displayName": "AgentMate",
     "shortDescription": "Ask, review, research, plan, implement and lead across Codex and Claude Code",
     "longDescription": "Skills and MCP tools to ask the other CLI a question, request reviews, research and plans, delegate write-enabled implementation, or run a team lead that delegates to the other model, all as durable background jobs.",
     "developerName": "Naldo Madeira",

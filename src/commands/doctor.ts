@@ -79,7 +79,7 @@ function checkStateDir(): Check {
     return fail(
       "state directory",
       `${dir} is not writable (${reason})`,
-      "Fix its permissions or set AGENTS_BRIDGE_HOME to a writable directory.",
+      "Fix its permissions or set AGENTMATE_HOME to a writable directory.",
     );
   }
 }
@@ -99,7 +99,7 @@ function checkJobs(): Check {
     ? warn(
         "jobs",
         detail,
-        "Run `agents-bridge-mcp jobs list`; stale jobs are marked as errors when read with `jobs result <id>`.",
+        "Run `agentmate jobs list`; stale jobs are marked as errors when read with `jobs result <id>`.",
       )
     : ok("jobs", detail);
 }
@@ -109,7 +109,7 @@ async function checkLegacyClaude(claudeAvailable: boolean): Promise<Check> {
   if (!claudeAvailable) return ok(name, "skipped (claude not available)");
   const list = await run(binary("claude"), ["mcp", "list"], MCP_LIST_TIMEOUT_MS);
   if (list === null) return warn(name, "could not run `claude mcp list`", "Run it manually.");
-  return list.includes("agents-bridge-mcp serve codex")
+  return /(?:agents-bridge-mcp|agentmate) serve codex/.test(list)
     ? warn(
         name,
         "the synchronous `serve codex` server is registered in Claude Code",
@@ -130,7 +130,7 @@ function checkLegacyCodex(): Check {
   } catch {
     return ok(name, "none");
   }
-  return /agents-bridge-mcp["',\s]+serve["',\s]+claude/.test(text)
+  return /(?:agents-bridge-mcp|agentmate)["',\s]+serve["',\s]+claude/.test(text)
     ? warn(
         name,
         `the synchronous \`serve claude\` server is registered in ${config}`,

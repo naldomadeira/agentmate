@@ -24,7 +24,7 @@ describe("project documentation", () => {
     expect(readme).toContain("--mode write");
     expect(readme).toContain("--continue <job-id>");
     expect(readme).toContain("explicit deny of `Edit`");
-    expect(readme).toContain("AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS");
+    expect(readme).toContain("AGENTMATE_CLAUDE_WRITE_TOOLS");
     expect(readme).toContain("waitSeconds: 45");
 
     const portugueseReadme = read("docs/README.pt-BR.md");
@@ -34,7 +34,7 @@ describe("project documentation", () => {
     expect(portugueseReadme).toContain("## Requisitos");
     expect(portugueseReadme).toContain("## Configuração legada");
     expect(portugueseReadme).toContain("negação explícita de `Edit`");
-    expect(portugueseReadme).toContain("AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS");
+    expect(portugueseReadme).toContain("AGENTMATE_CLAUDE_WRITE_TOOLS");
     expect(portugueseReadme).toContain("waitSeconds: 45");
     expect(portugueseReadme).toContain("git clone");
   });
@@ -42,8 +42,8 @@ describe("project documentation", () => {
   it("documents the slash commands in both READMEs and both install guides", () => {
     const readme = read("README.md");
     expect(readme).toContain("## Slash commands");
-    expect(readme).toContain("/bridge:ask");
-    expect(readme).toContain("$bridge:ask");
+    expect(readme).toContain("/mate:ask");
+    expect(readme).toContain("$mate:ask");
     expect(readme).toContain("/prompts:ask");
     expect(readme).toContain("install commands");
     expect(readme).toContain("deprecated");
@@ -62,24 +62,24 @@ describe("project documentation", () => {
     }
   });
 
-  it("documents the bridge command namespace, agent snippet, upgrade and use cases", () => {
+  it("documents the mate command namespace, agent snippet, upgrade and use cases", () => {
     const readme = read("README.md");
-    expect(readme).toContain("bridge@agents-bridge");
+    expect(readme).toContain("mate@agentmate");
     expect(readme).toContain("## Use cases");
     expect(readme).toContain("For agents");
     expect(readme).toMatch(/^#{2,3} Upgrade$/m);
     expect(readme).toContain(
-      "https://raw.githubusercontent.com/naldomadeira/agents-bridge-mcp/main/docs/INSTALL_FOR_AGENTS.md",
+      "https://raw.githubusercontent.com/naldomadeira/agentmate/main/docs/INSTALL_FOR_AGENTS.md",
     );
     expect(read("docs/README.pt-BR.md")).toContain("## Casos de uso");
-    expect(read("docs/README.pt-BR.md")).toContain("bridge@agents-bridge");
+    expect(read("docs/README.pt-BR.md")).toContain("mate@agentmate");
     for (const guide of ["docs/INSTALL_FOR_AGENTS.md", "docs/INSTALL_FOR_AGENTS.pt-BR.md"]) {
+      expect(read(guide), guide).toContain("mate@agentmate");
       expect(read(guide), guide).toContain("bridge@agents-bridge");
-      expect(read(guide), guide).toContain("agents-bridge@agents-bridge");
     }
   });
 
-  it("uses only the bridge namespace for plugin commands", () => {
+  it("uses only the mate namespace for plugin commands", () => {
     const files = [
       "README.md",
       "docs/README.pt-BR.md",
@@ -90,7 +90,7 @@ describe("project documentation", () => {
 
     for (const file of files) {
       const content = read(file);
-      expect(content, file).not.toContain("/agents-bridge:");
+      expect(content, file).not.toContain("/agentmate:");
       expect(content, file).not.toMatch(
         /\$(ask|review|research|plan|implement|teamlead|jobs|delegate)\b/,
       );
@@ -98,10 +98,8 @@ describe("project documentation", () => {
   });
 
   it("provides installation guides in English and Portuguese", () => {
-    expect(read("docs/INSTALL_FOR_AGENTS.md")).toContain("# Install Agents Bridge as a plugin");
-    expect(read("docs/INSTALL_FOR_AGENTS.pt-BR.md")).toContain(
-      "# Instale o Agents Bridge como plugin",
-    );
+    expect(read("docs/INSTALL_FOR_AGENTS.md")).toContain("# Install AgentMate as a plugin");
+    expect(read("docs/INSTALL_FOR_AGENTS.pt-BR.md")).toContain("# Instale o AgentMate como plugin");
   });
 
   it("uses an explicit relative plugin path in the Codex marketplace", () => {
@@ -128,12 +126,12 @@ describe("project documentation", () => {
     ];
 
     for (const tool of [
-      "bridge_ask",
-      "bridge_review",
-      "bridge_research",
-      "bridge_plan",
-      "bridge_implement",
-      "bridge_teamlead",
+      "mate_ask",
+      "mate_review",
+      "mate_research",
+      "mate_plan",
+      "mate_implement",
+      "mate_teamlead",
     ]) {
       expect(readme).toContain(tool);
     }
@@ -146,17 +144,17 @@ describe("project documentation", () => {
   it("documents the doctor command and the ask smoke test in both install guides", () => {
     for (const guide of ["docs/INSTALL_FOR_AGENTS.md", "docs/INSTALL_FOR_AGENTS.pt-BR.md"]) {
       const content = read(guide);
-      expect(content, guide).toContain("agents-bridge-mcp doctor");
+      expect(content, guide).toContain("agentmate doctor");
       expect(content, guide).toContain("jobs ask");
     }
-    expect(read("docs/README.pt-BR.md")).toContain("bridge_teamlead");
+    expect(read("docs/README.pt-BR.md")).toContain("mate_teamlead");
   });
 
   it("keeps a changelog with the current release", () => {
     const changelog = read("CHANGELOG.md");
 
-    expect(changelog).toContain("## [0.3.0]");
-    expect(changelog).toContain("bridge@agents-bridge");
+    expect(changelog).toContain("## [0.4.0]");
+    expect(changelog).toContain("mate@agentmate");
     expect(changelog).toContain("## [0.2.0]");
     expect(changelog).toContain("## [0.1.0]");
     expect(changelog).toContain("--allowedTools");

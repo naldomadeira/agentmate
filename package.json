@@ -1,12 +1,13 @@
 {
-  "name": "agents-bridge-mcp",
-  "version": "0.3.0",
-  "description": "Let Claude Code and Codex CLI ask, review, research, plan, implement and lead each other as background jobs.",
+  "name": "agentmate",
+  "version": "0.4.0",
+  "description": "AI agents work better together. AgentMate connects AI coding agents so they can collaborate, delegate, review, and help each other complete tasks.",
   "keywords": [
     "agents",
     "ai",
     "anthropic",
-    "bridge",
+    "agentmate",
+    "teammate",
     "claude",
     "claude-code",
     "codex",
@@ -17,20 +18,20 @@
     "openai",
     "plugin"
   ],
-  "homepage": "https://github.com/naldomadeira/agents-bridge-mcp#readme",
+  "homepage": "https://github.com/naldomadeira/agentmate#readme",
   "bugs": {
-    "url": "https://github.com/naldomadeira/agents-bridge-mcp/issues"
+    "url": "https://github.com/naldomadeira/agentmate/issues"
   },
   "license": "MIT",
   "author": "Naldo Madeira <naldomadeira@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/naldomadeira/agents-bridge-mcp.git"
+    "url": "git+https://github.com/naldomadeira/agentmate.git"
   },
   "bin": {
-    "abm-claude": "./dist/claude-server.mjs",
-    "abm-codex": "./dist/codex-server.mjs",
-    "agents-bridge-mcp": "./dist/cli.mjs"
+    "agentmate-claude": "./dist/claude-server.mjs",
+    "agentmate-codex": "./dist/codex-server.mjs",
+    "agentmate": "./dist/cli.mjs"
   },
   "files": [
     "dist",

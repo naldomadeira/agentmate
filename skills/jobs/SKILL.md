@@ -1,6 +1,6 @@
 ---
 name: jobs
-description: List, observe, collect or cancel background jobs started through Agents Bridge. Use when the user says /bridge:jobs, 'is the job done', 'list my jobs', 'cancel that job', 'ver os jobs', or needs a job id or a stored result.
+description: List, observe, collect or cancel background jobs started through AgentMate. Use when the user says /mate:jobs, 'is the job done', 'list my jobs', 'cancel that job', 'ver os jobs', or needs a job id or a stored result.
 argument-hint: "[list|observe|result|cancel] [id]"
 ---
 
@@ -12,17 +12,17 @@ Jobs are durable: they keep running and their results stay stored after the sess
 
 | Verb      | MCP tool         | CLI                                          |
 | --------- | ---------------- | -------------------------------------------- |
-| `list`    | `bridge_list`    | `npx -y agents-bridge-mcp jobs list`         |
-| `observe` | `bridge_observe` | `npx -y agents-bridge-mcp jobs observe <id>` |
-| `result`  | `bridge_result`  | `npx -y agents-bridge-mcp jobs result <id>`  |
-| `cancel`  | `bridge_cancel`  | `npx -y agents-bridge-mcp jobs cancel <id>`  |
-| wait      | `bridge_wait`    | `npx -y agents-bridge-mcp jobs wait <id>`    |
+| `list`    | `mate_list`    | `npx -y agentmate jobs list`         |
+| `observe` | `mate_observe` | `npx -y agentmate jobs observe <id>` |
+| `result`  | `mate_result`  | `npx -y agentmate jobs result <id>`  |
+| `cancel`  | `mate_cancel`  | `npx -y agentmate jobs cancel <id>`  |
+| wait      | `mate_wait`    | `npx -y agentmate jobs wait <id>`    |
 
 Prefer the MCP tool when it is loaded; use the CLI otherwise.
 
 ## How to use each
 
-- **list** — `bridge_list` accepts `cwd`, `limit` and `parent` (only children of that team lead job). The CLI takes `--cwd` and `--parent <id>`. Children of a team lead appear indented under it. Use it to recover an id after a restart.
+- **list** — `mate_list` accepts `cwd`, `limit` and `parent` (only children of that team lead job). The CLI takes `--cwd` and `--parent <id>`. Children of a team lead appear indented under it. Use it to recover an id after a restart.
 - **observe** — non-blocking snapshot of status and recent output; for a team lead it also lists child jobs. Run it when the user asks for progress, not on a timer.
 - **result** — the stored final output, without waiting. Use it after an interrupted `wait`.
 - **cancel** — stops the job and keeps the output produced so far. Cancel only when the user asks or the job is clearly stuck or wrong.

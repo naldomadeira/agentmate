@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Get an implementation plan from Codex or Claude, or a critique of a plan you already have, with files, risks and verification steps. Use when the user says /bridge:plan, 'plan this with codex', 'challenge this plan', 'planeje com o claude', or before a non-trivial change.
+description: Get an implementation plan from Codex or Claude, or a critique of a plan you already have, with files, risks and verification steps. Use when the user says /mate:plan, 'plan this with codex', 'challenge this plan', 'planeje com o claude', or before a non-trivial change.
 argument-hint: "<codex|claude> <goal> | <codex|claude> critique <plan>"
 ---
 
@@ -10,12 +10,12 @@ Two modes, chosen by the arguments. After the provider: a goal means "write a pl
 
 ## How to run it
 
-1. **MCP (preferred)** — call `bridge_plan` with `provider` and `goal`. Add `constraints` (deadlines, compatibility, things not to touch) and `context`. For a critique, also pass the full text in `existingPlan`; the worker then critiques instead of creating. The call returns a job id; collect it with `bridge_wait`.
+1. **MCP (preferred)** — call `mate_plan` with `provider` and `goal`. Add `constraints` (deadlines, compatibility, things not to touch) and `context`. For a critique, also pass the full text in `existingPlan`; the worker then critiques instead of creating. The call returns a job id; collect it with `mate_wait`.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agents-bridge-mcp jobs start <provider> "<planning briefing>" --role plan
-   npx -y agents-bridge-mcp jobs wait <id> --timeout 10m
+   npx -y agentmate jobs start <provider> "<planning briefing>" --role plan
+   npx -y agentmate jobs wait <id> --timeout 10m
    ```
 
    Paste the plan to critique into the briefing. `wait` exits `0` done, `1` failed or canceled, `2` still running (repeat it). Read the output with `jobs result <id>`.

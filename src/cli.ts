@@ -4,9 +4,10 @@ import { VERSION } from "./lib/version.js";
 
 const main = defineCommand({
   meta: {
-    name: "agents-bridge-mcp",
+    name: "agentmate",
     version: VERSION,
-    description: "Bidirectional MCP bridge between Claude Code and Codex CLI",
+    description:
+      "AgentMate: AI agents work better together. Lets Claude Code and Codex delegate, review and help each other.",
   },
   subCommands: {
     serve: () => import("./commands/serve.js").then((r) => r.default),

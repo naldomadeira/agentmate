@@ -12,7 +12,7 @@ import {
 export default defineCommand({
   meta: {
     name: "setup",
-    description: "Set up agents-bridge-mcp for Claude Code and/or Codex CLI",
+    description: "Set up agentmate for Claude Code and/or Codex CLI",
   },
   args: {
     target: {
