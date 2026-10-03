@@ -38,4 +38,4 @@ Use `delegate` for work that fits none of them, with `bridge_start` and `role` l
 - Parallel jobs are for independent tasks. Two `write` jobs in one working tree will collide — use separate worktrees.
 - CLI `wait` exits `0` done, `1` failed/canceled, `2` still running. Never pipe its output: a pipe loses the exit code.
 - Delegation depth limit is 2: a session starts a `teamlead` job, the team lead delegates to workers, and those workers cannot delegate further.
-  A delegated worker that is not a team lead must not start jobs of its own, and only a top-level session can start a team lead.
+  A delegated worker that is not a team lead must not start jobs of its own. The runtime refuses a third level and refuses a team lead started by a worker.

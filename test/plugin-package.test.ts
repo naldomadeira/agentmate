@@ -169,6 +169,16 @@ describe("skills", () => {
       readFileSync(resolve(root, "skills/codex/SKILL.md"), "utf8"),
     );
   });
+
+  it("documents the Codex MCP timeout workaround and the depth numbering in the skills", () => {
+    const read = (name: string) => readFileSync(resolve(root, "skills", name, "SKILL.md"), "utf8");
+
+    expect(read("ask")).toContain("waitSeconds: 45");
+    expect(read("claude")).toContain("waitSeconds: 45");
+    expect(read("teamlead")).toContain("teamlead job (depth 0, started by you)");
+    expect(read("teamlead")).toContain("child jobs (depth 1, cannot start jobs)");
+    expect(read("implement")).toContain("always runs in write mode");
+  });
 });
 
 describe("agents", () => {

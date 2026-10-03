@@ -9,7 +9,7 @@ argument-hint: "<codex|claude> <objective>"
 A team lead is a job whose worker plans the objective, delegates subtasks to the **other** provider through the CLI, reviews what comes back and reports. You start it, then watch it. You stay the owner of the outcome.
 
 ```
-you (depth 0) -> teamlead job (depth 1) -> child jobs on the other provider (depth 2, cannot delegate)
+your session -> teamlead job (depth 0, started by you) -> child jobs (depth 1, cannot start jobs)
 ```
 
 ## How to run it
@@ -37,7 +37,8 @@ you (depth 0) -> teamlead job (depth 1) -> child jobs on the other provider (dep
 
 ## Rules
 
-- Only a top-level session can start a team lead; delegated workers cannot (depth limit 2).
-- Codex team leads run with the `danger-full-access` sandbox, because they must start worker processes and write job state in `~/.agents-bridge`. Tell the user this before starting one, and prefer `claude` as lead when that is a concern.
+- The depth limit is 2: the runtime refuses a third level and refuses a team lead started by a worker. A read-only team lead cannot start `write` children.
+- Codex team leads run with the `danger-full-access` sandbox in either mode, because they must start worker processes and write job state in `~/.agents-bridge`. In read-only mode the runtime refuses `write` children and the prompt forbids edits, but the lead itself is not sandboxed. Tell the user this before starting one, and prefer `claude` as lead when that is a concern.
+- The lead calls the CLI pinned to the installed version (`npx -y agents-bridge-mcp@<version> jobs ...`), so an unpublished local checkout must be published or linked for team lead mode to work.
 - At most one `write` job per working tree at a time, across the whole tree of jobs.
 - A team lead costs several model runs. Use `ask`, `review` or `delegate` when one job is enough.

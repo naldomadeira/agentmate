@@ -20,7 +20,7 @@ Shortcut for "do this with Claude Code". Read the user's request, pick the role 
 | A broad objective that needs coordination        | `bridge_teamlead`  | `teamlead`                |
 | Anything else                                    | `bridge_start`     | `delegate`                |
 
-When the request is ambiguous, default to `bridge_ask` (read-only, answers in the same turn).
+When the request is ambiguous, default to `bridge_ask` (read-only, answers in the same turn). Inside Codex, MCP tool calls time out after about 60 seconds by default: pass `waitSeconds: 45` to `bridge_ask` and continue with `bridge_wait` if the answer has not arrived.
 
 ## CLI fallback
 

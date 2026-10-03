@@ -10,7 +10,7 @@ Get a direct answer from the other model without leaving the session. The first 
 
 ## How to run it
 
-1. **MCP (preferred)** — call `bridge_ask` with `provider` and `question`. It waits up to 120 seconds (`waitSeconds`, max 300) and returns the answer in the same call. Add `context` for background and `cwd` if the question is about another repository.
+1. **MCP (preferred)** — call `bridge_ask` with `provider` and `question`. It waits up to 120 seconds (`waitSeconds`, max 300) and returns the answer in the same call. Add `context` for background and `cwd` if the question is about another repository. Inside Codex, MCP tool calls time out after about 60 seconds by default: pass `waitSeconds: 45` and continue with `bridge_wait` if the answer has not arrived.
 2. **CLI fallback** — when the `bridge_*` tools are not loaded, run the same thing from a shell:
 
    ```bash

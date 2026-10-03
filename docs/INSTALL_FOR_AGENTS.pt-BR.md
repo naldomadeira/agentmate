@@ -44,7 +44,7 @@ codex plugin marketplace add /caminho/absoluto/agents-bridge-mcp
 codex plugin add agents-bridge@agents-bridge
 ```
 
-Remova um marketplace local antes de testar o repositório remoto com o mesmo nome.
+Remova um marketplace local antes de testar o repositório remoto com o mesmo nome. O modo team lead executa o CLI fixado na versão instalada (`npx -y agents-bridge-mcp@<versão> jobs ...`); por isso, um checkout local não publicado precisa ser publicado ou vinculado para os jobs de team lead funcionarem.
 
 ## Atualização
 
@@ -85,7 +85,7 @@ npx -y agents-bridge-mcp jobs wait <id>
 
 `wait` e `ask` encerram com código `0` quando concluídos, `1` se falharem ou forem cancelados e `2` quando a espera expira. Código `2` não cancela o job: execute o mesmo `wait` novamente. Use `jobs result <id>` após uma espera interrompida. Chame `bridge_observe` ou `jobs observe <id>` somente quando a pessoa pedir progresso.
 
-O modo padrão é `read-only`. Passe `mode: write` ou `--mode write` apenas quando a tarefa autorizar explicitamente a edição de arquivos; a skill `implement` e `bridge_implement` fazem isso por você.
+O modo padrão é `read-only`. A skill `implement` e `bridge_implement` sempre rodam em modo de escrita (`read-only` é rejeitado), então use-as apenas em uma tarefa de edição explicitamente autorizada. Em qualquer outro papel, passe `mode: write` ou `--mode write` apenas quando a tarefa autorizar explicitamente a edição de arquivos.
 
 ## Rodar o doctor
 
@@ -93,7 +93,7 @@ O modo padrão é `read-only`. Passe `mode: write` ou `--mode write` apenas quan
 npx -y agents-bridge-mcp doctor
 ```
 
-O `doctor` verifica se o Node.js é 18 ou superior, se `codex` e `claude` estão no `PATH` (com a versão, quando disponível), se o diretório de estado dos jobs é gravável, quantos jobs existem e se algum job `running` perdeu o worker, e se ainda há um registro legado de `setup`. Cada item é reportado como `ok`, `warn` ou `fail`, com uma dica. Ele sai com código `1` se algum item falhar e funciona quando `codex` ou `claude` não estão instalados (reportado como aviso).
+O `doctor` verifica se o Node.js é 18 ou superior, se `codex` e `claude` estão no `PATH` e respondem a `--version`, se o diretório de estado dos jobs é gravável, quantos jobs existem e quais jobs `running` perderam o worker (ele lista os IDs), e se ainda há um registro legado de `setup`. Cada item é reportado como `ok`, `warn` ou `fail`, com uma dica. Ele sai com código `1` se algum item falhar e funciona quando `codex` ou `claude` não estão instalados (reportado como aviso). Ele não verifica a autenticação: se um job falhar logo ao iniciar, faça login você mesmo no CLI de destino.
 
 ## Diagnóstico
 
@@ -101,7 +101,7 @@ O `doctor` verifica se o Node.js é 18 ou superior, se `codex` e `claude` estão
 2. Rode `claude plugin list` ou `codex plugin list` para conferir se `agents-bridge@agents-bridge` está habilitado e qual versão foi instalada.
 3. Reinicie o host após instalar ou atualizar; a sessão atual não recarrega skills e ferramentas já registradas.
 4. Rode `npx -y agents-bridge-mcp jobs list` para verificar se o fallback CLI está funcional.
-5. Se o job falhar, confirme que o CLI de destino está autenticado e disponível no `PATH` do host que iniciou o job.
+5. Se o job falhar, confirme que o CLI de destino está disponível no `PATH` do host que iniciou o job (o `doctor` verifica) e autenticado (o `doctor` não verifica).
 6. Se MCP estiver ausente mas o CLI funcionar, use o fallback; não registre automaticamente nenhum servidor na configuração pessoal do usuário.
 
 ## Migrar instalações antigas de `setup`

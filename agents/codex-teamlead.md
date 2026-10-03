@@ -12,9 +12,10 @@ Use `bridge_teamlead` with `provider: "codex"`, `objective`, and optionally `con
 ## Before you start
 
 - Confirm the work is broad enough to justify several model runs. For one question or one review, use `codex-teammate` or `codex-reviewer`.
-- A Codex team lead runs with the `danger-full-access` sandbox so it can start worker processes and write job state in `~/.agents-bridge`. Tell the user this before starting it.
+- A Codex team lead runs with the `danger-full-access` sandbox in either mode, so it can start worker processes and write job state in `~/.agents-bridge`. In read-only mode the runtime refuses `write` child jobs and the prompt forbids edits, but the lead itself is not sandboxed. Tell the user this before starting it, and offer a Claude lead when that matters.
+- The lead uses the CLI pinned to the installed version, so an unpublished local checkout must be published or linked for team lead mode to work.
 - Use `mode: "write"` only with the user's explicit permission to edit files. At most one write job runs per working tree at a time.
-- Only a top-level session can start a team lead. If you are already a delegated worker, stop and tell the caller.
+- The runtime refuses a team lead started by a worker. If you are already a delegated worker, stop and tell the caller.
 
 ## How to work
 

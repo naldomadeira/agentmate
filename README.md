@@ -44,22 +44,24 @@ Check the installation:
 npx -y agents-bridge-mcp doctor
 ```
 
-`doctor` verifies Node.js, the `codex` and `claude` CLIs on your `PATH`, the job state directory, stuck jobs and legacy registrations, and prints a fix for each problem. See the [installation guide](./docs/INSTALL_FOR_AGENTS.md) for upgrades, a local-development install and migration from legacy `setup` installs.
+`doctor` verifies Node.js, that the `codex` and `claude` CLIs are on your `PATH` and respond to `--version`, the job state directory, stale `running` jobs (it lists their ids) and legacy registrations, and prints a fix for each problem. It does not check authentication: if a job fails right away, log in to the destination CLI yourself. See the [installation guide](./docs/INSTALL_FOR_AGENTS.md) for upgrades, a local-development install and migration from legacy `setup` installs.
 
 ## What you can do
 
 Six roles, each reachable as a skill, an MCP tool and a CLI command. `<provider>` is `codex` or `claude`; pick the one that is not the host you are in.
 
-| Role        | Skill       | MCP tool           | CLI                                                              | Mode                               |
-| ----------- | ----------- | ------------------ | ---------------------------------------------------------------- | ---------------------------------- |
-| `ask`       | `ask`       | `bridge_ask`       | `jobs ask <provider> "<question>"`                               | read-only                          |
-| `review`    | `review`    | `bridge_review`    | `jobs start <provider> "<prompt>" --role review`                 | read-only                          |
-| `research`  | `research`  | `bridge_research`  | `jobs start <provider> "<prompt>" --role research`               | read-only (Claude adds web access) |
-| `plan`      | `plan`      | `bridge_plan`      | `jobs start <provider> "<prompt>" --role plan`                   | read-only                          |
-| `implement` | `implement` | `bridge_implement` | `jobs start <provider> "<prompt>" --role implement --mode write` | write                              |
-| `teamlead`  | `teamlead`  | `bridge_teamlead`  | `jobs start <provider> "<prompt>" --role teamlead`               | read-only by default, write opt-in |
+| Role        | Skill       | MCP tool           | CLI                                                 | Mode                               |
+| ----------- | ----------- | ------------------ | --------------------------------------------------- | ---------------------------------- |
+| `ask`       | `ask`       | `bridge_ask`       | `jobs ask <provider> "<question>"`                  | read-only                          |
+| `review`    | `review`    | `bridge_review`    | `jobs start <provider> "<prompt>" --role review`    | read-only                          |
+| `research`  | `research`  | `bridge_research`  | `jobs start <provider> "<prompt>" --role research`  | read-only (Claude adds web access) |
+| `plan`      | `plan`      | `bridge_plan`      | `jobs start <provider> "<prompt>" --role plan`      | read-only                          |
+| `implement` | `implement` | `bridge_implement` | `jobs start <provider> "<prompt>" --role implement` | write (always)                     |
+| `teamlead`  | `teamlead`  | `bridge_teamlead`  | `jobs start <provider> "<prompt>" --role teamlead`  | read-only by default, write opt-in |
 
 `bridge_ask` waits for the answer (up to 120 seconds by default) and returns it in the same call. The other role tools return a job id immediately unless you pass `waitSeconds`.
+
+Codex limits an MCP tool call to about 60 seconds by default. When you run inside Codex, pass `waitSeconds: 45` to `bridge_ask` and continue with `bridge_wait` if the answer has not arrived.
 
 Four more skills cover the rest:
 
@@ -76,16 +78,20 @@ Every command in the table works without MCP. Prefix CLI commands with `npx -y a
 A team lead is a job whose worker plans a broad objective, delegates pieces to the other provider through the CLI, reviews the results and writes a report. You start it with `bridge_teamlead` or the `teamlead` skill and follow it with `bridge_observe`.
 
 ```text
-your session (depth 0)
-  `-- teamlead job (codex)             depth 1, sandbox: danger-full-access
-        |-- research job (claude)      depth 2, read-only, cannot delegate
-        |-- review job (claude)        depth 2, read-only, cannot delegate
-        `-- implement job (claude)     depth 2, write, one per working tree
+your session
+  `-- teamlead job (depth 0, started by you)       codex lead: danger-full-access
+        |-- research job (claude)                   depth 1, cannot start jobs
+        |-- review job (claude)                     depth 1, cannot start jobs
+        `-- implement job (claude)                  depth 1, write, one per working tree
 ```
+
+The stored `depth` is 0 for a job started by a session and 1 for a job started by a worker. The limit is two levels: a session starts a team lead, the lead starts child jobs, and the children cannot start jobs.
 
 The final report has the sections Objective, Plan, Delegations (id, provider, role, status), Findings, Decisions, Deliverables and Open questions. `jobs observe <id>` shows the lead's output with its children; `jobs list --parent <id>` lists only the children.
 
-> **Codex sandbox warning.** A Codex team lead runs with `--sandbox danger-full-access`. It has to start worker processes and write job state under `~/.agents-bridge`, which the `workspace-write` sandbox does not allow. Treat a Codex team lead like any Codex session with full filesystem access, or lead with `claude` instead, whose permissions are an explicit tool allowlist.
+> **Codex sandbox warning.** A Codex team lead runs with `--sandbox danger-full-access` whether `mode` is read-only or write. It has to start worker processes and write job state under `~/.agents-bridge`, so the sandbox cannot be narrower. In read-only mode the runtime refuses any `write` child job and the prompt forbids edits, but the lead itself is not sandboxed. Treat a Codex team lead like any Codex session with full filesystem access, or lead with `claude` instead, whose permissions are an explicit tool allowlist that includes an explicit deny of `Edit`, `Write` and `NotebookEdit` in read-only mode.
+
+The team lead calls the CLI pinned to the installed version (`npx -y agents-bridge-mcp@<version> jobs ...`), so a local checkout that is not published to npm must be published or linked before team lead mode works.
 
 Use a team lead only when the work has several independent parts. One question or one review is cheaper as `ask` or `review`.
 
@@ -135,7 +141,7 @@ After a plugin restart, the same workflow can be requested through the installed
 
 ### Delegate an authorized edit
 
-Jobs default to `read-only`. Use `write` only when the task is explicitly allowed to change files, and send one write job per working tree at a time.
+Jobs default to `read-only`, except `implement`, which always runs in write mode and rejects `read-only`. Use it only when the task is explicitly allowed to change files, and send one write job per working tree at a time. The `--mode write` flag is redundant for `implement` but makes the intent explicit.
 
 ```bash
 npx -y agents-bridge-mcp jobs start claude "Add a focused regression test for the parser." --role implement --mode write --cwd .
@@ -174,36 +180,42 @@ npx -y agents-bridge-mcp jobs start codex "Address the highest-priority finding.
 
 `jobs ask` uses the same exit codes. Do not pipe `wait` or `ask`: a pipe discards the exit code.
 
+`jobs wait --timeout` (for example `10m` or `90s`) only limits how long the command waits. To limit how long a job may run, pass `jobs start --timeout <minutes>`: a positive number of minutes, at most 120.
+
 ## Safety model
 
-- **Read-only by default.** Every role except `implement` runs read-only. `implement` is write mode, and `teamlead` can be write only if you pass `mode: write`.
-- **Permissions per role.** The sandbox or tool allowlist follows the role:
+- **Read-only by default.** `ask`, `review`, `plan` and `research` always run read-only, and `teamlead` is read-only unless you pass `mode: write`. `implement` always runs in write mode: `--role implement` and `bridge_implement` default to write and reject `read-only`. Use it only after the user has authorized edits.
+- **Permissions per role.** The sandbox or tool allowlist follows the role and mode:
 
-  | Role and mode                       | Codex sandbox        | Claude permissions                                                                      |
-  | ----------------------------------- | -------------------- | --------------------------------------------------------------------------------------- |
-  | read-only (`ask`, `review`, `plan`) | `read-only`          | allowlist: `Read`, `Grep`, `Glob`, and `git diff`, `git log`, `git show`, `git status`  |
-  | `research`                          | `read-only`          | the read-only allowlist plus `WebSearch` and `WebFetch`                                 |
-  | `implement` (write)                 | `workspace-write`    | `acceptEdits` permission mode                                                           |
-  | `teamlead`                          | `danger-full-access` | the read-only allowlist plus the `agents-bridge-mcp` CLI (and `acceptEdits` when write) |
+  | Role and mode                                             | Codex sandbox        | Claude permissions                                                                        |
+  | --------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------- |
+  | read-only (`ask`, `review`, `plan`, read-only `teamlead`) | `read-only`          | allowlist (below) and an explicit deny of `Edit`, `Write` and `NotebookEdit`              |
+  | `research`                                                | `read-only`          | the read-only allowlist plus `WebSearch` and `WebFetch`, with the same explicit deny      |
+  | `implement`, write `teamlead`                             | `workspace-write`    | `acceptEdits` permission mode plus the verification allowlist (below)                     |
+  | `teamlead` (Codex lead, read-only or write)               | `danger-full-access` | not applicable                                                                            |
+  | `teamlead` (Claude lead)                                  | not applicable       | the rows above, plus CLI access limited to `agents-bridge-mcp jobs *` (installed version) |
 
-- **Delegation depth limit of 2.** A session starts a team lead, the team lead delegates to workers, and those workers cannot delegate. Only a top-level session can start a team lead; the runtime refuses the rest.
+  The read-only allowlist is `Read`, `Grep`, `Glob`, `git diff`, `git log`, `git show` and `git status`. The write-mode allowlist adds `pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add` and `git commit` so a worker can run verification commands. Extend it with the environment variable `AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS`, a comma-separated list of Claude permission patterns. A Claude team lead cannot run `setup` or `install`, only `agents-bridge-mcp jobs *`.
+
+- **A Codex team lead is not sandboxed.** It runs with `--sandbox danger-full-access` in either mode, because it must spawn worker processes and write job state. "Read-only" for a Codex lead means that the runtime refuses any `write` child job (a read-only parent cannot start write children) and that the prompt forbids edits; it does not restrict the lead's own process. Lead with `claude` when this matters.
+- **Delegation depth limit of 2.** A session starts a team lead (depth 0), the lead starts child jobs (depth 1), and children cannot start jobs. The runtime refuses a third level and refuses a team lead started by a worker.
 - **One `write` job per working tree at a time.** Two writers in one tree collide. The skills and the team lead prompt follow this rule; use separate git worktrees for parallel edits.
 - **The delegator owns acceptance.** Job output is an input to your judgment. Verify claims and run the tests before you merge anything a worker produced.
-- **No hidden configuration changes.** The plugin registers its own MCP server. The fallback path runs the CLI and never edits host configuration. Do not put secrets in briefings: prompts and results are stored in plain text under `~/.agents-bridge`.
+- **No hidden configuration changes.** The plugin registers its own MCP server. The fallback path runs the CLI and never edits host configuration. Do not put secrets in briefings: prompts and results are stored in plain text under `~/.agents-bridge`, in files created with owner-only permissions (`0600` for files, `0700` for directories).
 
 ## Troubleshooting
 
-Start with `npx -y agents-bridge-mcp doctor`. It prints `ok`, `warn` or `fail` for each check with a hint, and exits `1` if any check fails. It runs without `codex` or `claude` installed and reports the missing CLI as a warning.
+Start with `npx -y agents-bridge-mcp doctor`. It prints `ok`, `warn` or `fail` for each check with a hint, and exits `1` if any check fails. It runs without `codex` or `claude` installed and reports the missing CLI as a warning. It checks that each CLI responds to `--version`, not that you are logged in.
 
-| Symptom                                             | Likely cause and fix                                                                                     |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `bridge_*` tools or skills do not appear            | Restart the host after installing; check `claude plugin list` or `codex plugin list`.                    |
-| A job fails immediately                             | The destination CLI is missing from `PATH` or not authenticated. `doctor` reports both.                  |
-| `wait` or `ask` exits `2`                           | The job is still running. Repeat `jobs wait <id>`; do not start a duplicate.                             |
-| A job shows `running` but nothing happens           | The worker process died. `doctor` lists these jobs; `jobs cancel <id>` clears them.                      |
-| `Delegation depth limit reached`                    | A delegated worker tried to delegate. Return the findings to the session that started the job instead.   |
-| `Only a top-level session can start a teamlead job` | A worker tried to start a team lead. Start it from your own session.                                     |
-| Duplicated or conflicting tools                     | A legacy `setup` install is still registered. `doctor` flags it; see the migration section of the guide. |
+| Symptom                                             | Likely cause and fix                                                                                                                   |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `bridge_*` tools or skills do not appear            | Restart the host after installing; check `claude plugin list` or `codex plugin list`.                                                  |
+| A job fails immediately                             | The destination CLI is missing from `PATH` (`doctor` reports this) or not authenticated (`doctor` does not check; log in to it).       |
+| `wait` or `ask` exits `2`                           | The job is still running. Repeat `jobs wait <id>`; do not start a duplicate.                                                           |
+| A job shows `running` but nothing happens           | The worker process died. `doctor` lists the ids of these jobs; `jobs cancel <id>` clears them.                                         |
+| `Delegation depth limit reached`                    | A job started by a worker tried to start another job (a third level). Return the findings to the session that started the job instead. |
+| `Only a top-level session can start a teamlead job` | A worker tried to start a team lead. Start it from your own session.                                                                   |
+| Duplicated or conflicting tools                     | A legacy `setup` install is still registered. `doctor` flags it; see the migration section of the guide.                               |
 
 ## Requirements
 

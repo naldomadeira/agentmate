@@ -16,11 +16,20 @@ describe("project documentation", () => {
     expect(readme).toContain("## Usage examples");
     expect(readme).toContain("--mode write");
     expect(readme).toContain("--continue <job-id>");
+    expect(readme).toContain("explicit deny of `Edit`");
+    expect(readme).toContain("AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS");
+    expect(readme).toContain("waitSeconds: 45");
 
     const portugueseReadme = read("docs/README.pt-BR.md");
     expect(portugueseReadme).toContain("## Exemplos de uso");
     expect(portugueseReadme).toContain("--mode write");
     expect(portugueseReadme).toContain("--continue <job-id>");
+    expect(portugueseReadme).toContain("## Requisitos");
+    expect(portugueseReadme).toContain("## Configuração legada");
+    expect(portugueseReadme).toContain("negação explícita de `Edit`");
+    expect(portugueseReadme).toContain("AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS");
+    expect(portugueseReadme).toContain("waitSeconds: 45");
+    expect(portugueseReadme).toContain("git clone");
   });
 
   it("provides installation guides in English and Portuguese", () => {
@@ -83,6 +92,7 @@ describe("project documentation", () => {
 
     expect(changelog).toContain("## [0.2.0]");
     expect(changelog).toContain("## [0.1.0]");
+    expect(changelog).toContain("--allowedTools");
     expect(read("IMPLEMENTATION_PLAN.md")).toContain("v0.2 — Roles, commands and agents");
   });
 });
