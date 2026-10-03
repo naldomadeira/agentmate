@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -22,7 +23,8 @@ let cwd: string;
 let other: string;
 
 beforeEach(() => {
-  const base = mkdtempSync(join(tmpdir(), "abm-hook-"));
+  // realpath: macOS tmpdir() is a symlink (/var -> /private/var) and the hooks key the cwd by its real path.
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "abm-hook-")));
   home = join(base, "state");
   cwd = join(base, "repo");
   other = join(base, "elsewhere");

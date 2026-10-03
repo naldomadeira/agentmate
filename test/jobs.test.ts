@@ -82,6 +82,8 @@ beforeAll(() => {
   process.env["AGENTMATE_HOME"] = path.join(home, "state");
   process.env["AGENTMATE_CODEX_BIN"] = bin;
   process.env["AGENTMATE_CLAUDE_BIN"] = claudeBin;
+  // An agy installed on the host must not count as an available agent here.
+  process.env["AGENTMATE_AGY_BIN"] = path.join(home, "missing-agy");
   process.env["AGENTMATE_CLI"] = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 });
 

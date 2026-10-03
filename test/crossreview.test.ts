@@ -74,6 +74,8 @@ beforeAll(() => {
   process.env["AGENTMATE_CODEX_BIN"] = codex;
   process.env["AGENTMATE_CLAUDE_BIN"] = claude;
   process.env["AGENTMATE_GEMINI_BIN"] = path.join(home, "fake-gemini");
+  // An agy installed on the host must not become a fallback reviewer here.
+  process.env["AGENTMATE_AGY_BIN"] = path.join(home, "missing-agy");
   process.env["AGENTMATE_CLI"] = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
   delete process.env["AGENTMATE_DEPTH"];
   delete process.env["AGENTMATE_JOB_ID"];
