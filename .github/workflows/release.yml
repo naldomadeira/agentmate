@@ -31,6 +31,6 @@ jobs:
       - run: pnpm i
       - run: pnpm build
 
-      - run: pnpm publish --no-git-checks --access public
-        env:
-          NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
+      # Trusted Publishing (OIDC): npm >= 11.5.1 authenticates through the id-token, no NPM_TOKEN.
+      - run: npm install -g npm@latest
+      - run: npm publish --access public
