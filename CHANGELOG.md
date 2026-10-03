@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - Unreleased
+
+### Added
+
+- Inbox: every `important` job event of kind `message`, `finished` or `error` is also appended to `~/.agentmate/inbox.jsonl` (`{ ts, job, cwd, session?, provider, role, kind, text }`, owner-only, rotated to `inbox.1.jsonl` past 5 MB, one generation). `src/jobs/inbox.ts` reads it by directory (realpath, equal or subdirectory) with a read marker per directory in `~/.agentmate/inbox-cursors/`.
+- MCP tool `mate_inbox(cwd?, unread?, ack?, limit?)` and CLI `agentmate inbox [--cwd] [--all] [--no-ack] [--follow]` (`--follow` prints new lines every second until Ctrl-C). The `jobs`, `teamlead`, `crossreview` and `split` skills and the `jobs` command templates tell Codex to call `mate_inbox` before `mate_wait` when it resumes a turn with jobs in progress.
+- `UserPromptSubmit` hook for Claude Code (`hooks/user-prompt-submit.mjs`, registered in `hooks/hooks.json`): adds up to 5 unread inbox entries of the directory to the prompt context and advances the cursor; 10 s cooldown per directory, `AGENTMATE_HOOK_QUIET=1` to disable, fail-open. The `SessionStart` hook now also reports `N unread inbox entries`.
+- `agentmate init` is registered in the CLI (`src/cli.ts`); the command itself ships with the init workstream.
+- Gemini CLI as a third agent (experimental): `AgentId` and `AGENT_IDS` gain `gemini` (`src/agents/gemini.ts`, binary `AGENTMATE_GEMINI_BIN` or `gemini`). It runs `gemini -p <prompt> --output-format stream-json [--model m] [--resume sid] --approval-mode <mode>`: `default` for read-only and research jobs, `auto_edit` for write jobs, `yolo` for a team lead (`--sandbox` is never used). `src/lib/gemini-output-parser.ts` reads stream-json (`init`, `message` chunks, `tool_use`, `tool_result`, `error`, `result`) and the single object of `--output-format json`; the adapter turns the assistant chunks into one `message` event when the `result` arrives, `write_file`/`replace`/`edit` tool use into `file` events and every other tool use into `command` events. Written against the documented format and tested with a fake binary, because the Gemini CLI is not installed in the development environment. The `gemini` skill (`/mate:gemini`) routes by intent like `codex` and `claude`.
+- Agent availability: `isAgentAvailable(id)` and `availableAgents()` (`src/agents/registry.ts`) look for the binary by absolute path or on `PATH` without running it. `startJob` refuses an agent that is not installed with `Agent gemini is not installed (binary "gemini" not found on PATH). Install it or set AGENTMATE_GEMINI_BIN.`
+- `partner` on the `mate_teamlead`, `mate_crossreview` and `mate_split` tools, `StartOptions` and `jobs start --partner <agent>`: the agent that works with `provider` (reviewer, delegate, or the other half of a split). It must differ from `provider` and be installed; the default stays codex and claude paired with each other, and `claude` for a `gemini` provider. A split plan only assigns parts to the agents that are installed (or to the planner and its partner).
+- `agentmate init [--cwd] [--check] [--create] [--files AGENTS.md,CLAUDE.md]` and the `init` skill (`/mate:init`): add or refresh a block of at most 25 lines between `<!-- agentmate:start -->` and `<!-- agentmate:end -->` (commands, the rules for a job received from another agent, `agentmate inbox` and `agentmate jobs list`). Existing files only unless `--create`; a second run changes nothing; `--check` writes nothing and exits 1 when a block is missing or old; a lone marker is an error that names the file (`src/lib/marked-section.ts`, `src/lib/init.ts`).
+
+### Changed
+
+- `agentmate doctor` prints one line per agent; a missing Gemini CLI is `ok  gemini  not installed (optional)` instead of a warning. The `jobs` help texts and the MCP tool descriptions list the three agents, and the zod enums derive from `AGENT_IDS`.
+- `otherAgent()` keeps pairing codex with claude and now returns `claude` for `gemini`.
+
 ## [0.6.0] - Unreleased
 
 ### Added

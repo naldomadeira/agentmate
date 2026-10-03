@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { EventLevel, JobEvent } from "../agents/types.js";
-import { AGENT_IDS, otherAgent } from "../agents/registry.js";
+import { assertAgentAvailable, availableAgents, otherAgent } from "../agents/registry.js";
 import {
   buildAskPrompt,
   buildCrossreviewPrompt,
@@ -71,6 +71,8 @@ export interface StartOptions {
   maxParts?: number;
   /** Id of an AgentMate session whose notes prefix the prompt and which records the job. */
   sessionId?: string;
+  /** teamlead, crossreview, split: the agent that works with `provider`; defaults to `otherAgent(provider)`. */
+  partner?: Provider;
 }
 
 type PrimaryField = "question" | "target" | "topic" | "goal" | "task" | "objective";
@@ -141,7 +143,7 @@ function renderPrompt(
           goal: required,
           acceptance: fields.acceptance,
           maxParts: fields.maxParts,
-          agents: [...AGENT_IDS],
+          agents: options.partner ? [provider, options.partner] : availableAgents(),
         });
       return buildPlanPrompt({
         goal: required,
@@ -155,7 +157,7 @@ function renderPrompt(
       return buildTeamleadPrompt({
         objective: required,
         provider,
-        otherProvider: otherAgent(provider),
+        otherProvider: options.partner ?? otherAgent(provider),
         canWrite: mode === "write",
         constraints,
         context,
@@ -165,7 +167,7 @@ function renderPrompt(
         task: required,
         acceptance: fields.acceptance,
         implementer: provider,
-        reviewer: otherAgent(provider),
+        reviewer: options.partner ?? otherAgent(provider),
         maxRounds,
       });
     case "split":
@@ -241,6 +243,14 @@ export function startJob(options: StartOptions): Job {
   }
   if (role === "split" && options.continueJob)
     throw new Error("A split job cannot continue another job; it starts its own plan and parts.");
+  if (options.partner !== undefined) {
+    if (role !== "teamlead" && role !== "crossreview" && role !== "split" && role !== "plan")
+      throw new Error("partner applies only to the teamlead, crossreview and split roles.");
+    if (options.partner === options.provider)
+      throw new Error(
+        `partner must differ from the provider (both are ${options.provider}). Pick another agent.`,
+      );
+  }
   // Validated up front so an unknown session never leaves a half-started job behind.
   if (options.sessionId) getSession(options.sessionId);
   const parentJob = process.env["AGENTMATE_JOB_ID"] || undefined;
@@ -268,6 +278,8 @@ export function startJob(options: StartOptions): Job {
     provider = prior.provider;
     sessionNote = prior.id;
   }
+  assertAgentAvailable(provider);
+  if (options.partner) assertAgentAvailable(options.partner);
 
   const timeoutMs = Math.min(
     (options.timeoutMinutes ?? DEFAULT_TIMEOUT_MS / 60_000) * 60_000,
@@ -299,6 +311,7 @@ export function startJob(options: StartOptions): Job {
     status: "queued",
     createdAt: new Date().toISOString(),
     ...(sessionNote ? { continuesJob: sessionNote } : {}),
+    ...(options.partner ? { partner: options.partner } : {}),
     ...(options.sessionId ? { session: options.sessionId } : {}),
     ...(role === "crossreview"
       ? {

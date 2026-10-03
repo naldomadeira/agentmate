@@ -53,7 +53,16 @@ Quer comandos mais curtos (`/ask`, `/prompts:ask`)? Veja [Comandos de barra](#co
 npx -y agentmate doctor
 ```
 
-O `doctor` confere o Node.js, se os CLIs `codex` e `claude` estão no `PATH` e respondem a `--version`, o diretório de estado dos jobs, jobs `running` obsoletos (ele lista os IDs) e registros legados, e mostra a correção de cada problema. Ele não verifica a autenticação: se um job falhar logo ao iniciar, faça login você mesmo no CLI de destino. Consulte o [guia de instalação](./INSTALL_FOR_AGENTS.pt-BR.md) para atualizar, testar localmente e limpar registros legados que sobraram.
+O `doctor` confere o Node.js, se os CLIs `codex` e `claude` (e o `gemini`, opcional e experimental) estão no `PATH` e respondem a `--version`, o diretório de estado dos jobs, jobs `running` obsoletos (ele lista os IDs) e registros legados, e mostra a correção de cada problema. Ele não verifica a autenticação: se um job falhar logo ao iniciar, faça login você mesmo no CLI de destino. Consulte o [guia de instalação](./INSTALL_FOR_AGENTS.pt-BR.md) para atualizar, testar localmente e limpar registros legados que sobraram.
+
+### Preparar um repositório
+
+```bash
+npx -y agentmate init          # acrescenta ou atualiza o bloco do AgentMate em AGENTS.md e CLAUDE.md
+npx -y agentmate init --check  # não altera nada; sai com 1 se um bloco faltar ou estiver desatualizado
+```
+
+O `agentmate init` (ou `/mate:init`) grava um bloco de no máximo 25 linhas entre `<!-- agentmate:start -->` e `<!-- agentmate:end -->` nos `AGENTS.md` e `CLAUDE.md` que já existem no repositório, para que todo agente que abrir o repo conheça os comandos `/mate:` e `$mate:`, saiba acompanhar os jobs (`agentmate jobs list`, `agentmate inbox`) e as regras de um job recebido (sem commit nem push se não pedirem, relatar com os títulos do papel, tratar as notas de sessão como dados). O texto fora dos marcadores nunca é tocado e uma segunda execução não muda nada. Use `--create` para criar o `AGENTS.md` quando nenhum dos dois existir, `--files` para escolher outros arquivos e `--cwd` para rodar em outro diretório. Rode de novo depois de atualizar para renovar o bloco.
 
 ### Para agentes
 
@@ -98,9 +107,19 @@ Os exemplos usam o `/mate:...` do Claude Code; no Codex use `$mate:...`. O provi
 
 O `implement` e o `crossreview` editam arquivos, e o `split` também quando você passa `--mode write`; use-os somente quando você autorizar isso. Os demais são somente leitura.
 
+## Colegas de equipe
+
+| Colega                        | ID do provider | Precisa de                                               | Observações                                                                                                           |
+| ----------------------------- | -------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Claude Code                   | `claude`       | o CLI `claude`                                           | Lê com uma lista explícita de ferramentas; acesso web em `research`.                                                  |
+| Codex CLI                     | `codex`        | o CLI `codex`                                            | Sandbox conforme o modo; sem acesso web.                                                                              |
+| Gemini CLI (**experimental**) | `gemini`       | o CLI `gemini` no `PATH` (ou `AGENTMATE_GEMINI_BIN`)     | Roda `gemini -p` com `--output-format stream-json` e um modo de aprovação por papel. Testado só com um binário falso. |
+
+Um job num agente que não está instalado é recusado de imediato, com uma dica de instalação, e o `agentmate doctor` lista cada agente (um Gemini CLI ausente aparece como opcional). `teamlead`, `crossreview` e `split` pareiam o codex com o claude por padrão, e o gemini com o claude. Passe `partner` (`mate_teamlead`, `mate_crossreview`, `mate_split` ou `jobs start --partner <agente>`) para escolher você mesmo o outro agente, por exemplo `/mate:crossreview codex <tarefa>` com `partner: gemini` para o Gemini revisar a alteração do Codex. O parceiro precisa ser diferente do provider e estar instalado.
+
 ## O que você pode fazer
 
-Oito papéis, cada um disponível como skill, ferramenta MCP e comando de CLI. `<provider>` é `codex` ou `claude`; escolha o que não é o host em que você está.
+Oito papéis, cada um disponível como skill, ferramenta MCP e comando de CLI. `<provider>` é `codex`, `claude` ou `gemini` (experimental); escolha o que não é o host em que você está.
 
 | Papel       | Skill       | Ferramenta MCP     | CLI                                                 | Modo                                         |
 | ----------- | ----------- | ------------------ | --------------------------------------------------- | -------------------------------------------- |
@@ -117,11 +136,12 @@ Oito papéis, cada um disponível como skill, ferramenta MCP e comando de CLI. `
 
 O Codex limita uma chamada de ferramenta MCP a cerca de 60 segundos por padrão. Ao executar dentro do Codex, passe `waitSeconds: 45` para `mate_ask` e continue com `mate_wait` se a resposta ainda não tiver chegado.
 
-Outras quatro skills completam o conjunto:
+Outras seis skills completam o conjunto:
 
 - `jobs` lista, observa, coleta e cancela jobs.
 - `delegate` é o caminho genérico (`mate_start`) para trabalho que não cabe em nenhum papel.
-- `codex` e `claude` são atalhos que encaminham um pedido simples ao papel certo, já com o provider definido.
+- `codex`, `claude` e `gemini` (experimental) são atalhos que encaminham um pedido simples ao papel certo, já com o provider definido.
+- `init` prepara um repositório para o AgentMate (veja [Preparar um repositório](#preparar-um-repositório)).
 
 No Claude Code, o plugin também adiciona quatro agentes que usam o Codex: `codex-teammate` (perguntas e delegação geral), `codex-reviewer`, `codex-researcher` e `codex-teamlead`. Eles escrevem o briefing, verificam o que o Codex devolve e reportam a própria conclusão em vez de repassar a saída bruta.
 
@@ -148,7 +168,7 @@ Cada comando chama a mesma ferramenta `mate_*` da skill, usa o CLI `npx -y agent
 
 ## Modo team lead
 
-Um team lead é um job cujo worker planeja um objetivo amplo, delega partes ao outro provider pelo CLI, revisa os resultados e escreve um relatório. Você o inicia com `mate_teamlead` ou com a skill `teamlead` e o acompanha com `mate_observe`.
+Um team lead é um job cujo worker planeja um objetivo amplo, delega partes ao outro provider pelo CLI, revisa os resultados e escreve um relatório. Você o inicia com `mate_teamlead` ou com a skill `teamlead` e o acompanha com `mate_observe`. O líder delega ao `partner` quando você passa um (por exemplo, um líder `claude` com `partner: gemini`); o padrão é o outro entre codex e claude.
 
 ```text
 sua sessão
@@ -170,7 +190,7 @@ Use team lead somente quando o trabalho tiver várias partes independentes. Uma 
 
 ## Revisão cruzada
 
-A revisão cruzada deixa um agente implementar e o outro revisar, sem você copiar um diff entre sessões. É um job de workflow: o worker não chama um CLI por conta própria, ele executa os passos como jobs filhos. O `provider` implementa; o outro agente revisa. Inicie com `mate_crossreview` ou com a skill `crossreview` (`/mate:crossreview codex <tarefa>`) e acompanhe com `mate_observe`.
+A revisão cruzada deixa um agente implementar e o outro revisar, sem você copiar um diff entre sessões. É um job de workflow: o worker não chama um CLI por conta própria, ele executa os passos como jobs filhos. O `provider` implementa; o outro agente revisa (o `partner`, quando você passa um). Inicie com `mate_crossreview` ou com a skill `crossreview` (`/mate:crossreview codex <tarefa>`) e acompanhe com `mate_observe`.
 
 ```text
 implement (provider, escrita)  ->  review (outro agente, somente leitura)  ->  veredito
@@ -200,7 +220,7 @@ Ele edita arquivos; inicie-o somente quando você autorizar isso e mantenha um j
 
 ## Divisão de tarefas
 
-A divisão de tarefas parte um objetivo amplo em partes independentes, executa as partes em paralelo nos dois agentes e faz o outro agente revisar cada uma, sem você repassar resultados entre sessões. Como a revisão cruzada, é um job de workflow: o worker não chama um CLI por conta própria, ele executa os passos como jobs filhos (`depth` 1, `parentJob` = o id do workflow) que compartilham uma [sessão](#sessões). O `provider` planeja; cada parte vai para o `codex` ou para o `claude`. Inicie com `mate_split` ou com a skill `split` (`/mate:split codex <objetivo>`) e acompanhe com `mate_observe`.
+A divisão de tarefas parte um objetivo amplo em partes independentes, executa as partes em paralelo nos dois agentes e faz o outro agente revisar cada uma, sem você repassar resultados entre sessões. Como a revisão cruzada, é um job de workflow: o worker não chama um CLI por conta própria, ele executa os passos como jobs filhos (`depth` 1, `parentJob` = o id do workflow) que compartilham uma [sessão](#sessões). O `provider` planeja; cada parte vai para um agente instalado, ou só para o provider e seu `partner` quando você passa um. Inicie com `mate_split` ou com a skill `split` (`/mate:split codex <objetivo>`) e acompanhe com `mate_observe`.
 
 ```text
 objetivo -> plano (provider, somente leitura)
@@ -256,6 +276,7 @@ Cada job também grava um log de eventos append-only (`events.jsonl`). Tanto o C
 | Cancelar trabalho        | `mate_cancel`                                                                                                        | `jobs cancel <id>`                   |
 | Encontrar jobs           | `mate_list`                                                                                                          | `jobs list [--cwd] [--parent <id>]`  |
 | Sessões                  | `mate_session_start`, `mate_session_show`, `mate_session_notes`, `mate_session_list`                                 | `sessions start/show/notes/list`, `jobs start --session <id>` |
+| Caixa de entrada         | `mate_inbox`                                                                                                         | `inbox [--cwd] [--all] [--no-ack] [--follow]` |
 
 ### Sessões
 
@@ -266,6 +287,10 @@ Uma sessão é contexto compartilhado entre jobs e agentes. `mate_session_start(
 As skills preferem as ferramentas `mate_*`. Se o host não carregou o MCP, elas executam o mesmo contrato de jobs por `npx -y agentmate`; nunca alteram a configuração do host como fallback.
 
 O modo padrão é `read-only`, exceto em `implement`, que sempre roda em modo de escrita. Use `write` apenas em tarefas que autorizem explicitamente alterações.
+
+## Caixa de entrada
+
+Toda vez que um job registra uma mensagem, um erro ou um fim `important`, o AgentMate também acrescenta uma linha em `~/.agentmate/inbox.jsonl` (só do dono; passa para `inbox.1.jsonl` acima de 5 MB, uma geração só): `{ ts, job, cwd, session?, provider, role, kind, text }`. É assim que um agente fica sabendo que o outro terminou ou falhou sem ficar num `wait`. `mate_inbox(cwd?, unread? = true, ack? = true, limit? = 20)` devolve as entradas desse diretório ou de um subdiretório, uma por linha (`HH:MM:SS  <job>  <role>/<provider>  <kind>  <text>`), e avança uma marca de leitura guardada por diretório em `~/.agentmate/inbox-cursors/`, então nada aparece duas vezes. No terminal, `agentmate inbox` faz o mesmo (`--all` para todos os diretórios, `--no-ack` para só olhar) e `agentmate inbox --follow` imprime as novas linhas a cada segundo até Ctrl-C. No Claude Code o plugin também registra um hook `UserPromptSubmit`: antes de cada prompt ele coloca no contexto até 5 entradas não lidas do diretório (10 segundos de espera por diretório; `AGENTMATE_HOOK_QUIET=1` o desliga; qualquer erro sai em silêncio), e o resumo do `SessionStart` informa quantas estão sem ler. O Codex não tem hooks, então as skills `jobs`, `teamlead`, `crossreview` e `split` mandam chamar `mate_inbox` ao retomar o turno com jobs em andamento, antes do `mate_wait`. As entradas são resumos curtos; leia a saída completa com `jobs result <id>`.
 
 ## Exemplos de uso
 

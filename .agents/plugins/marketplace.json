@@ -1,6 +1,6 @@
 {
   "name": "agentmate",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "AgentMate plugin for Claude Code and Codex: ask, review, research, plan, implement and lead across both.",
   "owner": {
     "name": "Naldo Madeira",

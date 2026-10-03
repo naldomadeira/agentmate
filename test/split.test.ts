@@ -198,12 +198,7 @@ describe("parseSplitPlan", () => {
   it("alternates agents for missing or unknown ones, starting with the other agent", () => {
     const plan = parse(
       block({
-        parts: [
-          part("a"),
-          part("b", { agent: "gemini" }),
-          part("c", { agent: "codex" }),
-          part("d"),
-        ],
+        parts: [part("a"), part("b", { agent: "gpt" }), part("c", { agent: "codex" }), part("d")],
       }),
       4,
     );

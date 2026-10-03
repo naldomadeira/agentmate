@@ -120,7 +120,7 @@ export async function runCrossreview(id: string): Promise<void> {
 
   const implementer = job.provider;
   const sessionId = job.session;
-  const reviewer = otherAgent(implementer);
+  const reviewer = job.partner ?? otherAgent(implementer);
   const maxRounds = job.workflow?.maxRounds ?? DEFAULT_MAX_ROUNDS;
   const task = job.fields?.task ?? job.prompt;
   const acceptance = job.fields?.acceptance;

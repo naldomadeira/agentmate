@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { defineCommand } from "citty";
 import { userFacing } from "../lib/errors.js";
-import { AGENT_IDS, getAgent } from "../agents/registry.js";
+import { AGENT_IDS, getAgent, isAgentAvailable } from "../agents/registry.js";
 import type { AgentId } from "../agents/types.js";
 import { homeDir, isAlive, listJobIds, readJob } from "../jobs/store.js";
 
@@ -60,13 +60,20 @@ function checkNode(): Check {
 const INSTALL_HINTS: Record<AgentId, string> = {
   codex: "Install the Codex CLI (npm install -g @openai/codex) to delegate to codex.",
   claude: "Install Claude Code (https://claude.com/claude-code) to delegate to claude.",
+  gemini: "Install the Gemini CLI (npm install -g @google/gemini-cli) to delegate to gemini.",
 };
+
+/** Agents whose absence is normal: a missing one is `ok`, not a warning. */
+const OPTIONAL_AGENTS: readonly AgentId[] = ["gemini"];
 
 async function checkAgent(id: AgentId): Promise<Check> {
   const agent = getAgent(id);
   const version = await run(agent.binary(), agent.versionArgs, VERSION_TIMEOUT_MS);
-  if (version === null)
+  if (version === null) {
+    if (OPTIONAL_AGENTS.includes(id) && !isAgentAvailable(id))
+      return ok(id, "not installed (optional)");
     return warn(id, `${agent.displayName} not found on PATH or not responding`, INSTALL_HINTS[id]);
+  }
   return ok(id, version.split("\n")[0] ?? version);
 }
 
@@ -180,7 +187,8 @@ export const exitCodeFor = (checks: Check[]) => (checks.some((c) => c.status ===
 export default defineCommand({
   meta: {
     name: "doctor",
-    description: "Check the installation: Node, codex and claude CLIs, job state, legacy setups",
+    description:
+      "Check the installation: Node, the agent CLIs (codex, claude, gemini), job state, legacy setups",
   },
   run: userFacing(async () => {
     const checks = await collectChecks();

@@ -26,7 +26,7 @@ describe("plugin package", () => {
 
     expect(manifest).toMatchObject({
       name: "mate",
-      version: "0.6.0",
+      version: "0.7.0",
       skills: "./skills/",
       mcpServers: "./.mcp.json",
     });
@@ -113,6 +113,29 @@ describe("plugin package", () => {
     ]);
   });
 
+  it("ships the UserPromptSubmit inbox hook next to SessionStart", () => {
+    const hooks = json<{
+      hooks: Record<
+        string,
+        Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }>
+      >;
+    }>("hooks/hooks.json");
+
+    expect(existsSync(resolve(root, "hooks/user-prompt-submit.mjs"))).toBe(true);
+    expect(hooks.hooks["UserPromptSubmit"]).toEqual([
+      {
+        matcher: "*",
+        hooks: [
+          {
+            type: "command",
+            command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit.mjs"',
+          },
+        ],
+      },
+    ]);
+    expect(hooks.hooks["SessionStart"]).toBeDefined();
+  });
+
   it("keeps plugin and marketplace versions aligned with the npm package", () => {
     const pkg = json<{ version: string }>("package.json");
     const codex = json<{ version: string }>(".codex-plugin/plugin.json");
@@ -128,8 +151,8 @@ describe("plugin package", () => {
     const pkg = json<{ version: string }>("package.json");
     const source = readFileSync(resolve(root, "src/lib/version.ts"), "utf8");
 
-    expect(pkg.version).toBe("0.6.0");
-    expect(source).toMatch(/VERSION\s*=\s*"0\.6\.0"/);
+    expect(pkg.version).toBe("0.7.0");
+    expect(source).toMatch(/VERSION\s*=\s*"0\.7\.0"/);
   });
 
   it("points package metadata at the public repository", () => {
@@ -190,11 +213,13 @@ const SKILLS = [
   "delegate",
   "codex",
   "claude",
+  "gemini",
+  "init",
 ];
 const AGENTS = ["codex-teammate", "codex-reviewer", "codex-researcher", "codex-teamlead"];
 
 describe("skills", () => {
-  it("ships the twelve skills", () => {
+  it("ships the fourteen skills", () => {
     const names = readdirSync(resolve(root, "skills"), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);

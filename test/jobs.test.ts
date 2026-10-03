@@ -17,6 +17,7 @@ import {
 import { buildInvocation } from "../src/jobs/providers.js";
 import { VERSION } from "../src/lib/version.js";
 import { readEvents } from "../src/jobs/events.js";
+import { readInbox } from "../src/jobs/inbox.js";
 import { renderObservation, renderResult } from "../src/jobs/render.js";
 import { stdoutFile, updateJob, type Job } from "../src/jobs/store.js";
 
@@ -115,6 +116,16 @@ describe("jobs", () => {
     expect(done.sessionId).toBe("t-1");
     const { text } = readResult(job.id);
     expect(text).toContain("exec --json --skip-git-repo-check --sandbox read-only hello");
+  }, 30_000);
+
+  it("delivers a job's important message and finish to the inbox of its directory", async () => {
+    const job = start("hello");
+    await waitJob(job.id, 20_000);
+
+    const entries = readInbox({ cwd: home }).filter((e) => e.job === job.id);
+    expect(entries.map((e) => e.kind)).toEqual(["message", "finished"]);
+    expect(entries[0]).toMatchObject({ provider: "codex", role: "custom", cwd: home });
+    expect(entries[1]?.text).toMatch(/^done · \d+s$/);
   }, 30_000);
 
   it("records job events and filters them for observe", async () => {

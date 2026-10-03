@@ -2,6 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { AGENT_IDS } from "./agents/registry.js";
 import type { EventLevel } from "./agents/types.js";
 import {
   cancelJob,
@@ -17,6 +18,7 @@ import {
   type StartOptions,
 } from "./jobs/api.js";
 import { readEvents } from "./jobs/events.js";
+import { ackInbox, readInbox, renderInbox, unreadInbox } from "./jobs/inbox.js";
 import {
   renderEvents,
   renderList,
@@ -79,7 +81,15 @@ const sessionArg = z
     "Id of a session (mate_session_start): its short shared notes prefix the worker's briefing and the job is recorded in it",
   );
 
-const provider = z.enum(["codex", "claude"]).describe("Which agent CLI runs the task");
+const provider = z
+  .enum(AGENT_IDS)
+  .describe("Which agent CLI runs the task: codex, claude or gemini (experimental)");
+const partnerArg = z
+  .enum(AGENT_IDS)
+  .optional()
+  .describe(
+    "The agent that works with the provider (reviewer, delegate); must differ from it. Defaults to the other of codex and claude (claude when the provider is gemini)",
+  );
 const context = z.string().optional().describe("Background the worker needs; it sees nothing else");
 
 /** Optional arguments shared by every job-starting tool. */
@@ -117,12 +127,23 @@ function runRole(
     mode?: JobMode | undefined;
     maxRounds?: number | undefined;
     maxParts?: number | undefined;
+    partner?: Provider | undefined;
   },
   fields: RoleFields,
   defaultWaitSeconds = 0,
 ): Promise<string> {
-  const { provider, mode, maxRounds, maxParts, cwd, model, timeoutMinutes, waitSeconds, session } =
-    args;
+  const {
+    provider,
+    mode,
+    maxRounds,
+    maxParts,
+    partner,
+    cwd,
+    model,
+    timeoutMinutes,
+    waitSeconds,
+    session,
+  } = args;
   return startAndMaybeWait(
     {
       provider,
@@ -131,6 +152,7 @@ function runRole(
       mode,
       maxRounds,
       maxParts,
+      partner,
       cwd,
       model,
       timeoutMinutes,
@@ -145,7 +167,7 @@ server.registerTool(
   {
     title: "Start a delegated job",
     description:
-      "Delegate a free-form task to another agent CLI (codex or claude) as a background job; prefer the role tools (mate_ask, mate_review, ...) when one fits. The job keeps running even if this session ends. The worker has no context beyond the briefing you give it.",
+      "Delegate a free-form task to another agent CLI (codex, claude or gemini) as a background job; prefer the role tools (mate_ask, mate_review, ...) when one fits. The job keeps running even if this session ends. The worker has no context beyond the briefing you give it.",
     inputSchema: {
       provider,
       prompt: z.string().describe("The full task briefing; the worker has no other context"),
@@ -173,7 +195,7 @@ server.registerTool(
   {
     title: "Ask the other agent",
     description:
-      "Ask codex or claude a direct question and get the answer in this call; use it for a second opinion or a quick fact check. The worker has no context beyond the question and context you pass.",
+      "Ask codex, claude or gemini (experimental) a direct question and get the answer in this call; use it for a second opinion or a quick fact check. The worker has no context beyond the question and context you pass.",
     inputSchema: {
       provider,
       question: z.string().describe("A self-contained question"),
@@ -189,7 +211,7 @@ server.registerTool(
   {
     title: "Request a code review",
     description:
-      "Have codex or claude review a diff, files or a description, read-only, with findings ordered by severity and a verdict; use it before merging or after a large change. The worker has no context beyond the target, focus and context you pass.",
+      "Have codex, claude or gemini (experimental) review a diff, files or a description, read-only, with findings ordered by severity and a verdict; use it before merging or after a large change. The worker has no context beyond the target, focus and context you pass.",
     inputSchema: {
       provider,
       target: z
@@ -210,7 +232,7 @@ server.registerTool(
   {
     title: "Research a topic",
     description:
-      "Have codex or claude investigate a topic read-only and report findings, compared options and a recommendation; use it when you need evidence before deciding. The worker has no context beyond the briefing you pass.",
+      "Have codex, claude or gemini (experimental) investigate a topic read-only and report findings, compared options and a recommendation; use it when you need evidence before deciding. The worker has no context beyond the briefing you pass.",
     inputSchema: {
       provider,
       topic: z.string().describe("What to investigate"),
@@ -230,7 +252,7 @@ server.registerTool(
   {
     title: "Plan or critique a plan",
     description:
-      "Have codex or claude write a step-by-step plan for a goal, or critique an existing plan when existingPlan is given, read-only; use it before non-trivial work. The worker has no context beyond the briefing you pass.",
+      "Have codex, claude or gemini (experimental) write a step-by-step plan for a goal, or critique an existing plan when existingPlan is given, read-only; use it before non-trivial work. The worker has no context beyond the briefing you pass.",
     inputSchema: {
       provider,
       goal: z.string().describe("What the plan must achieve"),
@@ -250,7 +272,7 @@ server.registerTool(
   {
     title: "Delegate an implementation",
     description:
-      "Have codex or claude implement a scoped task by editing files in the working directory (write mode); use it only when the user authorized edits, and run one write job at a time. The worker has no context beyond the task, acceptance criteria and context you pass.",
+      "Have codex, claude or gemini (experimental) implement a scoped task by editing files in the working directory (write mode); use it only when the user authorized edits, and run one write job at a time. The worker has no context beyond the task, acceptance criteria and context you pass.",
     inputSchema: {
       provider,
       task: z.string().describe("A complete, scoped description of the change"),
@@ -269,9 +291,10 @@ server.registerTool(
   {
     title: "Start a team lead",
     description:
-      "Put codex or claude in charge of a broad objective: it decomposes the work, delegates subtasks to the other agent, reviews the results and reports back; use it for multi-part work, and follow it with mate_observe. A codex team lead runs with danger-full-access. The worker has no context beyond the objective, constraints and context you pass.",
+      "Put codex, claude or gemini (experimental) in charge of a broad objective: it decomposes the work, delegates subtasks to the other agent, reviews the results and reports back; use it for multi-part work, and follow it with mate_observe. A codex team lead runs with danger-full-access. The worker has no context beyond the objective, constraints and context you pass.",
     inputSchema: {
       provider,
+      partner: partnerArg,
       objective: z.string().describe("The broad goal the team lead owns"),
       constraints: z.string().optional().describe("Limits the team must respect"),
       context,
@@ -294,9 +317,10 @@ server.registerTool(
     description:
       "Have one agent implement a scoped change and the other agent review it, looping on the reviewer's findings, without relaying anything by hand; use it for one well-scoped change you want implemented by one agent and reviewed by the other. WARNING: it edits files, because the provider you name runs in write mode in the working directory (the other agent only reads and reviews the uncommitted diff); use it only when the user authorized edits, and run one write job per working tree. It stops when the reviewer approves, gives no clear verdict (then a human decides) or maxRounds is used up; the report lists the rounds, the final review and the changes. Only a top-level session can start it; follow it with mate_observe. The workers have no context beyond the task and acceptance criteria you pass.",
     inputSchema: {
-      provider: z
-        .enum(["codex", "claude"])
-        .describe("The agent that implements; the other one reviews"),
+      provider: provider.describe(
+        "The agent that implements; the partner (default: the other agent) reviews",
+      ),
+      partner: partnerArg,
       task: z.string().describe("A complete, scoped description of the change"),
       acceptance: z.string().optional().describe("Criteria that define done"),
       maxRounds: z
@@ -330,9 +354,8 @@ server.registerTool(
     description:
       "Split a broad goal into independent parts that run in parallel and are cross-reviewed, without relaying anything by hand: the provider plans 1 to maxParts parts with closed interfaces and no overlapping files, each part goes to one of the two agents, and the other agent reviews each finished part. In read-only mode (default) the parts are research jobs on the working directory; in write mode each part is implemented in its own git worktree and branch (agentmate/<split-id>/<part>) created from HEAD, which needs a git repository with a commit and a clean working tree (it refuses uncommitted changes) and edits files, so use write only when the user authorized edits. The report lists the parts with their verdicts, the ordered `git merge` commands for approved parts (nothing is merged for you; conflicts are not resolved), cleanup commands for every worktree and branch it created, and what needs a human. Creates a session when none is given and records the plan in its notes. Only a top-level session can start it; follow it with mate_observe. The workers have no context beyond the goal and acceptance criteria you pass.",
     inputSchema: {
-      provider: z
-        .enum(["codex", "claude"])
-        .describe("The agent that plans; the parts use both agents"),
+      provider: provider.describe("The agent that plans; the parts use it and its partner"),
+      partner: partnerArg,
       goal: z.string().describe("The broad goal to split, with the files and constraints involved"),
       acceptance: z.string().optional().describe("Criteria that define done for the whole goal"),
       maxParts: z
@@ -533,6 +556,38 @@ server.registerTool(
     },
   },
   guard(({ cwd, limit, parent }) => renderList(listJobs({ cwd, limit, parent }))),
+);
+
+server.registerTool(
+  "mate_inbox",
+  {
+    title: "Read the inbox",
+    description:
+      "Call at the start of a turn when jobs are in progress: it is how you learn that another agent finished, failed or reported something without sitting in mate_wait. Returns the important messages, errors and finishes of jobs started in this directory (or below), one line each, and with ack moves the read marker forward so they are not shown twice. Call it before mate_wait; then mate_result for details.",
+    inputSchema: {
+      cwd: z
+        .string()
+        .optional()
+        .describe("Directory to read the inbox for (defaults to the server cwd)"),
+      unread: z.boolean().optional().describe("Only entries not acknowledged yet, default true"),
+      ack: z.boolean().optional().describe("Mark the returned entries as read, default true"),
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .max(200)
+        .optional()
+        .describe("Newest N entries, default 20"),
+    },
+  },
+  guard(({ cwd, unread, ack, limit }) => {
+    const dir = cwd ?? process.cwd();
+    const max = limit ?? 20;
+    const entries = unread === false ? readInbox({ cwd: dir, limit: max }) : unreadInbox(dir, max);
+    const last = entries.at(-1);
+    if (ack !== false && last) ackInbox(dir, last.ts);
+    return renderInbox(entries);
+  }),
 );
 
 async function main(): Promise<void> {

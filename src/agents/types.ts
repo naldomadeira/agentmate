@@ -1,7 +1,6 @@
 import type { Job } from "../jobs/store.js";
 
-/** Phase 3 adds further agents here. */
-export type AgentId = "codex" | "claude";
+export type AgentId = "codex" | "claude" | "gemini";
 
 export interface AgentCapabilities {
   /** Supports `write` mode. */

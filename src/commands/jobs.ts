@@ -11,6 +11,7 @@ import {
   summarize,
   waitJob,
 } from "../jobs/api.js";
+import { isAgentId } from "../agents/registry.js";
 import type { EventLevel } from "../agents/types.js";
 import { readEvents } from "../jobs/events.js";
 import { userFacing } from "../lib/errors.js";
@@ -37,8 +38,9 @@ const STILL_RUNNING = 2;
 
 const idArg = { id: { type: "positional", required: true, description: "Job id" } } as const;
 
-const parseProvider = (value: string): Provider => {
-  if (value !== "codex" && value !== "claude") throw new Error("provider must be codex or claude");
+const parseProvider = (value: string, name = "provider"): Provider => {
+  if (!isAgentId(value))
+    throw new Error(`${name} must be codex or claude (or gemini, experimental)`);
   return value;
 };
 
@@ -77,7 +79,11 @@ export default defineCommand({
     start: defineCommand({
       meta: { name: "start", description: "Start a job and print its id" },
       args: {
-        provider: { type: "positional", required: true, description: "codex or claude" },
+        provider: {
+          type: "positional",
+          required: true,
+          description: "codex, claude or gemini (experimental)",
+        },
         prompt: { type: "positional", required: true, description: "Task briefing" },
         cwd: { type: "string", description: "Working directory" },
         model: { type: "string", description: "Model override" },
@@ -99,6 +105,11 @@ export default defineCommand({
         session: {
           type: "string",
           description: "Session id (sessions start): its notes prefix the briefing",
+        },
+        partner: {
+          type: "string",
+          description:
+            "teamlead, crossreview and split only: the agent that works with the provider (default: the other of codex and claude); must differ from it",
         },
       },
       run: userFacing(({ args }) => {
@@ -133,8 +144,13 @@ export default defineCommand({
           );
         if (maxParts !== undefined && args.role !== "split")
           throw new Error("max-parts applies only with --role split");
+        const partner =
+          args.partner === undefined ? undefined : parseProvider(args.partner, "partner");
+        if (partner !== undefined && partner === provider)
+          throw new Error(`partner must differ from the provider (both are ${provider})`);
         const job = startJob({
           provider,
+          partner,
           prompt: args.prompt,
           maxRounds,
           maxParts,
@@ -152,10 +168,15 @@ export default defineCommand({
     ask: defineCommand({
       meta: {
         name: "ask",
-        description: "Ask codex or claude a question and print the answer; exit 2 if still running",
+        description:
+          "Ask codex, claude or gemini a question and print the answer; exit 2 if still running",
       },
       args: {
-        provider: { type: "positional", required: true, description: "codex or claude" },
+        provider: {
+          type: "positional",
+          required: true,
+          description: "codex, claude or gemini (experimental)",
+        },
         question: { type: "positional", required: true, description: "The question" },
         wait: { type: "string", description: "Max wait, e.g. 90s or 2m (default 120s)" },
         cwd: { type: "string", description: "Working directory" },

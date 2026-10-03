@@ -31,6 +31,12 @@ describe("project documentation", () => {
     expect(readme).toContain("quota_exhausted");
     expect(readme).toContain("AGENTMATE_QUOTA_PATTERNS");
     expect(readme).toContain("AGENTMATE_HOOK_QUIET");
+    expect(readme).toContain("mate_inbox");
+    expect(readme).toContain("UserPromptSubmit");
+    expect(readme).toContain("Gemini");
+    expect(readme).toContain("## Teammates");
+    expect(readme).toContain("agentmate init");
+    expect(readme).toContain("partner");
     expect(readme).toContain("Cutting a release");
     expect(readme).toContain("clean working tree");
     expect(readme).not.toContain("## Legacy setup");
@@ -52,6 +58,12 @@ describe("project documentation", () => {
     expect(portugueseReadme).toContain("quota_exhausted");
     expect(portugueseReadme).toContain("AGENTMATE_QUOTA_PATTERNS");
     expect(portugueseReadme).toContain("AGENTMATE_HOOK_QUIET");
+    expect(portugueseReadme).toContain("## Caixa de entrada");
+    expect(portugueseReadme).toContain("mate_inbox");
+    expect(portugueseReadme).toContain("Gemini");
+    expect(portugueseReadme).toContain("## Colegas de equipe");
+    expect(portugueseReadme).toContain("agentmate init");
+    expect(portugueseReadme).toContain("partner");
     expect(portugueseReadme).toContain("Publicar uma versão");
     expect(portugueseReadme).toContain("árvore de trabalho limpa");
   });

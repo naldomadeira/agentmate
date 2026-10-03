@@ -1,6 +1,6 @@
 # AgentMate architecture
 
-AgentMate is one runtime with two faces. **Delegation** hands a task to another coding agent as a durable background job and collects the result. **Collaboration** lets agents review, split and continue each other's work through the same jobs, using filtered events instead of raw transcripts. Claude Code and Codex CLI are the first teammates; the adapter layer is where new agents plug in.
+AgentMate is one runtime with two faces. **Delegation** hands a task to another coding agent as a durable background job and collects the result. **Collaboration** lets agents review, split and continue each other's work through the same jobs, using filtered events instead of raw transcripts. Claude Code and Codex CLI are the first teammates (Gemini CLI joins as an experimental one); the adapter layer is where new agents plug in.
 
 ```text
                          AgentMate
@@ -25,10 +25,13 @@ AgentMate is one runtime with two faces. **Delegation** hands a task to another 
 
 An adapter knows how to run one agent CLI and nothing else: which binary to call, which flags each role and mode need, how to parse the output, how to turn a stream of CLI events into AgentMate events, and what it can do (write, web access, resume, streaming). The runtime never branches on the agent name outside this directory. Adding an agent means adding one file and registering it.
 
+Availability is separate from registration: `isAgentAvailable(id)` looks for the adapter's binary (an absolute path, or a name on `PATH`, scanned without spawning anything) and `startJob` refuses an agent that is missing. `otherAgent()` pairs codex with claude and gemini with claude; the workflows accept a `partner` to override it. The Gemini adapter is experimental: it follows the documented headless format and is tested against a fake binary, because the CLI is not installed in the development environment.
+
 | Adapter | Invocation | Read-only | Write | Streaming |
 | --- | --- | --- | --- | --- |
 | `codex` | `codex exec --json --skip-git-repo-check` | `--sandbox read-only` | `--sandbox workspace-write` (team lead: `danger-full-access`) | JSONL items |
 | `claude` | `claude -p --output-format stream-json --verbose` | tool allowlist plus explicit deny of `Edit`, `Write`, `NotebookEdit` | `--permission-mode acceptEdits` plus a verification allowlist | JSONL (stream-json): assistant text, tool use and error results |
+| `gemini` (experimental) | `gemini -p <prompt> --output-format stream-json` | `--approval-mode default` (headless denies tools that need approval; reads stay allowed) | `--approval-mode auto_edit` (team lead: `yolo`) | JSONL (stream-json): assistant chunks batched into one message at `result`, tool use, errors |
 
 ## Jobs (`src/jobs/`)
 
@@ -86,6 +89,10 @@ Children started by workflows (`crossreview`, `split`) inherit the workflow's se
 ## Session start hook
 
 The Claude Code plugin ships `hooks/hooks.json` (auto-discovered, not declared in the manifest) and `hooks/session-start.mjs`, a dependency-free, fail-open `SessionStart` hook. It reads the jobs of the session's directory (and its subdirectories) and prints one `additionalContext` line of at most 400 characters: jobs finished since the last session there (`quota_exhausted` first, marked "needs hand-off"), and the running and stale counts, where a worker pid counts as alive only when `/proc/<pid>/cmdline`, if readable, mentions `worker`. A per-directory stamp gives a 120 s cooldown and a 24 h first-run window; `AGENTMATE_HOOK_QUIET=1` disables it. Codex has no equivalent.
+
+## Inbox
+
+`appendEvent` (`src/jobs/events.ts`) copies every `important` event of kind `message`, `finished` or `error` to `~/.agentmate/inbox.jsonl` through `appendInbox` (`src/jobs/inbox.ts`), reading `cwd`, `session`, `provider` and `role` from the job; a failure there never reaches the job. Each line is `{ ts, job, cwd, session?, provider, role, kind, text }`. The file is owner-only and append-only; once it passes 5 MB the next append renames it to `inbox.1.jsonl` (overwriting the previous generation) and starts a fresh file. `readInbox({ cwd?, since?, limit?, kinds? })` returns entries oldest first, skips truncated lines and matches `cwd` by realpath, as equal or as a subdirectory (a sibling sharing a name prefix does not match). The read marker is one file per directory, `inbox-cursors/<sha1(realpath cwd)>.json` with `{ lastTs }`; `unreadInbox(cwd)` returns entries with `ts > lastTs` and `ackInbox(cwd, ts)` moves it forward, never back. `mate_inbox` and `agentmate inbox` are thin views over these functions. No daemon is involved: delivery is by file plus hooks. `hooks/user-prompt-submit.mjs` (`UserPromptSubmit`, registered in `hooks/hooks.json`) reads the same files without importing from `src` (the layout is copied, and `test/hook.test.ts` pins it), prints up to 5 unread entries as `additionalContext`, advances the cursor over what it showed and keeps a 10 s stamp per directory under `hooks/`; `session-start.mjs` only counts unread entries. Codex has no hooks and polls through `mate_inbox`, as the skills instruct.
 
 ## Safety model
 
