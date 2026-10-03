@@ -14,11 +14,11 @@ Tell the user to install the plugin in the host they use. It adds the `ask`, `re
 ```bash
 # Claude Code
 claude plugin marketplace add naldomadeira/agents-bridge-mcp
-claude plugin install agents-bridge@agents-bridge
+claude plugin install bridge@agents-bridge
 
 # Codex
 codex plugin marketplace add naldomadeira/agents-bridge-mcp
-codex plugin add agents-bridge@agents-bridge
+codex plugin add bridge@agents-bridge
 ```
 
 Restart the host, then verify with `npx -y agents-bridge-mcp doctor`. Full guide: `docs/INSTALL_FOR_AGENTS.md`.

@@ -7,7 +7,7 @@
   "description": "agents-bridge: background delegation between Claude Code and Codex CLI.",
   "plugins": [
     {
-      "name": "agents-bridge",
+      "name": "bridge",
       "source": "./",
       "description": "Ask, review, research, plan, implement and lead across Claude Code and Codex as background jobs, with role skills, Codex agents and MCP tools.",
       "tags": ["mcp", "delegation", "codex", "claude", "multi-agent"]

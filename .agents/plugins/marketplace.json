@@ -1,6 +1,6 @@
 {
   "name": "agents-bridge",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Agents Bridge plugin for Claude Code and Codex: ask, review, research, plan, implement and lead across both.",
   "owner": {
     "name": "Naldo Madeira",
@@ -11,7 +11,7 @@
   },
   "plugins": [
     {
-      "name": "agents-bridge",
+      "name": "bridge",
       "source": {
         "source": "local",
         "path": "./"

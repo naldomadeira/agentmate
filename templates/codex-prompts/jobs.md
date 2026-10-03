@@ -14,4 +14,4 @@ Take the first word as the verb (`list`, `observe`, `result` or `cancel`); the r
 
 If the `bridge_*` tools are not loaded, run `npx -y agents-bridge-mcp jobs <verb> [id]` in the shell. Match ids exactly and report id, role, provider and status briefly. Jobs outlive the session that started them, and the user owns acceptance of any result.
 
-Full rules: the `$jobs` skill.
+Full rules: the `$bridge:jobs` skill.

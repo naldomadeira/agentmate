@@ -13,4 +13,4 @@ Request: $ARGUMENTS
 
 The worker has no context beyond your briefing: state the goal, exact files, constraints and the answer shape you want. Report the outcome to the user in your own words; the user owns acceptance, so verify before relying on it.
 
-Full rules: the `/agents-bridge:ask` plugin skill.
+Full rules: the `/bridge:ask` plugin skill.

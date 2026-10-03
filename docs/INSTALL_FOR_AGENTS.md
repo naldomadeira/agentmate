@@ -17,19 +17,25 @@ Agents Bridge packages ten skills (`ask`, `review`, `research`, `plan`, `impleme
 
 ```bash
 claude plugin marketplace add naldomadeira/agents-bridge-mcp
-claude plugin install agents-bridge@agents-bridge
+claude plugin install bridge@agents-bridge
 ```
 
-Restart Claude Code. The installed plugin exposes the skills as `/agents-bridge:ask`, `/agents-bridge:review` and so on, adds the four agents, and starts only the jobs MCP server.
+Restart Claude Code. The installed plugin exposes the skills as `/bridge:ask`, `/bridge:review` and so on, adds the four agents, and starts only the jobs MCP server.
 
 ### Codex
 
 ```bash
 codex plugin marketplace add naldomadeira/agents-bridge-mcp
-codex plugin add agents-bridge@agents-bridge
+codex plugin add bridge@agents-bridge
 ```
 
-Restart Codex. The plugin provides the skills (mention one with `$ask`, or use the skills menu) and the `bridge_*` tools without a manual `config.toml` edit.
+Restart Codex. The plugin provides the skills (type `$bridge:ask`, or `$bridge` to filter them all, or pick one from the `/skills` menu) and the `bridge_*` tools without a manual `config.toml` edit.
+
+### Migrating from 0.2.0
+
+The plugin was renamed from `agents-bridge` to `bridge`, so its install id changed. Remove the old plugin: `claude plugin uninstall agents-bridge@agents-bridge`; in Codex, remove the `agents-bridge@agents-bridge` plugin with `codex plugin --help` for the exact verb.
+Then install `bridge@agents-bridge` as above and restart the host.
+Commands are now `/bridge:ask` in Claude Code and `$bridge:ask` in Codex.
 
 ### Optional: slash commands
 
@@ -46,7 +52,7 @@ npx -y agents-bridge-mcp install commands codex
 npx -y agents-bridge-mcp install commands both --global
 ```
 
-Claude Code commands go to `~/.claude/commands/` (`--local`: `./.claude/commands/`); Codex prompts go to `$CODEX_HOME/prompts/` (default `~/.codex/prompts/`) and are always user-level. The installer asks before overwriting an existing file and prints the command names it installed. OpenAI marks Codex custom prompts deprecated in favour of skills; they still work, and the `$ask` skill needs no extra install.
+Claude Code commands go to `~/.claude/commands/` (`--local`: `./.claude/commands/`); Codex prompts go to `$CODEX_HOME/prompts/` (default `~/.codex/prompts/`) and are always user-level. The installer asks before overwriting an existing file and prints the command names it installed. OpenAI marks Codex custom prompts deprecated in favour of skills; they still work, and the `$bridge:ask` skill needs no extra install.
 
 ### Local development
 
@@ -54,10 +60,10 @@ Point each host at the checkout while testing unpublished changes:
 
 ```bash
 claude plugin marketplace add /absolute/path/to/agents-bridge-mcp
-claude plugin install agents-bridge@agents-bridge
+claude plugin install bridge@agents-bridge
 
 codex plugin marketplace add /absolute/path/to/agents-bridge-mcp
-codex plugin add agents-bridge@agents-bridge
+codex plugin add bridge@agents-bridge
 ```
 
 Remove a local marketplace before adding the remote repository under the same name. Team lead mode runs the CLI pinned to the installed version (`npx -y agents-bridge-mcp@<version> jobs ...`), so an unpublished local checkout must be published or linked before team lead jobs work.
@@ -66,14 +72,13 @@ Remove a local marketplace before adding the remote repository under the same na
 
 ```bash
 # Claude Code
-claude plugin marketplace update agents-bridge
-claude plugin update agents-bridge@agents-bridge
+claude plugin marketplace update agents-bridge && claude plugin update bridge@agents-bridge
 
 # Codex
-codex plugin marketplace upgrade agents-bridge
+codex plugin marketplace upgrade agents-bridge && codex plugin add bridge@agents-bridge
 ```
 
-Restart the host after an upgrade. Confirm the active plugin with `claude plugin list` or `codex plugin list`; check the CLI version with `npx -y agents-bridge-mcp --version`. Version 0.2.0 adds the role skills and tools; see the [changelog](../CHANGELOG.md).
+Restart the host after an upgrade. Confirm the active plugin with `claude plugin list` or `codex plugin list`; check the CLI version with `npx -y agents-bridge-mcp --version`. Hosts cache the plugin per version, so the new version only appears after the restart. See the [changelog](../CHANGELOG.md) for what changed.
 
 ## Smoke test
 
@@ -110,7 +115,7 @@ npx -y agents-bridge-mcp doctor
 ## Diagnose an installation
 
 1. Run `npx -y agents-bridge-mcp doctor` and follow its hints.
-2. Run `claude plugin list` or `codex plugin list` and confirm that `agents-bridge@agents-bridge` is enabled.
+2. Run `claude plugin list` or `codex plugin list` and confirm that `bridge@agents-bridge` is enabled.
 3. Restart the host after any install or update; a running session does not reload skills or tools.
 4. Run `npx -y agents-bridge-mcp jobs list` to confirm the CLI fallback is available.
 5. If a job fails, confirm that the destination CLI is reachable on `PATH` (`doctor` checks this) and authenticated (`doctor` does not check this).

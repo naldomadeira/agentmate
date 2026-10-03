@@ -1,6 +1,6 @@
 ---
 name: claude
-description: Route a task or question to Claude Code — quick questions, reviews, research, plans, scoped implementation or a team lead — by picking the matching Agents Bridge tool. Use when the user says to ask, check with or hand something to Claude Code.
+description: Route a task or question to Claude Code (quick questions, reviews, research, plans, scoped implementation or a team lead) by picking the matching Agents Bridge tool. Use when the user says /bridge:claude, 'ask claude', 'check with claude', 'hand this to claude', 'pergunte ao claude'.
 argument-hint: "<task or question>"
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: jobs
-description: List, observe, collect or cancel background jobs started through Agents Bridge. Use to find a job id, check progress when asked, read a stored result or stop a job.
+description: List, observe, collect or cancel background jobs started through Agents Bridge. Use when the user says /bridge:jobs, 'is the job done', 'list my jobs', 'cancel that job', 'ver os jobs', or needs a job id or a stored result.
 argument-hint: "[list|observe|result|cancel] [id]"
 ---
 

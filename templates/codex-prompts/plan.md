@@ -13,4 +13,4 @@ Take the first word of the request as the provider (`codex` or `claude`); the re
 
 The worker has no context beyond your briefing: state the goal, exact files, constraints and the answer shape you want. Report the outcome to the user in your own words; the user owns acceptance, so verify before relying on it.
 
-Full rules: the `$plan` skill.
+Full rules: the `$bridge:plan` skill.

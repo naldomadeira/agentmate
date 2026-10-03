@@ -1,6 +1,6 @@
 {
   "name": "agents-bridge-mcp",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Let Claude Code and Codex CLI ask, review, research, plan, implement and lead each other as background jobs.",
   "keywords": [
     "agents",

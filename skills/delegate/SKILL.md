@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: Delegate a task to another agent CLI (codex or claude) as a background job — second opinions, reviews, research, scoped implementation. Use when the user asks to hand work to Codex or Claude, or wants an independent opinion from a different model.
+description: Delegate a task to another agent CLI (codex or claude) as a background job, covering second opinions, reviews, research and scoped implementation. Use when the user says /bridge:delegate, 'hand this to codex', 'delegue ao claude', or wants an independent opinion from a different model that fits no single role.
 argument-hint: "<codex|claude> <task>"
 ---
 

@@ -23,8 +23,8 @@ describe("plugin package", () => {
     const mcp = json<{ mcpServers: Record<string, McpServer> }>(".mcp.json");
 
     expect(manifest).toMatchObject({
-      name: "agents-bridge",
-      version: "0.2.1",
+      name: "bridge",
+      version: "0.3.0",
       skills: "./skills/",
       mcpServers: "./.mcp.json",
     });
@@ -43,10 +43,21 @@ describe("plugin package", () => {
     expect(marketplace.name).toBe("agents-bridge");
     expect(marketplace.plugins).toContainEqual(
       expect.objectContaining({
-        name: "agents-bridge",
+        name: "bridge",
         source: { source: "local", path: "./" },
       }),
     );
+  });
+
+  it("names the plugin bridge in the Claude manifest and marketplace, keeping the marketplace name", () => {
+    const manifest = json<PluginManifest>(".claude-plugin/plugin.json");
+    const marketplace = json<{ name: string; plugins: Array<{ name: string }> }>(
+      ".claude-plugin/marketplace.json",
+    );
+
+    expect(manifest.name).toBe("bridge");
+    expect(marketplace.name).toBe("agents-bridge");
+    expect(marketplace.plugins.map((plugin) => plugin.name)).toEqual(["bridge"]);
   });
 
   it("registers only the jobs server in the Claude plugin", () => {
@@ -83,8 +94,8 @@ describe("plugin package", () => {
     const pkg = json<{ version: string }>("package.json");
     const source = readFileSync(resolve(root, "src/lib/version.ts"), "utf8");
 
-    expect(pkg.version).toBe("0.2.1");
-    expect(source).toMatch(/VERSION\s*=\s*"0\.2\.1"/);
+    expect(pkg.version).toBe("0.3.0");
+    expect(source).toMatch(/VERSION\s*=\s*"0\.3\.0"/);
   });
 
   it("points package metadata at the public repository", () => {
@@ -161,6 +172,7 @@ describe("skills", () => {
 
     expect(fields.name).toBe(name);
     expect(fields.description?.length ?? 0).toBeGreaterThan(20);
+    expect(fields.description).toContain("/bridge:");
     expect(fields["argument-hint"]).toBeTruthy();
     expect(fields["allowed-tools"]).toBeUndefined();
     expect(readFileSync(path, "utf8").split("\n").length).toBeLessThanOrEqual(80);
@@ -259,10 +271,10 @@ describe("command templates", () => {
 
       expect(claude, name).toContain("$ARGUMENTS");
       expect(claude, name).toContain("$1");
-      expect(claude, name).toContain(`/agents-bridge:${name}`);
+      expect(claude, name).toContain(`/bridge:${name}`);
       expect(codex, name).toContain("$ARGUMENTS");
       expect(codex, name).not.toMatch(/\$1\b/);
-      expect(codex, name).toContain(`$${name}`);
+      expect(codex, name).toContain(`$bridge:${name}`);
     }
   });
 });
