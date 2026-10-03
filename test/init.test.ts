@@ -52,6 +52,38 @@ describe("upsertMarkedSection", () => {
   });
 });
 
+describe("upsertMarkedSection line endings and whole-line markers", () => {
+  const crlf = (text: string) => text.replace(/\n/g, "\r\n");
+
+  it("renders the block with CRLF when the file uses CRLF, and a second run changes nothing", () => {
+    const original = crlf("# Repo\n\ntext\n");
+    const once = upsertMarkedSection(original, "agentmate", "line one\nline two");
+    expect(once).toBe(crlf(`# Repo\n\ntext\n\n${START}\nline one\nline two\n${END}\n`));
+    expect(once.replace(/\r\n/g, "")).not.toMatch(/[\r\n]/); // no bare CR or LF left
+    const twice = upsertMarkedSection(once, "agentmate", "line one\nline two");
+    expect(Buffer.from(twice).equals(Buffer.from(once))).toBe(true);
+  });
+
+  it("refreshes a CRLF block in place, keeping CRLF around it", () => {
+    const old = crlf(`before\n\n${START}\nold\n${END}\n\nafter\n`);
+    expect(upsertMarkedSection(old, "agentmate", "new")).toBe(
+      crlf(`before\n\n${START}\nnew\n${END}\n\nafter\n`),
+    );
+  });
+
+  it("matches markers only as whole lines, allowing surrounding whitespace", () => {
+    const inline = `Docs say: ${START} opens the block and ${END} closes it.\n`;
+    expect(upsertMarkedSection(inline, "agentmate", "body")).toBe(
+      `${inline}\n${START}\nbody\n${END}\n`,
+    );
+    const padded = `x\n  ${START}  \nold\n\t${END}\t\ny\n`;
+    expect(upsertMarkedSection(padded, "agentmate", "new")).toBe(
+      `x\n  ${START}\nnew\n${END}\t\ny\n`,
+    );
+    expect(readMarkedSection(padded, "agentmate")).toBe("old");
+  });
+});
+
 describe("readMarkedSection", () => {
   it("returns the body, or null when there is no section", () => {
     expect(readMarkedSection(`x\n${START}\nbody\nline\n${END}\n`, "agentmate")).toBe("body\nline");
@@ -112,6 +144,41 @@ describe("applyInit", () => {
       { file: "AGENTS.md", status: "created" },
     ]);
     expect(read("AGENTS.md")).toBe(`${block}\n`);
+  });
+
+  it("is idempotent on CRLF files: two runs give identical bytes, and --check passes", () => {
+    fs.writeFileSync(path.join(dir, "AGENTS.md"), "# Agents\r\n\r\nBe kind.\r\n");
+    expect(applyInit({ cwd: dir, files: ["AGENTS.md"] })).toEqual([
+      { file: "AGENTS.md", status: "updated" },
+    ]);
+    const first = fs.readFileSync(path.join(dir, "AGENTS.md"));
+    expect(first.toString("utf8").replace(/\r\n/g, "")).not.toMatch(/[\r\n]/);
+    expect(applyInit({ cwd: dir, files: ["AGENTS.md"] })).toEqual([
+      { file: "AGENTS.md", status: "unchanged" },
+    ]);
+    expect(fs.readFileSync(path.join(dir, "AGENTS.md")).equals(first)).toBe(true);
+    expect(applyInit({ cwd: dir, files: ["AGENTS.md"], check: true })).toEqual([
+      { file: "AGENTS.md", status: "unchanged" },
+    ]);
+  });
+
+  it("--check compares after EOL normalisation: a LF block in a CRLF file is not drift", () => {
+    fs.writeFileSync(path.join(dir, "AGENTS.md"), `# Agents\r\n\r\n${block}\n`);
+    expect(applyInit({ cwd: dir, files: ["AGENTS.md"], check: true })).toEqual([
+      { file: "AGENTS.md", status: "unchanged" },
+    ]);
+  });
+
+  it("creates CLAUDE.md as @AGENTS.md plus the block when AGENTS.md is managed too", () => {
+    expect(applyInit({ cwd: dir, files: ["AGENTS.md", "CLAUDE.md"], create: true })).toEqual([
+      { file: "AGENTS.md", status: "created" },
+      { file: "CLAUDE.md", status: "created" },
+    ]);
+    expect(read("AGENTS.md")).toBe(`${block}\n`);
+    expect(read("CLAUDE.md")).toBe(`@AGENTS.md\n\n${block}\n`);
+    expect(
+      applyInit({ cwd: dir, files: ["AGENTS.md", "CLAUDE.md"], check: true }).map((r) => r.status),
+    ).toEqual(["unchanged", "unchanged"]);
   });
 
   it("with check, writes nothing and reports drift", () => {
@@ -184,7 +251,7 @@ describe("agentmate init", () => {
     expect((await run("--check")).exitCode).toBe(0);
   }, 90_000);
 
-  it("--create starts AGENTS.md when neither default file exists, and --files picks others", async () => {
+  it("--create starts AGENTS.md and CLAUDE.md when neither exists, and --files picks others", async () => {
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), "abm-init-empty-"));
     try {
       const exec = (...args: string[]) =>
@@ -196,11 +263,17 @@ describe("agentmate init", () => {
       const none = await exec();
       expect(none.exitCode).toBe(0);
       expect(none.stdout).toContain("Nothing to update");
+      expect(none.stdout).toContain("Run `agentmate init --create`");
       expect((await exec("--check")).exitCode).toBe(1);
 
       const created = await exec("--create");
       expect(created.stdout).toContain("AGENTS.md: created");
-      expect(fs.existsSync(path.join(empty, "CLAUDE.md"))).toBe(false);
+      expect(created.stdout).toContain("CLAUDE.md: created");
+      // Claude Code does not read AGENTS.md natively, so CLAUDE.md imports it.
+      expect(fs.readFileSync(path.join(empty, "CLAUDE.md"), "utf8")).toBe(
+        `@AGENTS.md\n\n${block}\n`,
+      );
+      expect(fs.readFileSync(path.join(empty, "AGENTS.md"), "utf8")).toBe(`${block}\n`);
 
       const other = await exec("--create", "--files", "GEMINI.md");
       expect(other.stdout).toContain("GEMINI.md: created");

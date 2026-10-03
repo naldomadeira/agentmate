@@ -12,7 +12,7 @@ Writes a short block between `<!-- agentmate:start -->` and `<!-- agentmate:end 
 
 ```bash
 npx -y agentmate init                 # update the files that exist
-npx -y agentmate init --create        # start AGENTS.md when neither file exists
+npx -y agentmate init --create        # start AGENTS.md and a CLAUDE.md that imports it
 npx -y agentmate init --check         # change nothing; exit 1 if a block is missing or old
 npx -y agentmate init --cwd <dir> --files AGENTS.md,CLAUDE.md
 ```
@@ -22,6 +22,8 @@ Each file is reported as `created`, `updated`, `already up to date`, `not found`
 ## Rules
 
 - Run it from the repository root (or pass `--cwd`), and show the user which files changed. Do not commit them unless asked.
-- Without `--create` it never makes a new file. If neither file exists, ask whether to create `AGENTS.md`.
+- Without `--create` it never makes a new file. If neither file exists, ask whether to run `agentmate init --create`.
+- Claude Code does not read `AGENTS.md` natively. `--create` therefore writes `AGENTS.md` and a `CLAUDE.md` that starts with `@AGENTS.md` (Claude Code imports it) followed by the block.
+- A file with CRLF line endings keeps them; markers are matched only when alone on their line.
 - A marker without its partner stops the run with an error naming the file. Do not edit the markers for the user; tell them what to fix.
 - `--check` suits CI or a pre-commit hook. After upgrading AgentMate, run `init` again to refresh the block.

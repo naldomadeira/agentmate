@@ -5,11 +5,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { appendEvent } from "../src/jobs/events.js";
 import {
   ackInbox,
+  ackJob,
+  ackShown,
+  ackTerminalJob,
   appendInbox,
   inboxFile,
+  inboxToolText,
   readCursor,
   readInbox,
   renderInbox,
+  renderInboxEntry,
+  rotatedInboxFile,
   unreadInbox,
   type InboxEntry,
 } from "../src/jobs/inbox.js";
@@ -20,8 +26,10 @@ let repo: string;
 let sub: string;
 let elsewhere: string;
 const saved = process.env["AGENTMATE_HOME"];
+const savedJob = process.env["AGENTMATE_JOB_ID"];
 
 beforeEach(() => {
+  delete process.env["AGENTMATE_JOB_ID"];
   base = fs.mkdtempSync(path.join(os.tmpdir(), "abm-inbox-"));
   process.env["AGENTMATE_HOME"] = path.join(base, "state");
   repo = path.join(base, "repo");
@@ -33,10 +41,14 @@ beforeEach(() => {
 afterEach(() => {
   if (saved === undefined) delete process.env["AGENTMATE_HOME"];
   else process.env["AGENTMATE_HOME"] = saved;
+  if (savedJob === undefined) delete process.env["AGENTMATE_JOB_ID"];
+  else process.env["AGENTMATE_JOB_ID"] = savedJob;
   fs.rmSync(base, { recursive: true, force: true });
 });
 
-const at = (n: number) => new Date(Date.UTC(2026, 9, 3, 12, 0, n)).toISOString();
+// Relative to now: with no cursor only the last 24 hours count as unread.
+const T0 = Math.floor((Date.now() - 3_600_000) / 1000) * 1000;
+const at = (n: number) => new Date(T0 + n * 1000).toISOString();
 
 function entry(fields: Partial<InboxEntry> = {}): InboxEntry {
   return {
@@ -162,24 +174,164 @@ describe("inbox", () => {
     appendInbox(entry({ ts: at(3), job: "j3", cwd: elsewhere }));
 
     expect(readCursor(repo)).toBeNull();
-    expect(unreadInbox(repo).map((e) => e.job)).toEqual(["j1", "j2"]);
-    expect(unreadInbox(repo, 1).map((e) => e.job)).toEqual(["j2"]);
+    expect(unreadInbox(repo).entries.map((e) => e.job)).toEqual(["j1", "j2"]);
 
     ackInbox(repo, at(1));
     expect(readCursor(repo)).toBe(at(1));
-    expect(unreadInbox(repo).map((e) => e.job)).toEqual(["j2"]);
-    expect(unreadInbox(elsewhere).map((e) => e.job)).toEqual(["j3"]);
+    expect(unreadInbox(repo).entries.map((e) => e.job)).toEqual(["j2"]);
+    expect(unreadInbox(elsewhere).entries.map((e) => e.job)).toEqual(["j3"]);
 
     ackInbox(repo, at(2));
-    expect(unreadInbox(repo)).toEqual([]);
+    expect(unreadInbox(repo)).toEqual({ entries: [], total: 0 });
     appendInbox(entry({ ts: at(4), job: "j4", cwd: repo }));
-    expect(unreadInbox(repo).map((e) => e.job)).toEqual(["j4"]);
+    expect(unreadInbox(repo).entries.map((e) => e.job)).toEqual(["j4"]);
 
     const dir = path.join(base, "state", "inbox-cursors");
     expect(fs.readdirSync(dir)).toHaveLength(1);
     // The cursor never moves backwards.
     ackInbox(repo, at(1));
     expect(readCursor(repo)).toBe(at(2));
+  });
+
+  it("returns the OLDEST N unread entries with the total, and acks only through the last shown", () => {
+    for (let n = 1; n <= 5; n++) appendInbox(entry({ ts: at(n), job: `j${n}` }));
+
+    const first = unreadInbox(repo, 2);
+    expect(first.entries.map((e) => e.job)).toEqual(["j1", "j2"]);
+    expect(first.total).toBe(5);
+    ackShown(repo, first.entries);
+    expect(readCursor(repo)).toBe(at(2));
+
+    const second = unreadInbox(repo, 2);
+    expect(second.entries.map((e) => e.job)).toEqual(["j3", "j4"]);
+    expect(second.total).toBe(3);
+    ackShown(repo, second.entries);
+
+    const last = unreadInbox(repo, 2);
+    expect(last.entries.map((e) => e.job)).toEqual(["j5"]);
+    expect(last.total).toBe(1);
+    ackShown(repo, last.entries);
+    expect(unreadInbox(repo).total).toBe(0);
+  });
+
+  it("delivers entries sharing the cursor millisecond once, even when only some were acked", () => {
+    appendInbox(entry({ ts: at(1), job: "a" }));
+    appendInbox(entry({ ts: at(1), job: "b" }));
+    appendInbox(entry({ ts: at(1), job: "c" }));
+
+    const first = unreadInbox(repo, 1);
+    expect(first.entries.map((e) => e.job)).toEqual(["a"]);
+    expect(first.total).toBe(3);
+    ackShown(repo, first.entries);
+    expect(unreadInbox(repo).entries.map((e) => e.job)).toEqual(["b", "c"]);
+
+    // A new tie that arrives after the ack is still unread.
+    appendInbox(entry({ ts: at(1), job: "d" }));
+    const rest = unreadInbox(repo);
+    expect(rest.entries.map((e) => e.job)).toEqual(["b", "c", "d"]);
+    ackShown(repo, rest.entries);
+    expect(unreadInbox(repo).total).toBe(0);
+  });
+
+  it("delivers a late append whose ts is below the cursor exactly once", () => {
+    appendInbox(entry({ ts: at(5), job: "new" }));
+    ackShown(repo, unreadInbox(repo).entries);
+    expect(unreadInbox(repo).total).toBe(0);
+
+    // Another process finished its append after the ack, with an older event timestamp.
+    appendInbox(entry({ ts: at(3), job: "late" }));
+    const seen = unreadInbox(repo);
+    expect(seen.entries.map((e) => e.job)).toEqual(["late"]);
+    ackShown(repo, seen.entries);
+    expect(unreadInbox(repo).total).toBe(0);
+    expect(readCursor(repo)).toBe(at(5));
+
+    // Late entries of other directories do not disturb this cursor.
+    appendInbox(entry({ ts: at(2), job: "far", cwd: elsewhere }));
+    expect(unreadInbox(repo).total).toBe(0);
+  });
+
+  it("keeps late appends unread when the page was too small to show them all", () => {
+    appendInbox(entry({ ts: at(9), job: "base" }));
+    ackShown(repo, unreadInbox(repo).entries);
+    appendInbox(entry({ ts: at(3), job: "late-1" }));
+    appendInbox(entry({ ts: at(4), job: "late-2" }));
+
+    const one = unreadInbox(repo, 1);
+    expect(one.entries.map((e) => e.job)).toEqual(["late-1"]);
+    expect(one.total).toBe(2);
+    ackShown(repo, one.entries);
+    const two = unreadInbox(repo, 1);
+    expect(two.entries.map((e) => e.job)).toEqual(["late-2"]);
+    ackShown(repo, two.entries);
+    expect(unreadInbox(repo).total).toBe(0);
+  });
+
+  it("still reads a legacy cursor that only has lastTs", () => {
+    appendInbox(entry({ ts: at(1), job: "old" }));
+    appendInbox(entry({ ts: at(2), job: "tie" }));
+    appendInbox(entry({ ts: at(3), job: "fresh" }));
+    ackInbox(repo, at(2));
+    const dir = path.join(base, "state", "inbox-cursors");
+    const file = path.join(dir, fs.readdirSync(dir)[0]!);
+    fs.writeFileSync(file, JSON.stringify({ lastTs: at(2) }));
+
+    expect(readCursor(repo)).toBe(at(2));
+    const seen = unreadInbox(repo);
+    expect(seen.entries.map((e) => e.job)).toEqual(["fresh"]);
+    ackShown(repo, seen.entries);
+    expect(unreadInbox(repo).total).toBe(0);
+    expect(JSON.parse(fs.readFileSync(file, "utf8"))).toMatchObject({
+      lastTs: at(3),
+      lastKeys: [`fresh:finished:${at(3)}`],
+    });
+  });
+
+  it("writes the cursor through tmp+rename and leaves no temp file behind", () => {
+    appendInbox(entry({ ts: at(1) }));
+    ackShown(repo, unreadInbox(repo).entries);
+    const dir = path.join(base, "state", "inbox-cursors");
+    expect(fs.readdirSync(dir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+    expect(fs.statSync(path.join(dir, fs.readdirSync(dir)[0]!)).mode & 0o777).toBe(0o600);
+  });
+
+  it("without a cursor only the last 24 hours are unread, while readInbox keeps all history", () => {
+    const old = new Date(Date.now() - 48 * 3_600_000).toISOString();
+    appendInbox(entry({ ts: old, job: "ancient" }));
+    appendInbox(entry({ ts: at(1), job: "recent" }));
+    expect(unreadInbox(repo).entries.map((e) => e.job)).toEqual(["recent"]);
+    expect(readInbox({ cwd: repo }).map((e) => e.job)).toEqual(["ancient", "recent"]);
+  });
+
+  it("ackJob hides one job's entries without skipping other unread ones", () => {
+    appendInbox(entry({ ts: at(1), job: "seen-via-wait" }));
+    appendInbox(entry({ ts: at(2), job: "other" }));
+    appendInbox(entry({ ts: at(3), job: "seen-via-wait", kind: "message" }));
+
+    ackJob(repo, "seen-via-wait");
+    expect(unreadInbox(repo).entries.map((e) => e.job)).toEqual(["other"]);
+    expect(unreadInbox(repo).total).toBe(1);
+
+    // Later acks keep the memory; at most 200 ids are remembered.
+    ackShown(repo, unreadInbox(repo).entries);
+    expect(unreadInbox(repo).total).toBe(0);
+    for (let n = 0; n < 205; n++) ackJob(repo, `j${n}`);
+    const dir = path.join(base, "state", "inbox-cursors");
+    const cursor = JSON.parse(fs.readFileSync(path.join(dir, fs.readdirSync(dir)[0]!), "utf8"));
+    expect(cursor.ackedJobs).toHaveLength(200);
+    expect(cursor.ackedJobs.at(-1)).toBe("j204");
+  });
+
+  it("ackTerminalJob acks a finished job for its cwd and the host cwd, but not a running one", () => {
+    appendInbox(entry({ ts: at(1), job: "done-job" }));
+    appendInbox(entry({ ts: at(2), job: "run-job" }));
+    const job = (id: string, status: "done" | "running") =>
+      ({ id, cwd: repo, status }) as unknown as Parameters<typeof ackTerminalJob>[0];
+
+    ackTerminalJob(job("run-job", "running"));
+    expect(unreadInbox(repo).total).toBe(2);
+    ackTerminalJob(job("done-job", "done"));
+    expect(unreadInbox(repo).entries.map((e) => e.job)).toEqual(["run-job"]);
   });
 
   it("tolerates a corrupt cursor file", () => {
@@ -189,22 +341,95 @@ describe("inbox", () => {
     expect(readCursor(repo)).toBeNull();
   });
 
-  it("rotates the file to inbox.1.jsonl once it passes 5 MB, keeping one generation", () => {
+  it("rotates the file to inbox.1.jsonl once it passes 5 MB, keeping one generation, and reads both", () => {
     appendInbox(entry({ ts: at(1), job: "old" }));
     fs.appendFileSync(inboxFile(), `${" ".repeat(5 * 1024 * 1024 + 1)}\n`);
     appendInbox(entry({ ts: at(2), job: "new" }));
 
-    const rotated = path.join(path.dirname(inboxFile()), "inbox.1.jsonl");
+    const rotated = rotatedInboxFile();
     expect(fs.existsSync(rotated)).toBe(true);
     expect(fs.readFileSync(rotated, "utf8")).toContain('"old"');
-    expect(readInbox().map((e) => e.job)).toEqual(["new"]);
+    // Rotated entries stay visible until they age out.
+    expect(readInbox().map((e) => e.job)).toEqual(["old", "new"]);
+    expect(unreadInbox(repo).entries.map((e) => e.job)).toEqual(["old", "new"]);
+    expect(fs.existsSync(path.join(base, "state", "inbox.lock"))).toBe(false);
 
     // A second rotation overwrites the previous generation.
     fs.appendFileSync(inboxFile(), `${" ".repeat(5 * 1024 * 1024 + 1)}\n`);
     appendInbox(entry({ ts: at(3), job: "newer" }));
     expect(fs.readFileSync(rotated, "utf8")).toContain('"new"');
     expect(fs.readFileSync(rotated, "utf8")).not.toContain('"old"');
-    expect(readInbox().map((e) => e.job)).toEqual(["newer"]);
+    expect(readInbox().map((e) => e.job)).toEqual(["new", "newer"]);
+  });
+
+  it("skips rotation while another process holds the lock, and takes over a stale lock", () => {
+    appendInbox(entry({ ts: at(1), job: "old" }));
+    fs.appendFileSync(inboxFile(), `${" ".repeat(5 * 1024 * 1024 + 1)}\n`);
+    const lock = path.join(base, "state", "inbox.lock");
+    fs.mkdirSync(lock);
+
+    appendInbox(entry({ ts: at(2), job: "during-lock" }));
+    expect(fs.existsSync(rotatedInboxFile())).toBe(false);
+    expect(fs.existsSync(lock)).toBe(true); // not ours: left alone
+    expect(readInbox().map((e) => e.job)).toEqual(["old", "during-lock"]);
+
+    const stale = new Date(Date.now() - 60_000);
+    fs.utimesSync(lock, stale, stale);
+    appendInbox(entry({ ts: at(3), job: "after-stale" }));
+    expect(fs.existsSync(rotatedInboxFile())).toBe(true);
+    expect(fs.existsSync(lock)).toBe(false);
+    expect(readInbox().map((e) => e.job)).toEqual(["old", "during-lock", "after-stale"]);
+  });
+
+  it("caps an entry's text at 500 characters when it is appended", () => {
+    appendInbox(entry({ text: "x".repeat(5000) }));
+    const [stored] = readInbox();
+    expect(stored!.text.length).toBe(500);
+    expect(stored!.text.endsWith("…")).toBe(true);
+  });
+
+  it("does not copy events of child jobs (workflow steps, team lead children) to the inbox", () => {
+    seedJob("parent-1");
+    seedJob("child-1", { parentJob: "parent-1" });
+    const finish = (id: string) =>
+      appendEvent(id, { ts: at(1), job: id, level: "important", kind: "finished", text: "done" });
+    finish("child-1");
+    finish("parent-1");
+    expect(readInbox().map((e) => e.job)).toEqual(["parent-1"]);
+  });
+});
+
+describe("inboxToolText (mate_inbox)", () => {
+  it("lists the oldest entries, says how many more are unread, and acks only what it showed", () => {
+    for (let n = 1; n <= 3; n++) appendInbox(entry({ ts: at(n), job: `j${n}` }));
+
+    const first = inboxToolText({ cwd: repo, limit: 2 });
+    expect(first).toContain("j1");
+    expect(first).toContain("j2");
+    expect(first).not.toContain("j3");
+    expect(first).toContain("… 1 more unread (run again)");
+
+    const second = inboxToolText({ cwd: repo, limit: 2 });
+    expect(second).toContain("j3");
+    expect(second).not.toContain("more unread");
+    expect(inboxToolText({ cwd: repo })).toBe("No new inbox entries.");
+  });
+
+  it("does not acknowledge with ack: false", () => {
+    appendInbox(entry({ ts: at(1), job: "j1" }));
+    expect(inboxToolText({ cwd: repo, ack: false })).toContain("j1");
+    expect(inboxToolText({ cwd: repo })).toContain("j1");
+  });
+
+  it("refuses inside a worker (AGENTMATE_JOB_ID set) with a note and leaves the cursor alone", () => {
+    appendInbox(entry({ ts: at(1), job: "j1" }));
+    process.env["AGENTMATE_JOB_ID"] = "worker-1";
+    const text = inboxToolText({ cwd: repo });
+    expect(text).toMatch(/host/i);
+    expect(text).not.toContain("j1");
+    expect(readCursor(repo)).toBeNull();
+    delete process.env["AGENTMATE_JOB_ID"];
+    expect(unreadInbox(repo).total).toBe(1);
   });
 });
 
@@ -221,6 +446,16 @@ describe("renderInbox", () => {
         text: "boom\n  bad",
       }),
     ]);
-    expect(text).toBe("12:00:05  abc  review/claude  error  boom bad");
+    expect(text).toBe(`${at(5).slice(11, 19)}  abc  review/claude  error  boom bad`);
+  });
+
+  it("caps a long text at 500 characters", () => {
+    const line = renderInboxEntry(entry({ text: "y".repeat(2000) }));
+    expect(line.endsWith("…")).toBe(true);
+    expect(line.length).toBeLessThan(560);
+  });
+
+  it("adds a line when more entries are unread", () => {
+    expect(renderInbox([entry()], 4)).toMatch(/\n… 4 more unread \(run again\)$/);
   });
 });

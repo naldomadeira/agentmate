@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
 import { userFacing } from "../lib/errors.js";
 import {
-  ackInbox,
+  ackShown,
   readInbox,
   renderInbox,
   renderInboxEntry,
@@ -11,23 +11,30 @@ import {
 
 const POLL_MS = 1_000;
 const DEFAULT_LIMIT = 20;
+const FOLLOW_BATCH = 200;
 
 const newest = (entries: InboxEntry[]): string | undefined => entries.at(-1)?.ts;
 
 /** Polls every second and prints new lines until SIGINT. */
-async function follow(cwd: string | undefined, ack: boolean, initial: InboxEntry[]) {
-  let last = newest(initial) ?? new Date().toISOString();
+async function follow(cwd: string | undefined, ack: boolean, since: string) {
+  let last = since;
   let stop = false;
   process.once("SIGINT", () => {
     stop = true;
   });
   while (!stop) {
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    if (ack && cwd !== undefined) {
+      // Oldest first, acknowledging exactly what was printed (one batch per poll).
+      const { entries } = unreadInbox(cwd, FOLLOW_BATCH);
+      for (const entry of entries) console.log(renderInboxEntry(entry));
+      ackShown(cwd, entries);
+      continue;
+    }
     const entries = readInbox({ cwd, since: last });
     if (entries.length === 0) continue;
     for (const entry of entries) console.log(renderInboxEntry(entry));
     last = newest(entries) ?? last;
-    if (ack && cwd !== undefined) ackInbox(cwd, last);
   }
 }
 
@@ -55,11 +62,21 @@ export default defineCommand({
   },
   run: userFacing(async ({ args }) => {
     const cwd = args.all ? undefined : (args.cwd ?? process.cwd());
-    const entries =
-      cwd === undefined ? readInbox({ limit: DEFAULT_LIMIT }) : unreadInbox(cwd, DEFAULT_LIMIT);
-    if (entries.length > 0 || !args.follow) console.log(renderInbox(entries));
-    const last = newest(entries);
-    if (args.ack && cwd !== undefined && last) ackInbox(cwd, last);
-    if (args.follow) await follow(cwd, args.ack, entries);
+    let entries: InboxEntry[];
+    let remaining = 0;
+    if (cwd === undefined) entries = readInbox({ limit: DEFAULT_LIMIT });
+    else {
+      const unread = unreadInbox(cwd, DEFAULT_LIMIT);
+      entries = unread.entries;
+      remaining = unread.total - entries.length;
+    }
+    if (entries.length > 0 || !args.follow) console.log(renderInbox(entries, remaining));
+    if (args.ack && cwd !== undefined) ackShown(cwd, entries);
+    if (args.follow)
+      await follow(
+        cwd,
+        args.ack,
+        readInbox({ cwd, limit: 1 }).at(-1)?.ts ?? new Date().toISOString(),
+      );
   }),
 });

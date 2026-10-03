@@ -1,12 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
-import { upsertMarkedSection } from "./marked-section.js";
+import { normalizeEol, upsertMarkedSection } from "./marked-section.js";
 
 /** The section id: markers read `<!-- agentmate:start -->` and `<!-- agentmate:end -->`. */
 export const INIT_SECTION_ID = "agentmate";
 
 /** Files `agentmate init` looks at when `--files` is not given. */
 export const DEFAULT_INIT_FILES = ["AGENTS.md", "CLAUDE.md"] as const;
+
+/** Claude Code does not read AGENTS.md natively, so a new CLAUDE.md starts by importing it. */
+const CLAUDE_IMPORT = "@AGENTS.md\n";
 
 /** What `agentmate init` writes between the markers; keep it short, every agent reads it each session. */
 export const INIT_BLOCK = `## AgentMate
@@ -37,7 +40,10 @@ export interface InitOptions {
   cwd: string;
   /** File names relative to `cwd`; defaults to `DEFAULT_INIT_FILES`. */
   files?: readonly string[];
-  /** Create a listed file that does not exist, holding only the block. */
+  /**
+   * Create a listed file that does not exist, holding only the block. A new CLAUDE.md next to an
+   * AGENTS.md (existing or created in the same run) starts with `@AGENTS.md`, which Claude Code imports.
+   */
   create?: boolean;
   /** Report drift without writing anything. */
   check?: boolean;
@@ -61,7 +67,12 @@ export function applyInit(options: InitOptions): InitResult[] {
     }
     if (current === null) {
       if (options.check || !options.create) return { file, status: "missing" };
-      fs.writeFileSync(target, upsertMarkedSection("", INIT_SECTION_ID, INIT_BLOCK));
+      const seed =
+        file === "CLAUDE.md" &&
+        (files.includes("AGENTS.md") || fs.existsSync(path.resolve(options.cwd, "AGENTS.md")))
+          ? CLAUDE_IMPORT
+          : "";
+      fs.writeFileSync(target, upsertMarkedSection(seed, INIT_SECTION_ID, INIT_BLOCK));
       return { file, status: "created" };
     }
     let next: string;
@@ -70,7 +81,9 @@ export function applyInit(options: InitOptions): InitResult[] {
     } catch (error) {
       throw new Error(`${file}: ${(error as Error).message}`, { cause: error });
     }
-    if (next === current) return { file, status: "unchanged" };
+    // Only the line endings differing is not drift (and not worth rewriting the file for).
+    if (next === current || normalizeEol(next) === normalizeEol(current))
+      return { file, status: "unchanged" };
     if (options.check) return { file, status: "outdated" };
     fs.writeFileSync(target, next);
     return { file, status: "updated" };

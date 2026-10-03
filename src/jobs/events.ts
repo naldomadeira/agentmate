@@ -12,11 +12,12 @@ export function appendEvent(id: string, event: JobEvent): void {
   if (event.level === "important" && INBOX_KINDS.includes(event.kind)) copyToInbox(id, event);
 }
 
-/** Important messages, errors and finishes also land in the inbox; this path never throws. */
+/** Important messages, errors and finishes of top-level jobs also land in the inbox; never throws. */
 function copyToInbox(id: string, event: JobEvent): void {
   try {
     const job = readJob(id);
-    if (!job) return;
+    // Children of workflows and team leads are reported by their parent; the host hears it once.
+    if (!job || job.parentJob) return;
     appendInbox({
       ts: event.ts,
       job: id,

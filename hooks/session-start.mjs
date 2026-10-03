@@ -94,32 +94,14 @@ function readJobs(dir) {
   return jobs;
 }
 
-/** Inbox entries for `root` newer than its cursor (see src/jobs/inbox.ts; copied, not imported). */
-function unreadInbox(dir, root, fallbackSince) {
+/** Unread inbox entries for `root`, by the same rules as the prompt hook (inbox-state.mjs). */
+async function unreadInbox(dir, root, now) {
   try {
-    let since = new Date(fallbackSince).toISOString();
-    try {
-      const file = join(
-        dir,
-        "inbox-cursors",
-        `${createHash("sha1").update(root).digest("hex")}.json`,
-      );
-      const parsed = JSON.parse(readFileSync(file, "utf8"));
-      if (typeof parsed?.lastTs === "string" && parsed.lastTs) since = parsed.lastTs;
-    } catch {
-      // no cursor: only entries since the previous session here
-    }
-    let count = 0;
-    for (const line of readFileSync(join(dir, "inbox.jsonl"), "utf8").split("\n")) {
-      try {
-        const entry = JSON.parse(line);
-        if (entry && typeof entry.ts === "string" && entry.ts > since && within(root, entry.cwd))
-          count++;
-      } catch {
-        // blank or truncated line
-      }
-    }
-    return count;
+    const state = await import("./inbox-state.mjs");
+    const entries = state.readEntries(dir, root);
+    if (entries === null) return 0;
+    const since = new Date(now - state.FIRST_RUN_WINDOW_MS).toISOString();
+    return state.selectUnread(entries, state.readCursor(dir, root), since).length;
   } catch {
     return 0;
   }
@@ -148,6 +130,8 @@ function compose(finished, running, stale, now, unread = 0) {
 }
 
 async function main() {
+  // A worker runs in the host's directory with this plugin installed; it must stay out of the host's state.
+  if (process.env.AGENTMATE_JOB_ID) return;
   if (process.env.AGENTMATE_HOOK_QUIET === "1") return;
 
   let cwd = process.cwd();
@@ -205,7 +189,7 @@ async function main() {
   const stale = active.filter((j) => !pidAlive(j.workerPid)).length;
   const running = active.length - stale;
 
-  const unread = unreadInbox(dir, root, previous);
+  const unread = await unreadInbox(dir, root, now);
 
   if (finished.length === 0 && running === 0 && stale === 0 && unread === 0) return;
 

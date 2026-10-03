@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
@@ -162,13 +162,18 @@ describe("cli", () => {
     const repo = join(base, "repo");
     mkdirSync(repo, { recursive: true });
     mkdirSync(home, { recursive: true });
-    const line = (job: string, cwd: string) =>
-      `${JSON.stringify({ ts: "2026-10-03T12:00:05.000Z", job, cwd, provider: "codex", role: "review", kind: "finished", text: "done" })}\n`;
+    // Recent timestamps: with no cursor only the last 24 hours count as unread.
+    const t0 = Math.floor((Date.now() - 600_000) / 1000) * 1000;
+    const at = (n: number) => new Date(t0 + n * 1000);
+    const line = (job: string, cwd: string, n = 5) =>
+      `${JSON.stringify({ ts: at(n).toISOString(), job, cwd, provider: "codex", role: "review", kind: "finished", text: "done" })}\n`;
     appendFileSync(join(home, "inbox.jsonl"), line("mine", repo) + line("theirs", base + "-x"));
     const env = { AGENTMATE_HOME: home };
     try {
       const peek = await runCli(["inbox", "--cwd", repo, "--no-ack"], env);
-      expect(peek.stdout).toContain("12:00:05  mine  review/codex  finished  done");
+      expect(peek.stdout).toContain(
+        `${at(5).toISOString().slice(11, 19)}  mine  review/codex  finished  done`,
+      );
       expect(peek.stdout).not.toContain("theirs");
       const first = await runCli(["inbox", "--cwd", repo], env);
       expect(first.stdout).toContain("mine");
@@ -181,6 +186,78 @@ describe("cli", () => {
       rmSync(base, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it("prints the oldest 20 unread entries first and says how many more remain", async () => {
+    const base = mkdtempSync(join(tmpdir(), "abm-cli-inbox-more-"));
+    const home = join(base, "state");
+    const repo = join(base, "repo");
+    mkdirSync(repo, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    const start = Math.floor((Date.now() - 600_000) / 1000) * 1000;
+    for (let n = 1; n <= 23; n++)
+      appendFileSync(
+        join(home, "inbox.jsonl"),
+        `${JSON.stringify({ ts: new Date(start + n * 1000).toISOString(), job: `job-${String(n).padStart(2, "0")}`, cwd: repo, provider: "codex", role: "ask", kind: "finished", text: "done" })}\n`,
+      );
+    const env = { AGENTMATE_HOME: home };
+    try {
+      const first = await runCli(["inbox", "--cwd", repo], env);
+      expect(first.stdout).toContain("job-01");
+      expect(first.stdout).toContain("job-20");
+      expect(first.stdout).not.toContain("job-21");
+      expect(first.stdout).toContain("… 3 more unread (run again)");
+      const second = await runCli(["inbox", "--cwd", repo], env);
+      expect(second.stdout).toContain("job-21");
+      expect(second.stdout).toContain("job-23");
+      expect(second.stdout).not.toContain("job-20");
+      expect(second.stdout).not.toContain("more unread");
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it.each(["result", "wait"])(
+    "jobs %s on a finished job acknowledges its inbox entries for the job's directory",
+    async (sub) => {
+      const base = mkdtempSync(join(tmpdir(), "abm-cli-ackjob-"));
+      const home = join(base, "state");
+      const repo = join(base, "repo");
+      mkdirSync(repo, { recursive: true });
+      mkdirSync(join(home, "jobs", "jobdone1"), { recursive: true });
+      const ts = new Date(Date.now() - 60_000).toISOString();
+      writeFileSync(
+        join(home, "jobs", "jobdone1", "job.json"),
+        JSON.stringify({
+          id: "jobdone1",
+          provider: "codex",
+          mode: "read-only",
+          role: "ask",
+          depth: 0,
+          prompt: "p",
+          cwd: repo,
+          timeoutMs: 1000,
+          status: "done",
+          createdAt: ts,
+          finishedAt: ts,
+        }),
+      );
+      writeFileSync(join(home, "jobs", "jobdone1", "result.md"), "the answer");
+      const entry = (job: string) =>
+        `${JSON.stringify({ ts, job, cwd: repo, provider: "codex", role: "ask", kind: "finished", text: "done" })}\n`;
+      appendFileSync(join(home, "inbox.jsonl"), entry("jobdone1") + entry("other-job"));
+      const env = { AGENTMATE_HOME: home };
+      try {
+        const out = await runCli(["jobs", sub, "jobdone1"], env);
+        expect(out.stdout).toContain("the answer");
+        const inbox = await runCli(["inbox", "--cwd", repo, "--no-ack"], env);
+        expect(inbox.stdout).toContain("other-job");
+        expect(inbox.stdout).not.toContain("jobdone1");
+      } finally {
+        rmSync(base, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
 
   it("refuses crossreview below the top level without a stack trace", async () => {
     const result = await runCli(["jobs", "start", "claude", "x", "--role", "crossreview"], {

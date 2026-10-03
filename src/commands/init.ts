@@ -37,7 +37,7 @@ export default defineCommand({
     create: {
       type: "boolean",
       description:
-        "Create the file(s) that do not exist (default files: AGENTS.md if neither exists)",
+        "Create the file(s) that do not exist (default files: AGENTS.md and a CLAUDE.md that imports it)",
     },
     files: {
       type: "string",
@@ -50,11 +50,12 @@ export default defineCommand({
       throw new Error(`cwd is not a directory: ${cwd}`);
     let files: string[];
     if (args.files !== undefined) files = parseFiles(args.files);
+    else if (args.create)
+      files = [...DEFAULT_INIT_FILES]; // starts the missing ones: AGENTS.md and a CLAUDE.md that imports it
     else {
+      // Without --files and --create only the files that exist are managed.
       const existing = DEFAULT_INIT_FILES.filter((file) => fs.existsSync(path.join(cwd, file)));
-      // Without --files only the files that exist are managed; --create starts AGENTS.md when none does.
-      files =
-        existing.length > 0 ? existing : args.create ? ["AGENTS.md"] : [...DEFAULT_INIT_FILES];
+      files = existing.length > 0 ? existing : [...DEFAULT_INIT_FILES];
     }
     const results = applyInit({
       cwd,
@@ -72,7 +73,7 @@ export default defineCommand({
     }
     if (results.every(({ status }) => status === "missing"))
       console.log(
-        "Nothing to update. Pass --create to start the file(s), or --files to pick others.",
+        "Nothing to update. Run `agentmate init --create` to start AGENTS.md and CLAUDE.md, or pass --files to pick others.",
       );
   }),
 });
