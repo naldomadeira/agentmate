@@ -7,12 +7,31 @@ export type Provider = "codex" | "claude";
 export type JobMode = "read-only" | "write";
 export type JobStatus = "queued" | "running" | "done" | "error" | "canceled" | "timeout";
 
+export type JobRole = "custom" | "ask" | "review" | "research" | "plan" | "implement" | "teamlead";
+
+export const JOB_ROLES = [
+  "custom",
+  "ask",
+  "review",
+  "research",
+  "plan",
+  "implement",
+  "teamlead",
+] as const satisfies readonly JobRole[];
+
 export const TERMINAL: readonly JobStatus[] = ["done", "error", "canceled", "timeout"];
 
 export interface Job {
   id: string;
   provider: Provider;
   mode: JobMode;
+  /** "custom" is a raw prompt; other roles record which builder rendered `prompt`. */
+  role: JobRole;
+  /** 0 = started by a human/host session, 1 = started by a worker, and so on. */
+  depth: number;
+  /** Id of the job whose worker started this one. */
+  parentJob?: string;
+  /** The prompt actually sent to the provider. */
   prompt: string;
   cwd: string;
   model?: string;
@@ -43,22 +62,34 @@ export const stdoutFile = (id: string) => path.join(jobDir(id), "stdout.log");
 export const stderrFile = (id: string) => path.join(jobDir(id), "stderr.log");
 export const resultFile = (id: string) => path.join(jobDir(id), "result.md");
 
+/** Writes a job's result text, readable only by the owner. */
+export function writeResult(id: string, text: string): void {
+  fs.writeFileSync(resultFile(id), text, { mode: 0o600 });
+}
+
 export function newJobId(): string {
   return `${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
 }
 
+/** Job state can hold briefings and repo excerpts, so its directories are owner-only. */
+function ensureDirs(id: string): void {
+  fs.mkdirSync(path.join(homeDir(), "jobs"), { recursive: true, mode: 0o700 });
+  fs.mkdirSync(jobDir(id), { recursive: true, mode: 0o700 });
+}
+
 /** Atomic replace: readers never observe a half-written job.json. */
 export function writeJob(job: Job): void {
-  fs.mkdirSync(jobDir(job.id), { recursive: true });
+  ensureDirs(job.id);
   const tmp = `${jobFile(job.id)}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(job, null, 2));
+  fs.writeFileSync(tmp, JSON.stringify(job, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, jobFile(job.id));
 }
 
 export function readJob(id: string): Job | null {
   const file = jobFile(id); // validates the id; must stay outside the try so a bad id throws
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as Job;
+    // Defaults cover job.json files written before roles existed.
+    return { role: "custom", depth: 0, ...JSON.parse(fs.readFileSync(file, "utf8")) } as Job;
   } catch {
     return null;
   }

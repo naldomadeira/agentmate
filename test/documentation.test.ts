@@ -16,11 +16,20 @@ describe("project documentation", () => {
     expect(readme).toContain("## Usage examples");
     expect(readme).toContain("--mode write");
     expect(readme).toContain("--continue <job-id>");
+    expect(readme).toContain("explicit deny of `Edit`");
+    expect(readme).toContain("AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS");
+    expect(readme).toContain("waitSeconds: 45");
 
     const portugueseReadme = read("docs/README.pt-BR.md");
     expect(portugueseReadme).toContain("## Exemplos de uso");
     expect(portugueseReadme).toContain("--mode write");
     expect(portugueseReadme).toContain("--continue <job-id>");
+    expect(portugueseReadme).toContain("## Requisitos");
+    expect(portugueseReadme).toContain("## Configuração legada");
+    expect(portugueseReadme).toContain("negação explícita de `Edit`");
+    expect(portugueseReadme).toContain("AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS");
+    expect(portugueseReadme).toContain("waitSeconds: 45");
+    expect(portugueseReadme).toContain("git clone");
   });
 
   it("provides installation guides in English and Portuguese", () => {
@@ -36,5 +45,54 @@ describe("project documentation", () => {
     };
 
     expect(marketplace.plugins[0]?.source.path).toBe("./");
+  });
+
+  it("documents the role tools, the team lead, the doctor command and every skill", () => {
+    const readme = read("README.md");
+    const skills = [
+      "ask",
+      "review",
+      "research",
+      "plan",
+      "implement",
+      "teamlead",
+      "jobs",
+      "delegate",
+      "codex",
+      "claude",
+    ];
+
+    for (const tool of [
+      "bridge_ask",
+      "bridge_review",
+      "bridge_research",
+      "bridge_plan",
+      "bridge_implement",
+      "bridge_teamlead",
+    ]) {
+      expect(readme).toContain(tool);
+    }
+    expect(readme).toContain("doctor");
+    expect(readme).toContain("## Safety model");
+    expect(readme).toContain("## Troubleshooting");
+    for (const skill of skills) expect(readme).toContain(`\`${skill}\``);
+  });
+
+  it("documents the doctor command and the ask smoke test in both install guides", () => {
+    for (const guide of ["docs/INSTALL_FOR_AGENTS.md", "docs/INSTALL_FOR_AGENTS.pt-BR.md"]) {
+      const content = read(guide);
+      expect(content, guide).toContain("agents-bridge-mcp doctor");
+      expect(content, guide).toContain("jobs ask");
+    }
+    expect(read("docs/README.pt-BR.md")).toContain("bridge_teamlead");
+  });
+
+  it("keeps a changelog with the current release", () => {
+    const changelog = read("CHANGELOG.md");
+
+    expect(changelog).toContain("## [0.2.0]");
+    expect(changelog).toContain("## [0.1.0]");
+    expect(changelog).toContain("--allowedTools");
+    expect(read("IMPLEMENTATION_PLAN.md")).toContain("v0.2 — Roles, commands and agents");
   });
 });

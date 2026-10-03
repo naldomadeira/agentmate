@@ -1,13 +1,21 @@
 {
   "name": "agents-bridge-mcp",
-  "version": "0.1.0",
-  "description": "Bidirectional MCP server bridge between Claude Code and Codex CLI",
+  "version": "0.2.0",
+  "description": "Let Claude Code and Codex CLI ask, review, research, plan, implement and lead each other as background jobs.",
   "keywords": [
+    "agents",
     "ai",
+    "anthropic",
     "bridge",
     "claude",
+    "claude-code",
     "codex",
-    "mcp"
+    "codex-cli",
+    "delegation",
+    "mcp",
+    "multi-agent",
+    "openai",
+    "plugin"
   ],
   "homepage": "https://github.com/naldomadeira/agents-bridge-mcp#readme",
   "bugs": {
@@ -17,7 +25,7 @@
   "author": "Naldo Madeira <naldomadeira@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/naldomadeira/agents-bridge-mcp.git"
+    "url": "git+https://github.com/naldomadeira/agents-bridge-mcp.git"
   },
   "bin": {
     "abm-claude": "./dist/claude-server.mjs",

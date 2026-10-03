@@ -7,11 +7,12 @@ import { parseClaudeOutput } from "./lib/claude-output-parser.js";
 import { buildExplainCodePrompt, buildPlanPerfPrompt } from "./lib/prompt-builder.js";
 import { createProgressReporter, logger, type ProgressReporter } from "./lib/logger.js";
 import { CLAUDE_MODELS } from "./lib/types.js";
+import { VERSION } from "./lib/version.js";
 import type { ClaudeResult } from "./lib/types.js";
 
 let lastSessionId: string | null = null;
 
-const server = new McpServer({ name: "claude-bridge", version: "0.1.0" });
+const server = new McpServer({ name: "claude-bridge", version: VERSION });
 
 // ---------------------------------------------------------------------------
 // Helpers
