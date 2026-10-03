@@ -1,0 +1,25 @@
+{
+  "name": "agents-bridge",
+  "version": "0.1.0",
+  "description": "Agents Bridge plugin for Claude Code and Codex.",
+  "owner": {
+    "name": "Naldo Madeira",
+    "url": "https://github.com/naldomadeira"
+  },
+  "interface": {
+    "displayName": "Agents Bridge"
+  },
+  "plugins": [
+    {
+      "name": "agents-bridge",
+      "source": {
+        "source": "local",
+        "path": "."
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Engineering"
+    }
+  ]
+}

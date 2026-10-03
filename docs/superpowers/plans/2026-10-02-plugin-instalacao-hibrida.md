@@ -24,7 +24,10 @@
 it("declara o mesmo servidor jobs no plugin Codex", () => {
   expect(codexManifest.mcpServers).toBe("./.mcp.json");
   expect(codexMcp.mcpServers["agents-bridge"].args).toEqual([
-    "-y", "agents-bridge-mcp", "serve", "jobs",
+    "-y",
+    "agents-bridge-mcp",
+    "serve",
+    "jobs",
   ]);
 });
 

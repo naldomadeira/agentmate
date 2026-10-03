@@ -56,19 +56,27 @@ deadline by default (max 120). `AGENTS_BRIDGE_CODEX_BIN` / `AGENTS_BRIDGE_CLAUDE
 - [Codex CLI](https://developers.openai.com/codex/cli/) — installed and authenticated
 - [Node.js](https://nodejs.org) >= 18
 
-## Quick Start
+## Instalação por plugin (recomendado)
 
-Set up everything with a single command:
+O plugin instala a skill `delegate` e o servidor MCP de jobs sem editar arquivos de configuração manualmente.
 
 ```bash
-npx agents-bridge-mcp setup
+# Claude Code
+claude plugin marketplace add naldomadeira/agents-bridge-mcp
+claude plugin install agents-bridge@agents-bridge
+
+# Codex
+codex plugin marketplace add naldomadeira/agents-bridge-mcp
+codex plugin add agents-bridge@agents-bridge
 ```
 
-This registers MCP servers for both Claude Code and Codex, and installs the `/codex` skill and codex-teammate agent.
+Reinicie o host depois da instalação. Leia o [guia completo para agentes](./docs/INSTALL_FOR_AGENTS.md) para atualização, smoke test, fallback CLI e migração de instalações antigas.
 
 ## Setup
 
-### Automatic (recommended)
+### Legado/manual
+
+`setup` continua disponível para instalações que precisam dos servidores síncronos antigos ou das skills `/codex` e `/claude`. Instalações novas devem usar o plugin.
 
 ```bash
 npx agents-bridge-mcp setup              # Full setup: both directions + skill + agent
