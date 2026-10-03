@@ -7,6 +7,7 @@ import {
   buildPlanPrompt,
   buildResearchPrompt,
   buildReviewPrompt,
+  buildSplitPrompt,
   buildTeamleadPrompt,
 } from "../src/lib/prompt-builder.js";
 
@@ -37,6 +38,33 @@ describe("buildReviewPrompt", () => {
     expect(prompt).toContain("Verdict: request-changes");
     expect(prompt).toContain("very last line");
     expect(prompt.trimEnd().endsWith("Verdict: request-changes")).toBe(true);
+  });
+});
+
+describe("buildReviewPrompt without a shell", () => {
+  it("tells a reviewer that cannot run git to use the context instead", () => {
+    const prompt = buildReviewPrompt({ target: "the diff", shell: false });
+    expect(prompt).toContain("You cannot run shell commands");
+    expect(prompt).not.toContain("Use read-only git commands");
+    expect(buildReviewPrompt({ target: "the diff" })).toContain("Use read-only git commands");
+    expect(buildReviewPrompt({ target: "the diff", shell: true })).toContain(
+      "Use read-only git commands",
+    );
+  });
+});
+
+describe("buildSplitPrompt", () => {
+  it("names the planner and its partner", () => {
+    const prompt = buildSplitPrompt({
+      goal: "Add export",
+      planner: "codex",
+      partner: "gemini",
+      maxParts: 3,
+      mode: "read-only",
+    });
+    expect(prompt).toContain("codex plans up to 3");
+    expect(prompt).toContain("codex or gemini");
+    expect(prompt).toContain("Add export");
   });
 });
 

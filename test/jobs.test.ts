@@ -326,6 +326,36 @@ describe("jobs", () => {
     expect(renderResult(read, text)).toContain("quota_exhausted");
   }, 30_000);
 
+  it("names no agent in the quota hand-off when no other agent is installed", async () => {
+    const missing = path.join(home, "no-such-binary");
+    const job = start("quota");
+    // The worker judges availability in its own environment, which is the one it inherited at spawn.
+    withEnv({ AGENTMATE_CLAUDE_BIN: missing, AGENTMATE_GEMINI_BIN: missing }, () => {
+      const rendered = renderResult(
+        { ...job, status: "quota_exhausted", error: "codex quota exhausted: x" },
+        null,
+      );
+      expect(rendered).not.toContain("provider claude");
+      expect(rendered).toContain("no other agent CLI is installed");
+    });
+    withEnv({ AGENTMATE_CLAUDE_BIN: missing, AGENTMATE_GEMINI_BIN: process.execPath }, () => {
+      expect(
+        renderResult(
+          { ...job, status: "quota_exhausted", error: "codex quota exhausted: x" },
+          null,
+        ),
+      ).toContain("Hand off: start the same job with provider gemini.");
+    });
+    await waitJob(job.id, 20_000);
+  }, 30_000);
+
+  it("offers a resumable-session hint only for agents that can resume", () => {
+    const base = start("hello");
+    const timeout = { ...base, status: "timeout" as const, sessionId: "s-1" };
+    expect(renderResult(timeout, "partial")).toContain("continue=");
+    expect(renderResult({ ...timeout, provider: "gemini" }, "partial")).not.toContain("continue=");
+  });
+
   it("never retries a quota line, but still retries a plain transient 429", async () => {
     const count = path.join(home, "invocations");
     process.env["FAKE_COUNT_FILE"] = count;

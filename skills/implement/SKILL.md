@@ -1,7 +1,7 @@
 ---
 name: implement
-description: Delegate a scoped code change to Codex or Claude with write access, with acceptance criteria and verification. Use only when the user says /mate:implement, 'have codex implement this', 'peça ao claude para implementar', or otherwise explicitly authorizes the other agent to edit files.
-argument-hint: "<codex|claude> <task>"
+description: Delegate a scoped code change to Codex, Claude or Gemini (experimental) with write access, with acceptance criteria and verification. Use only when the user says /mate:implement, 'have codex implement this', 'peça ao claude para implementar', or otherwise explicitly authorizes the other agent to edit files.
+argument-hint: "<codex|claude|gemini> <task>"
 ---
 
 # Delegate an implementation
@@ -37,4 +37,5 @@ This is the one skill that lets the worker **edit files**. Use it only when the 
 
 - One `write` job per working tree at a time. Two writers in the same tree will collide; use separate worktrees for parallel edits.
 - Do not edit the same files while the job runs.
+- Gemini (experimental) runs `--approval-mode auto_edit`: it can edit files but not run shell commands, so it cannot run the tests or the build; run the verification yourself.
 - The codex sandbox for this role is `workspace-write`; Claude runs with `acceptEdits` plus an allowlist for verification commands (`pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add`, `git commit`, extendable with `AGENTMATE_CLAUDE_WRITE_TOOLS`). Neither commits or pushes unless the briefing says so, and you should rarely say so.

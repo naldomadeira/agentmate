@@ -7,8 +7,15 @@ export interface GeminiResult {
   resultText: string;
   sessionId: string | null;
   errors: string[];
-  /** `resultText` is what the stream printed before it ended without a `result` event. */
+  /**
+   * `resultText` is not a trustworthy final answer: the stream ended without a `result` event, or the
+   * run reported an error next to its text.
+   */
   partial?: boolean;
+  /** A final `result` event or the single JSON object of `--output-format json` was seen. */
+  completed: boolean;
+  /** The output was no JSON at all and `resultText` is the raw text; the caller decides whether to trust it. */
+  rawText?: boolean;
 }
 
 const isObject = (value: unknown): value is Obj =>
@@ -65,10 +72,12 @@ export function eventErrorText(event: Obj): string {
  * (`{ session_id?, response?, stats?, error? }`) or stream-json (one event per line: `init`,
  * `message`, `tool_use`, `tool_result`, `error`, `result`). For a stream the final text is the
  * `result` event's `response` when it has one, else the assistant message chunks concatenated; a
- * stream with no `result` event returns the chunks so far with `partial: true`.
+ * stream with no `result` event returns the chunks so far with `partial: true`, and a `result` that
+ * reports an error (`status: "error"` or an `error` object) keeps its text with `partial: true` and
+ * the error in `errors`. Non-JSON output is returned as `rawText`.
  */
 export function parseGeminiOutput(stdout: string): GeminiResult {
-  const result: GeminiResult = { resultText: "", sessionId: null, errors: [] };
+  const result: GeminiResult = { resultText: "", sessionId: null, errors: [], completed: false };
   const trimmed = stdout.trim();
   if (!trimmed) {
     result.errors.push("Empty output from Gemini CLI");
@@ -99,6 +108,7 @@ export function parseGeminiOutput(stdout: string): GeminiResult {
   if (events.length === 0) {
     logger.debug("Failed to parse Gemini output as JSON, using raw text");
     result.resultText = trimmed;
+    result.rawText = true;
     return result;
   }
   return fromStream(events, result);
@@ -141,14 +151,18 @@ function fromStream(events: Obj[], result: GeminiResult): GeminiResult {
     return result;
   }
 
+  result.completed = true;
   const failed = final["error"] !== undefined || final["status"] === "error";
   if (failed) result.errors.push(eventErrorText(final) || "Gemini reported an error");
   result.resultText = str(final["response"]) || streamed;
+  // A failed run that still printed text is not a finished answer; the caller keeps the text and ends in error.
+  if (failed && result.resultText) result.partial = true;
   return result;
 }
 
 /** `--output-format json`: one object. */
 function fromObject(parsed: Obj, result: GeminiResult): GeminiResult {
+  result.completed = true;
   result.sessionId = str(parsed["session_id"]) || str(parsed["sessionId"]) || null;
   const error = parsed["error"];
   if (error !== undefined && error !== null) {
@@ -158,5 +172,6 @@ function fromObject(parsed: Obj, result: GeminiResult): GeminiResult {
   if (!result.resultText && result.errors.length === 0) {
     result.resultText = str(parsed["text"]) || str(parsed["result"]) || str(parsed["output"]);
   }
+  if (result.errors.length > 0 && result.resultText) result.partial = true;
   return result;
 }

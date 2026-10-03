@@ -14,6 +14,7 @@ import {
 import { isAgentId } from "../agents/registry.js";
 import type { EventLevel } from "../agents/types.js";
 import { readEvents } from "../jobs/events.js";
+import { ackTerminalJob } from "../jobs/inbox.js";
 import { userFacing } from "../lib/errors.js";
 import {
   renderEvent,
@@ -109,7 +110,7 @@ export default defineCommand({
         partner: {
           type: "string",
           description:
-            "teamlead, crossreview and split only: the agent that works with the provider (default: the other of codex and claude); must differ from it",
+            "teamlead, crossreview and split only: the agent that works with the provider (default: the first installed other agent); must differ from it",
         },
       },
       run: userFacing(({ args }) => {
@@ -205,6 +206,7 @@ export default defineCommand({
       },
       run: userFacing(async ({ args }) => {
         const job = await waitJob(args.id, parseDuration(args.timeout ?? "10m"));
+        ackTerminalJob(job);
         console.log(renderResult(job, readResult(args.id).text));
         process.exitCode = exitFor(job.status);
       }),
@@ -276,6 +278,7 @@ export default defineCommand({
       args: idArg,
       run: userFacing(({ args }) => {
         const { job, text } = readResult(args.id);
+        ackTerminalJob(job);
         console.log(renderResult(job, text));
         process.exitCode = exitFor(job.status);
       }),

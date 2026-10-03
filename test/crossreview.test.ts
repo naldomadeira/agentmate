@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -46,6 +47,19 @@ text += verdict ? "Verdict: " + verdict : "I could not decide.";
 console.log(JSON.stringify({ type: "result", result: text, session_id: "s-1" }));
 `;
 
+// A stand-in for the gemini CLI (stream-json). It echoes its prompt as the answer, so a reviewer's
+// briefing can be inspected; the prompt selects the verdict like the claude stand-in does.
+const FAKE_GEMINI = `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const prompt = args[args.indexOf("-p") + 1];
+const emit = (e) => console.log(JSON.stringify(e));
+emit({ type: "init", session_id: "gem-1" });
+const review = prompt.includes("Review the following change");
+let text = review ? "Looks fine.\\nVerdict: approve" : "GEMINI-IMPL args=" + args.slice(2).join(" ") + "\\n" + prompt;
+emit({ type: "message", role: "assistant", content: text, delta: true });
+emit({ type: "result", status: "success" });
+`;
+
 let home: string;
 const saved = { ...process.env };
 
@@ -55,9 +69,11 @@ beforeAll(() => {
   const claude = path.join(home, "fake-claude");
   fs.writeFileSync(codex, FAKE_CODEX, { mode: 0o755 });
   fs.writeFileSync(claude, FAKE_CLAUDE, { mode: 0o755 });
+  fs.writeFileSync(path.join(home, "fake-gemini"), FAKE_GEMINI, { mode: 0o755 });
   process.env["AGENTMATE_HOME"] = path.join(home, "state");
   process.env["AGENTMATE_CODEX_BIN"] = codex;
   process.env["AGENTMATE_CLAUDE_BIN"] = claude;
+  process.env["AGENTMATE_GEMINI_BIN"] = path.join(home, "fake-gemini");
   process.env["AGENTMATE_CLI"] = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
   delete process.env["AGENTMATE_DEPTH"];
   delete process.env["AGENTMATE_JOB_ID"];
@@ -141,6 +157,26 @@ describe("crossreview start rules", () => {
     expect(job.fields).toMatchObject({ task: "add a flag" });
     expect(job.prompt).toContain("add a flag");
     expect(startCrossreview("x").workflow?.maxRounds).toBe(2);
+  });
+
+  it("resolves the default reviewer up front and stores it on the job", () => {
+    expect(startCrossreview("x").partner).toBe("claude");
+    expect(startCrossreview("x", { partner: "gemini" }).partner).toBe("gemini");
+    // codex is the only other installed agent for claude here, and claude for codex: gemini is skipped
+    expect(startCrossreview("x", { provider: "claude" }).partner).toBe("codex");
+    withEnv(
+      {
+        AGENTMATE_CLAUDE_BIN: path.join(home, "missing"),
+        AGENTMATE_GEMINI_BIN: path.join(home, "missing"),
+      },
+      () => {
+        expect(() => startCrossreview("x")).toThrow(/Agent claude is not installed/);
+      },
+    );
+    withEnv({ AGENTMATE_CLAUDE_BIN: path.join(home, "missing") }, () => {
+      // claude is gone: gemini becomes the reviewer of codex
+      expect(startCrossreview("x").partner).toBe("gemini");
+    });
   });
 
   it("refuses a crossreview below the top level, like a team lead", () => {
@@ -311,6 +347,62 @@ describe("crossreview workflow", () => {
     expect(report).toContain("round 1: review");
     expect(report).toContain("hit the claude quota");
     expect(job.workflow?.rounds).toHaveLength(1);
+  }, 100_000);
+
+  it("gives a gemini reviewer the diff inline, since it cannot run git", async () => {
+    const repo = path.join(home, "repo-inline");
+    fs.mkdirSync(repo);
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "pipe" });
+    git("init", "-q");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "t");
+    fs.writeFileSync(path.join(repo, "a.ts"), "export const a = 1;\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "init");
+    fs.writeFileSync(path.join(repo, "a.ts"), "export const a = 2; // changed\n");
+    fs.writeFileSync(path.join(repo, "new-file.ts"), "x\n");
+
+    const { job, children } = await runCrossreview("tweak a ROUND1-APPROVE", {
+      partner: "gemini",
+      cwd: repo,
+    });
+    expect(job.status).toBe("done");
+    expect(job.partner).toBe("gemini");
+    const review = children.find((c) => c.role === "review")!;
+    expect(review.provider).toBe("gemini");
+    expect(review.prompt).toContain("may not run shell commands");
+    expect(review.prompt).toContain("+export const a = 2; // changed");
+    expect(review.prompt).toContain("Untracked files (not in the diff): new-file.ts");
+    expect(review.prompt).toContain("You cannot run shell commands");
+    expect(review.prompt).not.toContain("plus `git status` for untracked files");
+    // the claude reviewer keeps the git instructions
+    const plain = await runCrossreview("tweak a ROUND1-APPROVE", { cwd: repo });
+    expect(plain.children.find((c) => c.role === "review")!.prompt).toContain(
+      "plus `git status` for untracked files",
+    );
+    expect(plain.children.find((c) => c.role === "review")!.prompt).not.toContain(
+      "may not run shell commands",
+    );
+  }, 100_000);
+
+  it("starts a fresh implement job for round 2 when the implementer cannot resume", async () => {
+    const { job, children } = await runCrossreview("tidy it REQUEST-ONCE", {
+      provider: "gemini",
+      partner: "claude",
+    });
+    expect(job.status).toBe("done");
+    expect(children.map((c) => `${c.role}:${c.provider}`)).toEqual([
+      "implement:gemini",
+      "review:claude",
+      "implement:gemini",
+      "review:claude",
+    ]);
+    const secondImplement = children[2]!;
+    expect(secondImplement.continuesJob).toBeUndefined();
+    expect(secondImplement.prompt).toContain("tidy it REQUEST-ONCE");
+    expect(secondImplement.prompt).toContain("A previous attempt is already in the working tree");
+    expect(secondImplement.prompt).toContain("Please fix src/a.ts");
+    expect(readResult(secondImplement.id).text).not.toContain("--resume");
   }, 100_000);
 
   it("cancels its running child when the workflow is canceled", async () => {

@@ -20,7 +20,17 @@ Experimental; requires the Gemini CLI (`gemini`) on PATH. Check with `npx -y age
 | A broad objective that needs coordination        | `mate_teamlead`  | `teamlead`                |
 | Anything else                                    | `mate_start`     | `delegate`                |
 
-When the request is ambiguous, default to `mate_ask` (read-only, answers in the same turn). Inside Codex, MCP tool calls time out after about 60 seconds by default: pass `waitSeconds: 45` to `mate_ask` and continue with `mate_wait` if the answer has not arrived. For a team lead, crossreview or split led by gemini, `partner` picks the other agent (it defaults to claude).
+When the request is ambiguous, default to `mate_ask` (read-only, answers in the same turn). Inside Codex, MCP tool calls time out after about 60 seconds by default: pass `waitSeconds: 45` to `mate_ask` and continue with `mate_wait` if the answer has not arrived. For a team lead, crossreview or split, `partner` picks the other agent (it defaults to the first installed other agent).
+
+## Limits (experimental)
+
+The adapter is untested against the real CLI. In headless mode Gemini cannot run shell commands or search the web, and edits are allowed only in `auto_edit` (write mode):
+
+- **No shell**: an `implement` job cannot run tests or the build, so verify yourself; reviews in `crossreview` and `split` get the diff inline in the briefing (capped at 30 000 characters) instead of `git diff` instructions.
+- **No web**: `research` relies on the repository.
+- **No continuation**: `continue` is refused for gemini; start a new job with the full context. A `crossreview` with a gemini implementer starts a fresh implement job per round.
+- **Team lead**: accepted only with `mode: write` and runs `--approval-mode yolo`, which approves every tool call. Warn the user, or lead with `claude` or `codex`.
+- Read-only jobs run `--approval-mode default`, which denies tools that need approval; write jobs run `auto_edit`.
 
 ## CLI fallback
 

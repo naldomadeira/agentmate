@@ -1,12 +1,12 @@
 ---
 name: split
 description: Split a broad goal into independent parts that both agents work on in parallel, then cross-review each part and report how to integrate them. Use when the user says /mate:split, 'split the task', 'task splitting', 'split this between codex and claude', 'dividir a tarefa', 'divida o trabalho entre os agentes', or has a goal that breaks into parts with separate files.
-argument-hint: "<codex|claude> <goal>"
+argument-hint: "<codex|claude|gemini> <goal>"
 ---
 
 # Split a task
 
-A split job is a workflow: the provider you name **plans** the split, the parts run **in parallel** on both agents, the **other** agent **reviews** each finished part, and you read one report.
+A split job is a workflow: the provider you name **plans** the split, the parts run **in parallel** on both agents, the **partner** **reviews** each finished part, and you read one report.
 
 ```
 goal -> plan (1..maxParts parts, closed interfaces, no shared files)
@@ -16,7 +16,7 @@ goal -> plan (1..maxParts parts, closed interfaces, no shared files)
 
 ## How to run it
 
-1. **MCP (preferred)**: call `mate_split` with `provider` (who plans), `goal`, optional `acceptance`, `maxParts` (2 to 4, default 3), `mode` (`read-only` default or `write`), `session`, `cwd`, `model`, `timeoutMinutes`. It returns the workflow's job id; follow it with `mate_observe`, collect it with `mate_wait` / `mate_result`.
+1. **MCP (preferred)**: call `mate_split` with `provider` (who plans), `partner` (the other agent, default: the first installed one), `goal`, optional `acceptance`, `maxParts` (2 to 4, default 3), `mode` (`read-only` default or `write`), `session`, `cwd`, `model`, `timeoutMinutes`. It returns the workflow's job id; follow it with `mate_observe`, collect it with `mate_wait` / `mate_result`.
 2. **CLI fallback**:
 
    ```bash
@@ -47,5 +47,6 @@ goal -> plan (1..maxParts parts, closed interfaces, no shared files)
 
 - When you resume a turn with jobs in progress, call `mate_inbox` before `mate_wait`: it reports what finished or failed since you last looked.
 - Only a top-level session can start it; a worker cannot. `mate_cancel` stops the workflow and its running children.
+- Parts use only the provider and the partner. A `gemini` reviewer (experimental) gets the part's diff in its briefing because it cannot run `git diff`.
 - It costs a plan, one job per part and one review per part. For one change use `implement`; for one opinion use `review`.
 - In write mode run one split per working tree at a time and do not edit the repository meanwhile.

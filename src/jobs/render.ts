@@ -1,5 +1,5 @@
 import type { JobEvent } from "../agents/types.js";
-import { otherAgent } from "../agents/registry.js";
+import { getAgent, installedOther } from "../agents/registry.js";
 import { elapsedSeconds, summarize, type Observation } from "./api.js";
 import type { Session } from "./sessions.js";
 import { TERMINAL, type Job } from "./store.js";
@@ -13,11 +13,14 @@ export function renderResult(job: Job, text: string | null): string {
     return `${head}\n\nStill ${job.status}. Call wait again, or observe for a progress snapshot.`;
   }
   if (job.status !== "done") {
+    const other = job.status === "quota_exhausted" ? installedOther(job.provider) : undefined;
     const hint =
-      job.status === "timeout" && job.sessionId
+      job.status === "timeout" && job.sessionId && getAgent(job.provider).capabilities.resume
         ? `\nThe session is resumable: start a new job with continue=${job.id}.`
         : job.status === "quota_exhausted"
-          ? `\nHand off: start the same job with provider ${otherAgent(job.provider)}.`
+          ? other
+            ? `\nHand off: start the same job with provider ${other}.`
+            : "\nHand off: no other agent CLI is installed; retry after the quota resets."
           : "";
     return `${head}${text ? `\n\nPartial output:\n${text}` : ""}${hint}`;
   }

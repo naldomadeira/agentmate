@@ -1,7 +1,7 @@
 ---
 name: research
-description: Investigate a technical topic with Codex or Claude and get findings, compared options and a recommendation with evidence. Use when the user says /mate:research, 'research this with codex', 'pesquise com o claude', or needs a library choice, root-cause hunt or design trade-off surveyed.
-argument-hint: "<codex|claude> <topic>"
+description: Investigate a technical topic with Codex, Claude or Gemini (experimental) and get findings, compared options and a recommendation with evidence. Use when the user says /mate:research, 'research this with codex', 'pesquise com o claude', or needs a library choice, root-cause hunt or design trade-off surveyed.
+argument-hint: "<codex|claude|gemini> <topic>"
 ---
 
 # Research a topic
@@ -24,7 +24,7 @@ Delegate an investigation and receive a structured report: findings with evidenc
 
 - The decision this research feeds. "Which queue library for X given Y" beats "look into queues".
 - The concrete questions, numbered, so each gets an answer.
-- The scope: which parts of the repository, which versions, whether web sources are expected (Claude research jobs can use web search and fetch; Codex runs sandboxed and may have no web access, so say what it should rely on).
+- The scope: which parts of the repository, which versions, whether web sources are expected (Claude research jobs can use web search and fetch; Codex runs sandboxed and may have no web access, and Gemini has no web or shell in headless mode, so say what it should rely on).
 - Constraints that rule options out (license, runtime, team skills).
 
 ## Treat the result

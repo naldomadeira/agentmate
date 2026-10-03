@@ -3,9 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { EventLevel, JobEvent } from "../agents/types.js";
-import { availableAgents, isAgentId, otherAgent } from "../agents/registry.js";
+import { firstAvailableOther, installedOther, isAgentId, otherAgent } from "../agents/registry.js";
 import { cancelJob, getJob, isTerminal, readResult, startJob, type StartOptions } from "./api.js";
 import { parseVerdict } from "./crossreview.js";
+import { canRunShell, inlineDiff } from "./diff.js";
 import { appendEvent } from "./events.js";
 import { appendNotes, createSession } from "./sessions.js";
 import {
@@ -82,7 +83,7 @@ export function parseSplitPlan(
     };
 
   const { planner, partner } = options;
-  let fallback = counterpart(planner, planner, partner);
+  let fallback = counterpart(planner, planner, partner, options.allowed);
   const seen = new Set<string>();
   const parts: PlannedPart[] = [];
   for (const [index, raw] of list.entries()) {
@@ -107,17 +108,25 @@ export function parseSplitPlan(
     if (isAgentId(named) && (!options.allowed || options.allowed.includes(named))) agent = named;
     else {
       agent = fallback;
-      fallback = counterpart(fallback, planner, partner);
+      fallback = counterpart(fallback, planner, partner, options.allowed);
     }
     parts.push({ id, title: title.trim(), briefing: briefing.trim(), files, agent });
   }
   return { ok: true, parts };
 }
 
-/** The agent that pairs with `agent`: the explicit partner of the planner, or the default pairing. */
-function counterpart(agent: Provider, planner: Provider, partner?: Provider): Provider {
-  if (!partner) return otherAgent(agent);
-  return agent === planner ? partner : planner;
+/**
+ * The agent that pairs with `agent`: the partner of the planner when there is one (the workflow
+ * always has), else the first installed agent that differs and is allowed, else the static pairing.
+ */
+function counterpart(
+  agent: Provider,
+  planner: Provider,
+  partner?: Provider,
+  allowed?: readonly Provider[],
+): Provider {
+  if (partner) return agent === planner ? partner : planner;
+  return installedOther(agent, allowed) ?? otherAgent(agent);
 }
 
 /** Ends the workflow early with a final status; thrown from a step, caught by the runner. */
@@ -322,7 +331,8 @@ export async function runSplit(id: string): Promise<void> {
   });
 
   const planner = job.provider;
-  const partner = job.partner;
+  // `startJob` stores the partner; a job written by an older version falls back to the installed default.
+  const partner = job.partner ?? firstAvailableOther(planner, job.cwd);
   const maxParts = job.split?.maxParts ?? DEFAULT_MAX_PARTS;
   const goal = job.fields?.goal ?? job.prompt;
   const acceptance = job.fields?.acceptance;
@@ -568,7 +578,7 @@ export async function runSplit(id: string): Promise<void> {
       maxParts,
       planner,
       partner,
-      allowed: partner ? [planner, partner] : [...new Set([planner, ...availableAgents()])],
+      allowed: [planner, partner],
     });
     if (!plan.ok) {
       failedJobs.push(planChild.id);
@@ -687,18 +697,32 @@ export async function runSplit(id: string): Promise<void> {
     const reviewable = parts.filter((part) => results.has(part.id));
     emit("important", "message", `step 3: review ${reviewable.length} finished part(s)`);
     if (reviewable.length > 0) {
+      // A reviewer that cannot run the shell (gemini) gets the part's diff in its briefing instead of
+      // `git diff` instructions it could not follow.
+      const diffs = new Map<string, string>();
+      if (write)
+        for (const part of reviewable) {
+          checkLive();
+          if (!canRunShell(counterpart(part.agent, planner, partner)))
+            diffs.set(part.id, await inlineDiff(part.worktree!, part.base));
+        }
       const reviewChildren = reviewable.map((part) => {
         const spec = planned.get(part.id)!;
         const files = spec.files.length > 0 ? ` (files: ${spec.files.join(", ")})` : "";
+        const diff = diffs.get(part.id);
+        const where = `the changes of part "${part.id}" (${part.title}) in this git worktree, branch ${part.branch}, against its base commit ${part.base}`;
+        const report = (results.get(part.id) ?? "").slice(0, CONTEXT_CHARS);
         const child = begin(`part ${part.id}: review`, {
           provider: counterpart(part.agent, planner, partner),
           role: "review",
           fields: {
-            target: write
-              ? `the changes of part "${part.id}" (${part.title}) in this git worktree, branch ${part.branch}, against its base commit ${part.base}: run \`git diff ${part.base}\` (it covers committed and uncommitted changes) and \`git status\` for untracked files`
-              : `the research findings of part "${part.id}" (${part.title}), given below as context; check them against the repository`,
+            target: !write
+              ? `the research findings of part "${part.id}" (${part.title}), given below as context; check them against the repository`
+              : diff !== undefined
+                ? `${where}, given as a diff in the context below (you cannot run \`git diff\` yourself)`
+                : `${where}: run \`git diff ${part.base}\` (it covers committed and uncommitted changes) and \`git status\` for untracked files`,
             focus: `Whether the part does what its briefing asks and stays within its own files${files}. Briefing: ${spec.briefing}`,
-            context: (results.get(part.id) ?? "").slice(0, CONTEXT_CHARS),
+            context: diff !== undefined ? `${report}\n\n${diff}` : report,
           },
           mode: "read-only",
           cwd: part.worktree ?? job.cwd,

@@ -7,8 +7,16 @@ export interface AgentCapabilities {
   write: boolean;
   /** Can search the web while read-only. */
   web: boolean;
-  /** Can continue a previous session. */
+  /**
+   * Can continue a previous session. `false` also covers "not verified": `startJob` refuses
+   * `continueJob` for such an agent instead of passing an untested flag.
+   */
   resume: boolean;
+  /**
+   * Can run shell commands (such as `git diff`) headless. A reviewer without it gets the diff inline
+   * in its briefing, and an implementer without it cannot run the repository's verification.
+   */
+  shell: boolean;
   /** Emits events while it runs (`jsonl`) or only at the end (`none`). */
   streaming: "jsonl" | "none";
 }
@@ -52,6 +60,8 @@ export interface AgentAdapter {
   parseOutcome(stdout: string, stderr: string, exitCode: number): Outcome;
   /** Turns one stdout line into filtered events; `job` is left empty for the worker to fill. */
   parseStreamLine?(line: string): JobEvent[];
+  /** Clears any state kept between `parseStreamLine` calls; the worker runs one job, so tests use it. */
+  resetStream?(): void;
   /** Arguments that make the CLI print its version, for the doctor. */
   versionArgs: string[];
 }

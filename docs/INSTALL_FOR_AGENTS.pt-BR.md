@@ -2,12 +2,12 @@
 
 [English](./INSTALL_FOR_AGENTS.md)
 
-Este guia instala o plugin híbrido do AgentMate no Claude Code ou no Codex. O plugin fornece dez skills (`ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `jobs`, `delegate`, `codex` e `claude`), quatro agentes que usam o Codex no Claude Code (`codex-teammate`, `codex-reviewer`, `codex-researcher` e `codex-teamlead`) e registra o servidor MCP de jobs (`mate_start`, `mate_ask`, `mate_review`, `mate_research`, `mate_plan`, `mate_implement`, `mate_teamlead`, `mate_wait`, `mate_observe`, `mate_result`, `mate_cancel` e `mate_list`). Quando o MCP não estiver carregado, as skills usam o CLI do pacote npm e mantêm o mesmo contrato de jobs.
+Este guia instala o plugin híbrido do AgentMate no Claude Code ou no Codex. O plugin fornece catorze skills (`ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `crossreview`, `split`, `jobs`, `delegate`, `codex`, `claude`, `gemini` e `init`), quatro agentes que usam o Codex no Claude Code (`codex-teammate`, `codex-reviewer`, `codex-researcher` e `codex-teamlead`) e registra o servidor MCP de jobs (`mate_start`, `mate_ask`, `mate_review`, `mate_research`, `mate_plan`, `mate_implement`, `mate_teamlead`, `mate_wait`, `mate_observe`, `mate_result`, `mate_cancel` e `mate_list`). Quando o MCP não estiver carregado, as skills usam o CLI do pacote npm e mantêm o mesmo contrato de jobs.
 
 ## Pré-requisitos
 
 - Node.js 18 ou superior;
-- Claude Code ou Codex CLI, autenticado;
+- Claude Code ou Codex CLI, autenticado; o Gemini CLI é opcional e experimental;
 - acesso ao npm para executar `npx -y agentmate`.
 
 O host que recebe uma delegação também precisa conseguir executar o outro CLI. Por exemplo, para delegar ao Codex a partir do Claude Code, `codex` deve estar no `PATH` do processo do Claude.
@@ -87,7 +87,7 @@ O Codex recarrega o plugin após reiniciar. Confirme a versão ativa com `codex 
 
 ## Smoke test de leitura
 
-Depois do reinício, faça uma pergunta curta e sem escrita ao outro CLI. Pelo MCP, chame `mate_ask` com `provider` igual a `codex` ou `claude` e uma pergunta como `Responda somente OK`. A ferramenta espera a resposta e a devolve na mesma chamada.
+Depois do reinício, faça uma pergunta curta e sem escrita ao outro CLI. Pelo MCP, chame `mate_ask` com `provider` igual a `codex`, `claude` ou `gemini` (experimental) e uma pergunta como `Responda somente OK`. A ferramenta espera a resposta e a devolve na mesma chamada.
 
 Quando as ferramentas MCP ainda não estiverem disponíveis, execute o fallback pelo CLI:
 
@@ -115,7 +115,7 @@ O modo padrão é `read-only`. A skill `implement` e `mate_implement` sempre rod
 npx -y agentmate doctor
 ```
 
-O `doctor` verifica se o Node.js é 18 ou superior, se `codex` e `claude` estão no `PATH` e respondem a `--version`, se o diretório de estado dos jobs é gravável, quantos jobs existem e quais jobs `running` perderam o worker (ele lista os IDs), e se ainda há um registro legado de `serve codex` / `serve claude`. Cada item é reportado como `ok`, `warn` ou `fail`, com uma dica. Ele sai com código `1` se algum item falhar e funciona quando `codex` ou `claude` não estão instalados (reportado como aviso). Ele não verifica a autenticação: se um job falhar logo ao iniciar, faça login você mesmo no CLI de destino.
+O `doctor` verifica se o Node.js é 18 ou superior, se `codex`, `claude` e `gemini` (opcional, experimental) estão no `PATH` e respondem a `--version`, se o diretório de estado dos jobs é gravável, quantos jobs existem e quais jobs `running` perderam o worker (ele lista os IDs), e se ainda há um registro legado de `serve codex` / `serve claude`. Cada item é reportado como `ok`, `warn` ou `fail`, com uma dica. Ele sai com código `1` se algum item falhar e funciona quando `codex` ou `claude` não estão instalados (reportado como aviso; a falta do `gemini` é reportada como ok). Ele não verifica a autenticação: se um job falhar logo ao iniciar, faça login você mesmo no CLI de destino.
 
 ## Diagnóstico
 

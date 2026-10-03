@@ -21,14 +21,15 @@ import { buildSplitPlanPrompt } from "../src/lib/prompt-builder.js";
 //  - the split planner answers with a parts block chosen by a marker in the goal
 //  - reviewers answer with a verdict chosen by a marker carried in the part briefing
 //  - parts echo where they ran; implementers also write a file in their cwd
-const fakeAgent = (agent: "codex" | "claude") => `#!/usr/bin/env node
+const fakeAgent = (agent: "codex" | "claude" | "gemini") => `#!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");
 const args = process.argv.slice(2);
-const prompt = args[args.length - 1];
 const agent = ${JSON.stringify(agent)};
+const prompt = agent === "gemini" ? args[args.indexOf("-p") + 1] : args[args.length - 1];
 const reply = (text) => {
-  if (agent === "codex") {
+  if (agent === "gemini") console.log(JSON.stringify({ type: "result", status: "success", response: text }));
+  else if (agent === "codex") {
     console.log(JSON.stringify({ type: "thread.started", thread_id: "t-1" }));
     console.log(JSON.stringify({ type: "item.completed", item: { id: "i", type: "agent_message", text } }));
   } else console.log(JSON.stringify({ type: "result", result: text, session_id: "s-1" }));
@@ -108,6 +109,7 @@ beforeAll(() => {
   const claude = path.join(home, "fake-claude");
   fs.writeFileSync(codex, fakeAgent("codex"), { mode: 0o755 });
   fs.writeFileSync(claude, fakeAgent("claude"), { mode: 0o755 });
+  fs.writeFileSync(path.join(home, "fake-gemini"), fakeAgent("gemini"), { mode: 0o755 });
   repo = path.join(home, "repo");
   makeRepo(repo);
   process.env["AGENTMATE_HOME"] = path.join(home, "state");
@@ -523,6 +525,42 @@ describe("split workflow, write", () => {
     git(repo, "merge", "-q", "--no-edit", `agentmate/${job.id}/a`);
     git(repo, "merge", "-q", "--no-edit", `agentmate/${job.id}/b`);
     expect(fs.existsSync(path.join(repo, "part-" + "a" + ".txt"))).toBe(true);
+  }, 120_000);
+
+  it("gives a gemini reviewer the part's diff inline and keeps git instructions for the others", async () => {
+    const dir = freshRepo();
+    const saved = process.env["AGENTMATE_GEMINI_BIN"];
+    process.env["AGENTMATE_GEMINI_BIN"] = path.join(home, "fake-gemini");
+    try {
+      // The partner is gemini: claude (named by the plan for part b) is not allowed, so b goes to gemini.
+      const { job, children } = await runSplit("Ship it PLAN-2", {
+        mode: "write",
+        cwd: dir,
+        partner: "gemini",
+      });
+      expect(job.status).toBe("done");
+      expect(job.partner).toBe("gemini");
+      expect(job.split!.parts.map((p) => [p.id, p.agent])).toEqual([
+        ["a", "codex"],
+        ["b", "gemini"],
+      ]);
+      const reviewOf = (id: string) =>
+        children.find((c) => c.id === job.split!.parts.find((p) => p.id === id)!.reviewJob)!;
+      // a (codex) is reviewed by gemini, which cannot run git: the diff travels in the briefing
+      const a = reviewOf("a");
+      expect(a.provider).toBe("gemini");
+      expect(a.prompt).toContain("may not run shell commands");
+      expect(a.prompt).toContain("+++ b/part-a.txt");
+      expect(a.prompt).not.toContain(`: run \`git diff ${job.split!.parts[0]!.base}`);
+      // b (gemini) is reviewed by codex, which runs the shell as usual
+      const b = reviewOf("b");
+      expect(b.provider).toBe("codex");
+      expect(b.prompt).toContain("git diff");
+      expect(b.prompt).not.toContain("may not run shell commands");
+    } finally {
+      if (saved === undefined) delete process.env["AGENTMATE_GEMINI_BIN"];
+      else process.env["AGENTMATE_GEMINI_BIN"] = saved;
+    }
   }, 120_000);
 
   it("fails with the git error when the working directory is not a repository", async () => {

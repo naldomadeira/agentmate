@@ -1,7 +1,7 @@
 ---
 name: review
-description: Get an independent code review of a diff, branch, files or a plan from Codex or Claude, with findings ranked by severity. Use when the user says /mate:review, 'have codex review this', 'peça ao claude para revisar', or wants a second reviewer before merging.
-argument-hint: "<codex|claude> [target] [focus]"
+description: Get an independent code review of a diff, branch, files or a plan from Codex, Claude or Gemini (experimental), with findings ranked by severity. Use when the user says /mate:review, 'have codex review this', 'peça ao claude para revisar', or wants a second reviewer before merging.
+argument-hint: "<codex|claude|gemini> [target] [focus]"
 ---
 
 # Independent review

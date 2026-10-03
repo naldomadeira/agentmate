@@ -7,12 +7,17 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   AGENT_IDS,
   AGENTS,
+  assertAgentAvailable,
   availableAgents,
+  firstAvailableOther,
   getAgent,
+  installedOther,
   isAgentAvailable,
   isAgentId,
   otherAgent,
+  resolveBinary,
 } from "../src/agents/registry.js";
+import { createGeminiAdapter } from "../src/agents/gemini.js";
 import { buildInvocation, binary, parseOutcome } from "../src/jobs/providers.js";
 import { cancelJob, listJobs, readResult, startJob, waitJob } from "../src/jobs/api.js";
 import { readEvents } from "../src/jobs/events.js";
@@ -85,18 +90,23 @@ describe("agent registry", () => {
       write: true,
       web: false,
       resume: true,
+      shell: true,
       streaming: "jsonl",
     });
     expect(AGENTS.claude.capabilities).toEqual({
       write: true,
       web: true,
       resume: true,
+      shell: true,
       streaming: "jsonl",
     });
+    // Experimental and untested against the real CLI: headless Gemini denies shell and web tools and
+    // `--resume` is unverified, so none of them is claimed.
     expect(AGENTS.gemini.capabilities).toEqual({
       write: true,
-      web: true,
-      resume: true,
+      web: false,
+      resume: false,
+      shell: false,
       streaming: "jsonl",
     });
     expect(AGENTS.claude.parseStreamLine).toBeDefined();
@@ -149,6 +159,74 @@ describe("agent availability", () => {
     });
   });
 
+  it("resolves a relative binary against the given directory, defaulting to the process cwd", () => {
+    withEnv({ AGENTMATE_GEMINI_BIN: "./fake-gemini" }, () => {
+      expect(isAgentAvailable("gemini", dir)).toBe(true);
+      expect(isAgentAvailable("gemini", path.join(dir, "a-directory"))).toBe(false);
+      expect(isAgentAvailable("gemini")).toBe(false);
+      expect(resolveBinary("./fake-gemini", dir)).toBe(path.join(dir, "fake-gemini"));
+    });
+    // A bare name is looked up on PATH and passed through untouched.
+    expect(resolveBinary("gemini", dir)).toBe("gemini");
+    expect(resolveBinary("/abs/gemini", dir)).toBe("/abs/gemini");
+  });
+
+  it("on Windows accepts only extensionless files and .exe (spawn runs without a shell)", () => {
+    for (const name of ["win-cmd.cmd", "win-bat.bat", "win-exe.exe", "win-bare"])
+      fs.writeFileSync(path.join(dir, name), "x", { mode: 0o755 });
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      const found = (bin: string) => withPath(bin, () => isAgentAvailable("gemini"));
+      expect(found("win-cmd")).toBe(false);
+      expect(found("win-bat")).toBe(false);
+      expect(found("win-exe")).toBe(true);
+      expect(found("win-bare")).toBe(true);
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
+
+    function withPath(bin: string, fn: () => boolean): boolean {
+      let result = false;
+      withEnv({ AGENTMATE_GEMINI_BIN: bin, PATH: dir, PATHEXT: ".EXE;.CMD;.BAT" }, () => {
+        result = fn();
+      });
+      return result;
+    }
+  });
+
+  it("picks the first installed agent that differs, in registry order", () => {
+    const missing = path.join(dir, "missing");
+    const fake = path.join(dir, "fake-gemini");
+    withEnv(
+      { AGENTMATE_CODEX_BIN: missing, AGENTMATE_CLAUDE_BIN: fake, AGENTMATE_GEMINI_BIN: fake },
+      () => {
+        expect(installedOther("claude")).toBe("gemini");
+        expect(installedOther("gemini")).toBe("claude");
+        expect(firstAvailableOther("claude")).toBe("gemini");
+        expect(installedOther("codex")).toBe("claude");
+      },
+    );
+    withEnv(
+      { AGENTMATE_CODEX_BIN: missing, AGENTMATE_CLAUDE_BIN: fake, AGENTMATE_GEMINI_BIN: missing },
+      () => {
+        // Nothing else is installed: the default pairing is the fallback, and assertAgentAvailable fails on it.
+        expect(installedOther("claude")).toBeUndefined();
+        expect(firstAvailableOther("claude")).toBe("codex");
+        expect(() => assertAgentAvailable("codex")).toThrow(/not installed/);
+      },
+    );
+    withEnv(
+      { AGENTMATE_CODEX_BIN: fake, AGENTMATE_CLAUDE_BIN: fake, AGENTMATE_GEMINI_BIN: fake },
+      () => {
+        expect(firstAvailableOther("codex")).toBe("claude");
+        expect(firstAvailableOther("claude")).toBe("codex");
+        expect(firstAvailableOther("gemini")).toBe("codex");
+        expect(installedOther("claude", ["gemini", "claude"])).toBe("gemini");
+      },
+    );
+  });
+
   it("lists the installed agents in registry order", () => {
     withEnv(
       {
@@ -175,7 +253,8 @@ describe("gemini buildInvocation", () => {
       { role: "implement" as const, mode: "write" as const },
       [...base, "--approval-mode", "auto_edit"],
     ],
-    [{ role: "teamlead" as const }, [...base, "--approval-mode", "yolo"]],
+    // yolo is for the write-mode team lead only; a read-only one never gets it.
+    [{ role: "teamlead" as const }, [...base, "--approval-mode", "default"]],
     [{ role: "teamlead" as const, mode: "write" as const }, [...base, "--approval-mode", "yolo"]],
     [{ model: "gem-x" }, [...base, "--model", "gem-x", "--approval-mode", "default"]],
   ])("builds flags for %j", (extra, args) => {
@@ -198,6 +277,17 @@ describe("gemini buildInvocation", () => {
       "--approval-mode",
       "default",
     ]);
+  });
+
+  it("keeps a prompt that starts with a dash from being read as a flag", () => {
+    const { args } = gemini.buildInvocation(
+      job({ provider: "gemini", prompt: "--version please" }),
+    );
+    expect(args.slice(0, 2)).toEqual(["-p", " --version please"]);
+    expect(gemini.buildInvocation(job({ provider: "gemini", prompt: "-x" })).args[1]).toBe(" -x");
+    expect(gemini.buildInvocation(job({ provider: "gemini", prompt: "plain" })).args[1]).toBe(
+      "plain",
+    );
   });
 
   it("never asks for the container sandbox or the legacy yolo flag", () => {
@@ -288,6 +378,32 @@ describe("gemini parseStreamLine", () => {
     ]);
   });
 
+  it("maps an error event with severity warning to a status event", () => {
+    expect(parse({ type: "error", severity: "warning", message: "slow tool" })).toEqual([
+      expect.objectContaining({ level: "status", kind: "error", text: "warning: slow tool" }),
+    ]);
+    expect(parse({ type: "error", severity: "WARNING", message: "x" })[0]).toMatchObject({
+      level: "status",
+    });
+    expect(parse({ type: "error", severity: "error", message: "bad" })).toEqual([
+      expect.objectContaining({ level: "important", kind: "error", text: "bad" }),
+    ]);
+  });
+
+  it("keeps the pending text per adapter instance and clears it with resetStream", () => {
+    const first = createGeminiAdapter();
+    const second = createGeminiAdapter();
+    const line = (value: unknown) => JSON.stringify(value);
+    first.parseStreamLine!(line({ type: "message", role: "assistant", content: "from first" }));
+    // Another adapter's result must not flush the first one's text.
+    expect(second.parseStreamLine!(line({ type: "result" }))).toEqual([]);
+    first.resetStream!();
+    expect(first.parseStreamLine!(line({ type: "result" }))).toEqual([]);
+    first.parseStreamLine!(line({ type: "message", role: "assistant", content: "again" }));
+    expect(first.parseStreamLine!(line({ type: "result" }))[0]).toMatchObject({ text: "again" });
+    AGENTS.gemini.resetStream!();
+  });
+
   it("maps errors to important error events", () => {
     expect(parse({ type: "error", message: "bad key" })).toEqual([
       expect.objectContaining({ level: "important", kind: "error", text: "bad key" }),
@@ -318,6 +434,60 @@ describe("gemini parseOutcome", () => {
     const failed = parseOutcome("gemini", "", "boom", 1);
     expect(failed.text).toBe("");
     expect(failed.errors).toContain("boom");
+  });
+
+  const stream = (...events: unknown[]) => events.map((e) => JSON.stringify(e)).join("\n");
+
+  it("marks a result with an error and text as partial, with the error", () => {
+    const out = stream(
+      { type: "message", role: "assistant", content: "edited two files" },
+      { type: "result", status: "error", error: { message: "boom" } },
+    );
+    expect(parseOutcome("gemini", out, "", 1)).toMatchObject({
+      text: "edited two files",
+      partial: true,
+      errors: ["boom"],
+    });
+  });
+
+  it("marks a failed run that never reached a result as partial and names the exit code", () => {
+    const out = stream(
+      { type: "init", session_id: "g-2" },
+      { type: "message", role: "assistant", content: "half" },
+    );
+    const outcome = parseOutcome("gemini", out, "", 3);
+    expect(outcome).toMatchObject({ text: "half", partial: true, sessionId: "g-2" });
+    expect(outcome.errors.join(" ")).toMatch(/exited 3 without a final result/);
+    // A clean exit without a result stays partial but needs no extra error.
+    expect(parseOutcome("gemini", out, "", 0).errors).toEqual([]);
+  });
+
+  it("reports a non-zero exit with no output as an error", () => {
+    const outcome = parseOutcome("gemini", stream({ type: "init", session_id: "g" }), "", 1);
+    expect(outcome.text).toBe("");
+    expect(outcome.errors.join(" ")).toMatch(/exited 1/);
+  });
+
+  it("accepts plain text as the answer only when the CLI exited cleanly", () => {
+    expect(parseOutcome("gemini", "just an answer\n", "", 0)).toMatchObject({
+      text: "just an answer",
+      errors: [],
+    });
+    const failed = parseOutcome("gemini", "Error: model not found\n", "", 1);
+    expect(failed.text).toBe("");
+    expect(failed.errors.join(" ")).toContain("Error: model not found");
+  });
+
+  it("does not mark a completed run as partial", () => {
+    const out = stream(
+      { type: "message", role: "assistant", content: "done" },
+      { type: "result", status: "success" },
+    );
+    expect(parseOutcome("gemini", out, "", 0)).toEqual({
+      text: "done",
+      sessionId: null,
+      errors: [],
+    });
   });
 });
 
@@ -713,6 +883,12 @@ describe("gemini jobs", () => {
   let home: string;
   let geminiBin: string;
   const saved = { ...process.env };
+  const tracked: string[] = [];
+  /** Workflow jobs started only to inspect their record are canceled afterwards. */
+  const track = (started: Job): Job => {
+    tracked.push(started.id);
+    return started;
+  };
 
   beforeAll(() => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), "abm-gemini-"));
@@ -728,7 +904,8 @@ describe("gemini jobs", () => {
     delete process.env["AGENTMATE_PARENT_MODE"];
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    await Promise.all(tracked.map((id) => cancelJob(id).catch(() => undefined)));
     process.env = saved;
     fs.rmSync(home, { recursive: true, force: true });
   });
@@ -758,19 +935,53 @@ describe("gemini jobs", () => {
     expect(events.filter((e) => e.kind === "message")).toHaveLength(1);
   }, 45_000);
 
-  it("uses auto_edit for write jobs and resumes the previous session", async () => {
+  it("uses auto_edit for write jobs", async () => {
+    const started = startJob({ provider: "gemini", prompt: "edit", cwd: home, mode: "write" });
+    const done = await waitJob(started.id, 30_000);
+    expect(done.status).toBe("done");
+    expect(readResult(started.id).text).toContain("--approval-mode auto_edit");
+  }, 45_000);
+
+  it("refuses to continue a gemini job because its --resume is unverified", async () => {
     const first = startJob({ provider: "gemini", prompt: "first", cwd: home });
     await waitJob(first.id, 30_000);
-    const next = startJob({
+    expect(() =>
+      startJob({ provider: "gemini", prompt: "second", cwd: home, continueJob: first.id }),
+    ).toThrow(
+      "Continuing a job is not available for gemini yet (its --resume is unverified). Start a new job with the full context instead.",
+    );
+    // The refusal does not depend on the prior job existing.
+    expect(() =>
+      startJob({ provider: "gemini", prompt: "second", cwd: home, continueJob: "nope" }),
+    ).toThrow(/not available for gemini/);
+  }, 45_000);
+
+  it("accepts a gemini team lead only in write mode and runs it in yolo", async () => {
+    expect(() =>
+      startJob({ provider: "gemini", role: "teamlead", prompt: "lead", cwd: home }),
+    ).toThrow(
+      "A Gemini team lead needs mode write: delegation requires the shell, which Gemini only allows in yolo mode.",
+    );
+    expect(() =>
+      startJob({
+        provider: "gemini",
+        role: "teamlead",
+        prompt: "lead",
+        cwd: home,
+        mode: "read-only",
+      }),
+    ).toThrow(/needs mode write/);
+    const started = startJob({
       provider: "gemini",
-      prompt: "second",
+      role: "teamlead",
+      prompt: "lead",
       cwd: home,
       mode: "write",
-      continueJob: first.id,
     });
-    const done = await waitJob(next.id, 30_000);
+    expect(started.mode).toBe("write");
+    const done = await waitJob(started.id, 30_000);
     expect(done.status).toBe("done");
-    expect(readResult(next.id).text).toContain("--resume g-1 --approval-mode auto_edit");
+    expect(readResult(started.id).text).toContain("--approval-mode yolo");
   }, 60_000);
 
   it("ends a failing gemini job as an error with its stderr", async () => {
@@ -817,7 +1028,7 @@ describe("gemini jobs", () => {
     });
     expect(() =>
       startJob({ provider: "codex", role: "ask", partner: "gemini", prompt: "t", cwd: home }),
-    ).toThrow("partner applies only to the teamlead, crossreview and split roles");
+    ).toThrow("partner applies only to the teamlead, crossreview, split and plan roles");
   });
 
   it("briefs a team lead to delegate to its partner", async () => {
@@ -834,13 +1045,79 @@ describe("gemini jobs", () => {
     await cancelJob(started.id);
   }, 30_000);
 
-  it("pairs a gemini provider with claude by default", () => {
+  it("pairs a gemini provider with the first installed other agent and records it", async () => {
+    const claudeBin = path.join(home, "fake-claude");
+    fs.writeFileSync(claudeBin, "#!/bin/sh\n", { mode: 0o755 });
+    withEnv({ AGENTMATE_CLAUDE_BIN: claudeBin, AGENTMATE_CODEX_BIN: path.join(home, "no") }, () => {
+      const started = track(
+        startJob({
+          provider: "gemini",
+          role: "teamlead",
+          mode: "write",
+          prompt: "x",
+          cwd: home,
+        }),
+      );
+      expect(started.prompt).toContain("jobs start claude");
+      expect(started.partner).toBe("claude");
+    });
+  });
+
+  it("resolves the default partner among installed agents and fails fast when it is missing", () => {
+    const claudeBin = path.join(home, "fake-claude");
+    fs.writeFileSync(claudeBin, "#!/bin/sh\n", { mode: 0o755 });
+    const missing = path.join(home, "missing-bin");
+    const roles = ["teamlead", "crossreview", "split"] as const;
+    // Only claude is installed: there is nobody to pair it with, before any file is touched.
+    withEnv(
+      {
+        AGENTMATE_CLAUDE_BIN: claudeBin,
+        AGENTMATE_CODEX_BIN: missing,
+        AGENTMATE_GEMINI_BIN: missing,
+      },
+      () => {
+        for (const role of roles) {
+          expect(() => startJob({ provider: "claude", role, prompt: "t", cwd: home })).toThrow(
+            /Agent codex is not installed/,
+          );
+        }
+        // An explicit partner is checked too.
+        expect(() =>
+          startJob({
+            provider: "claude",
+            role: "crossreview",
+            partner: "gemini",
+            prompt: "t",
+            cwd: home,
+          }),
+        ).toThrow(/Agent gemini is not installed/);
+      },
+    );
+    // With gemini installed it becomes the partner of claude.
+    withEnv(
+      {
+        AGENTMATE_CLAUDE_BIN: claudeBin,
+        AGENTMATE_CODEX_BIN: missing,
+        AGENTMATE_GEMINI_BIN: geminiBin,
+      },
+      () => {
+        for (const role of roles) {
+          const started = track(startJob({ provider: "claude", role, prompt: "t", cwd: home }));
+          expect(started.partner).toBe("gemini");
+        }
+      },
+    );
+  }, 30_000);
+
+  it("keeps the explicit partner and the default pairing when both agents are installed", () => {
     const claudeBin = path.join(home, "fake-claude");
     fs.writeFileSync(claudeBin, "#!/bin/sh\n", { mode: 0o755 });
     withEnv({ AGENTMATE_CLAUDE_BIN: claudeBin }, () => {
-      const started = startJob({ provider: "gemini", role: "teamlead", prompt: "x", cwd: home });
-      expect(started.prompt).toContain("jobs start claude");
-      expect(started.partner).toBeUndefined();
+      const run = (extra: Partial<Parameters<typeof startJob>[0]>) =>
+        track(startJob({ provider: "codex", prompt: "t", cwd: home, ...extra }));
+      expect(run({ role: "crossreview" }).partner).toBe("claude");
+      expect(run({ role: "crossreview", partner: "gemini" }).partner).toBe("gemini");
+      expect(run({ role: "ask" }).partner).toBe(undefined);
     });
   });
 
@@ -860,6 +1137,10 @@ describe("gemini jobs", () => {
       "review:gemini",
     ]);
     expect(readResult(started.id).text).toContain("approve");
+    // Gemini cannot run shell commands headless, so its briefing carries the diff instead.
+    const review = children.find((c) => c.role === "review")!;
+    expect(review.prompt).toContain("may not run shell commands");
+    expect(review.prompt).toContain("Diff");
   }, 100_000);
 });
 

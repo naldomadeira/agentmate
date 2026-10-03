@@ -1,11 +1,11 @@
 ---
 description: Have Codex or Claude write a step-by-step plan for a goal, or critique an existing plan, read-only.
-argument-hint: "<codex|claude> <goal>"
+argument-hint: "<codex|claude|gemini> <goal>"
 ---
 
 Request: $ARGUMENTS
 
-Take the first word of the request as the provider (`codex` or `claude`); the rest is the goal. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
+Take the first word of the request as the provider (`codex`, `claude` or `gemini`, which is experimental); the rest is the goal. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
 
 1. Call the `mate_plan` MCP tool with `provider` and `goal` (add `constraints` and `context`; pass `existingPlan` to critique a plan instead of creating one). It returns a job id; collect the result with `mate_wait`.
 2. If the `mate_*` tools are not loaded, run `npx -y agentmate jobs start <provider> "<briefing>" --role plan` in the shell.

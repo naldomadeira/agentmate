@@ -239,6 +239,20 @@ describe("skills", () => {
     expect(readFileSync(path, "utf8").split("\n").length).toBeLessThanOrEqual(80);
   });
 
+  it("names gemini in every skill and template argument-hint that lists providers", () => {
+    const hints = [
+      ...SKILLS.map((name) => resolve(root, "skills", name, "SKILL.md")),
+      ...["templates/claude-commands", "templates/codex-prompts"].flatMap((dir) =>
+        readdirSync(resolve(root, dir))
+          .filter((file) => file.endsWith(".md"))
+          .map((file) => resolve(root, dir, file)),
+      ),
+    ].map((path) => [path, frontmatter(path)["argument-hint"] ?? ""] as const);
+    const naming = hints.filter(([, hint]) => /codex|claude/.test(hint));
+    expect(naming.length).toBeGreaterThan(15);
+    for (const [path, hint] of naming) expect(hint, path).toContain("gemini");
+  });
+
   it("keeps the project-local codex skill identical to the shared one", () => {
     expect(readFileSync(resolve(root, ".claude/skills/codex/SKILL.md"), "utf8")).toBe(
       readFileSync(resolve(root, "skills/codex/SKILL.md"), "utf8"),

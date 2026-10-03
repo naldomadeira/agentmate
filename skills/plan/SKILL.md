@@ -1,7 +1,7 @@
 ---
 name: plan
-description: Get an implementation plan from Codex or Claude, or a critique of a plan you already have, with files, risks and verification steps. Use when the user says /mate:plan, 'plan this with codex', 'challenge this plan', 'planeje com o claude', or before a non-trivial change.
-argument-hint: "<codex|claude> <goal> | <codex|claude> critique <plan>"
+description: Get an implementation plan from Codex, Claude or Gemini (experimental), or a critique of a plan you already have, with files, risks and verification steps. Use when the user says /mate:plan, 'plan this with codex', 'challenge this plan', 'planeje com o claude', or before a non-trivial change.
+argument-hint: "<codex|claude|gemini> <goal> | <codex|claude|gemini> critique <plan>"
 ---
 
 # Plan or critique a plan

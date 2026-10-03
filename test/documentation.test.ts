@@ -38,6 +38,14 @@ describe("project documentation", () => {
     expect(readme).toContain("agentmate init");
     expect(readme).toContain("partner");
     expect(readme).toContain("Cutting a release");
+    // The Safety model names the one Gemini mode that approves everything.
+    const safety = readme.slice(
+      readme.indexOf("## Safety model"),
+      readme.indexOf("## Troubleshooting"),
+    );
+    expect(safety).toContain("--approval-mode yolo");
+    expect(safety).toContain("--approval-mode auto_edit");
+    expect(safety).toContain("--approval-mode default");
     expect(readme).toContain("clean working tree");
     expect(readme).not.toContain("## Legacy setup");
     expect(readme).toContain("Removed in 0.6.0");
@@ -66,6 +74,11 @@ describe("project documentation", () => {
     expect(portugueseReadme).toContain("partner");
     expect(portugueseReadme).toContain("Publicar uma versão");
     expect(portugueseReadme).toContain("árvore de trabalho limpa");
+    const portugueseSafety = portugueseReadme.slice(
+      portugueseReadme.indexOf("## Modelo de segurança"),
+      portugueseReadme.indexOf("## Solução de problemas"),
+    );
+    expect(portugueseSafety).toContain("--approval-mode yolo");
   });
 
   it("documents the slash commands in both READMEs and both install guides", () => {
@@ -123,6 +136,31 @@ describe("project documentation", () => {
       expect(content, file).not.toMatch(
         /\$(ask|review|research|plan|implement|teamlead|jobs|delegate)\b/,
       );
+    }
+  });
+
+  it("documents partner and the Gemini limits in the skills", () => {
+    for (const skill of ["teamlead", "crossreview", "split", "delegate"])
+      expect(read(`skills/${skill}/SKILL.md`), skill).toContain("partner");
+    const gemini = read("skills/gemini/SKILL.md");
+    for (const text of ["experimental", "No shell", "No continuation", "yolo", "mode: write"])
+      expect(gemini, text).toContain(text);
+    expect(read("skills/teamlead/SKILL.md")).toContain("--approval-mode yolo");
+  });
+
+  it("states the real skill count and the three agents in the install guides", () => {
+    const count = readdirSync(resolve(root, "skills"), { withFileTypes: true }).filter((entry) =>
+      entry.isDirectory(),
+    ).length;
+    const words: Record<string, [string, string]> = { "14": ["fourteen", "catorze"] };
+    const [english, portuguese] = words[String(count)] ?? ["?", "?"];
+    expect(read("docs/INSTALL_FOR_AGENTS.md")).toContain(`packages ${english} skills`);
+    expect(read("docs/INSTALL_FOR_AGENTS.pt-BR.md")).toContain(`fornece ${portuguese} skills`);
+    for (const guide of ["docs/INSTALL_FOR_AGENTS.md", "docs/INSTALL_FOR_AGENTS.pt-BR.md"]) {
+      const content = read(guide);
+      expect(content, guide).not.toContain("ten skills");
+      expect(content, guide).not.toContain("dez skills");
+      expect(content, guide).toMatch(/`codex`, `claude` (or|ou) `gemini`/);
     }
   });
 

@@ -10,6 +10,7 @@ describe("parseGeminiOutput", () => {
       resultText: "All good",
       sessionId: "s-1",
       errors: [],
+      completed: true,
     });
   });
 
@@ -26,6 +27,8 @@ describe("parseGeminiOutput", () => {
     );
     expect(parsed.resultText).toBe("partial answer");
     expect(parsed.errors).toEqual(["slow"]);
+    // A reported error is a failure even when text came with it: the answer cannot be trusted as done.
+    expect(parsed.partial).toBe(true);
   });
 
   it("concatenates assistant chunks of a stream and takes the session from init", () => {
@@ -38,7 +41,12 @@ describe("parseGeminiOutput", () => {
       { type: "message", role: "assistant", content: "lo", delta: true },
       { type: "result", status: "success", stats: {} },
     );
-    expect(parseGeminiOutput(out)).toEqual({ resultText: "Hello", sessionId: "g-7", errors: [] });
+    expect(parseGeminiOutput(out)).toEqual({
+      resultText: "Hello",
+      sessionId: "g-7",
+      errors: [],
+      completed: true,
+    });
   });
 
   it("prefers result.response over the chunks", () => {
@@ -79,6 +87,7 @@ describe("parseGeminiOutput", () => {
       resultText: "Half an answ",
       sessionId: "g-2",
       errors: [],
+      completed: false,
       partial: true,
     });
   });
@@ -110,6 +119,42 @@ describe("parseGeminiOutput", () => {
     const parsed = parseGeminiOutput(out);
     expect(parsed.resultText).toBe("done anyway");
     expect(parsed.errors).toEqual(["tool warning"]);
+    // A stray error event next to a successful result does not make the answer partial.
+    expect(parsed.partial).toBeUndefined();
+  });
+
+  it("flags a result with status error that still carries text as partial", () => {
+    const parsed = parseGeminiOutput(
+      lines(
+        { type: "message", role: "assistant", content: "I changed three files" },
+        { type: "result", status: "error", error: { type: "Quota", message: "daily limit" } },
+      ),
+    );
+    expect(parsed.resultText).toBe("I changed three files");
+    expect(parsed.errors).toEqual(["Quota: daily limit"]);
+    expect(parsed.partial).toBe(true);
+    expect(parsed.completed).toBe(true);
+  });
+
+  it("flags a result with an error object and a response as partial", () => {
+    const parsed = parseGeminiOutput(
+      lines({ type: "result", response: "half", error: { message: "stream cut" } }),
+    );
+    expect(parsed.resultText).toBe("half");
+    expect(parsed.errors).toEqual(["stream cut"]);
+    expect(parsed.partial).toBe(true);
+  });
+
+  it("does not flag an error result without text as partial", () => {
+    const parsed = parseGeminiOutput(lines({ type: "result", status: "error" }));
+    expect(parsed.resultText).toBe("");
+    expect(parsed.errors).toEqual(["Gemini reported an error"]);
+    expect(parsed.partial).toBeUndefined();
+  });
+
+  it("marks a stream without a result event as not completed", () => {
+    expect(parseGeminiOutput(lines({ type: "init", session_id: "g" })).completed).toBe(false);
+    expect(parseGeminiOutput(lines({ type: "result" })).completed).toBe(true);
   });
 
   it("skips stray non-JSON lines in a stream", () => {
@@ -127,7 +172,10 @@ describe("parseGeminiOutput", () => {
   });
 
   it("falls back to raw text for non-JSON output and flags empty output", () => {
-    expect(parseGeminiOutput("just text\n").resultText).toBe("just text");
+    const raw = parseGeminiOutput("just text\n");
+    expect(raw.resultText).toBe("just text");
+    expect(raw.rawText).toBe(true);
+    expect(raw.completed).toBe(false);
     expect(parseGeminiOutput("  \n").errors).toEqual(["Empty output from Gemini CLI"]);
   });
 });

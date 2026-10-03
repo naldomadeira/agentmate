@@ -1,11 +1,11 @@
 ---
 description: Ask Codex or Claude a direct question and get the answer in the same turn.
-argument-hint: "<codex|claude> <question>"
+argument-hint: "<codex|claude|gemini> <question>"
 ---
 
 Request: $ARGUMENTS
 
-Take the first word of the request as the provider (`codex` or `claude`); the rest is the question. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
+Take the first word of the request as the provider (`codex`, `claude` or `gemini`, which is experimental); the rest is the question. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
 
 1. Call the `mate_ask` MCP tool with `provider` and `question` (add `context` for background). It waits for the answer; pass `waitSeconds: 45` (Codex limits a tool call to about 60 seconds) and continue with `mate_wait` if it has not arrived.
 2. If the `mate_*` tools are not loaded, run `npx -y agentmate jobs ask <provider> "<question>" --wait 120s` in the shell.
