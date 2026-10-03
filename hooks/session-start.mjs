@@ -3,14 +3,22 @@
 // finished (or went stale) in this directory since the last session here.
 // Plain Node ESM, no dependencies, fail-open: any error exits 0 without output.
 import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, writeSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 const COOLDOWN_MS = 120_000;
 const FIRST_RUN_WINDOW_MS = 24 * 3_600_000;
 const MAX_CHARS = 400;
-const TERMINAL = new Set(["done", "error", "canceled", "timeout"]);
+// Keep in sync with TERMINAL in src/jobs/store.ts (test/hook.test.ts enforces it).
+const TERMINAL = new Set(["done", "error", "canceled", "timeout", "quota_exhausted"]);
 
 function readStdin() {
   return new Promise((resolve) => {
@@ -33,10 +41,30 @@ function pidAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
-    return error?.code === "EPERM";
+    if (error?.code !== "EPERM") return false;
   }
+  // Recycled-pid guard: when the command line is readable it must belong to a worker.
+  try {
+    return readFileSync(`/proc/${pid}/cmdline`, "utf8").includes("worker");
+  } catch {
+    return true;
+  }
+}
+
+function realDir(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+/** True when `jobCwd` is `root` or lies below it. */
+function within(root, jobCwd) {
+  if (typeof jobCwd !== "string" || !jobCwd) return false;
+  const dir = realDir(jobCwd);
+  return dir === root || dir.startsWith(root.endsWith(sep) ? root : root + sep);
 }
 
 function ago(ms) {
@@ -70,7 +98,7 @@ function compose(finished, running, stale, now) {
   }
   const entries = finished.map(
     (j) =>
-      `${j.id} ${j.status} (${j.role ?? "custom"}, ${j.provider ?? "?"}, ${ago(now - Date.parse(j.finishedAt))})`,
+      `${j.id} ${j.status} (${j.role ?? "custom"}, ${j.provider ?? "?"}, ${ago(now - Date.parse(j.finishedAt))})${j.status === "quota_exhausted" ? " needs hand-off" : ""}`,
   );
   for (let shown = entries.length; shown >= 1; shown--) {
     const text =
@@ -113,7 +141,8 @@ async function main() {
   }
 
   const jobs = readJobs(dir);
-  const inScope = new Set(jobs.filter((j) => j.cwd === cwd).map((j) => j.id));
+  const root = realDir(cwd);
+  const inScope = new Set(jobs.filter((j) => within(root, j.cwd)).map((j) => j.id));
   // Children of in-scope jobs (workflow steps) count towards running/stale, not the finished list.
   for (let grew = true; grew; ) {
     grew = false;
@@ -128,7 +157,11 @@ async function main() {
 
   const finished = scoped
     .filter((j) => !j.parentJob && TERMINAL.has(j.status) && Date.parse(j.finishedAt) > previous)
-    .sort((a, b) => Date.parse(b.finishedAt) - Date.parse(a.finishedAt));
+    .sort(
+      (a, b) =>
+        Number(b.status === "quota_exhausted") - Number(a.status === "quota_exhausted") ||
+        Date.parse(b.finishedAt) - Date.parse(a.finishedAt),
+    );
   const active = scoped.filter((j) => j.status === "running");
   const stale = active.filter((j) => !pidAlive(j.workerPid)).length;
   const running = active.length - stale;

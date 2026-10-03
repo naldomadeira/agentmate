@@ -24,6 +24,14 @@ jobs:
           node-version: lts/*
           registry-url: https://registry.npmjs.org/
 
+      - name: Check the tag matches the package version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "v${VERSION}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${VERSION} (expected v${VERSION}). Run 'pnpm version:bump' and re-tag." >&2
+            exit 1
+          fi
+
       - run: npx changelogithub
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
@@ -40,14 +48,15 @@ jobs:
 
       - name: Verify the release on the npm registry
         run: |
+          NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
           for attempt in 1 2 3 4 5; do
-            if [ "$(npm view "agentmate@${VERSION}" version 2>/dev/null)" = "${VERSION}" ]; then
-              echo "agentmate@${VERSION} is on the registry"
+            if [ "$(npm view "${NAME}@${VERSION}" version 2>/dev/null)" = "${VERSION}" ]; then
+              echo "${NAME}@${VERSION} is on the registry"
               exit 0
             fi
-            echo "agentmate@${VERSION} not visible yet (attempt ${attempt}/5)"
+            echo "${NAME}@${VERSION} not visible yet (attempt ${attempt}/5)"
             sleep 15
           done
-          echo "agentmate@${VERSION} never appeared on the registry" >&2
+          echo "${NAME}@${VERSION} never appeared on the registry" >&2
           exit 1

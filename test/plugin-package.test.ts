@@ -87,7 +87,7 @@ describe("plugin package", () => {
     );
   });
 
-  it("declares the SessionStart hook in the Claude plugin manifest", () => {
+  it("ships the SessionStart hook through the auto-discovered hooks/hooks.json", () => {
     const manifest = json<PluginManifest>(".claude-plugin/plugin.json");
     const hooks = json<{
       hooks: Record<
@@ -96,7 +96,9 @@ describe("plugin package", () => {
       >;
     }>("hooks/hooks.json");
 
-    expect(manifest.hooks).toBe("./hooks/hooks.json");
+    // hooks/hooks.json is loaded automatically; declaring it too risks a duplicate-load warning.
+    expect(existsSync(resolve(root, "hooks/hooks.json"))).toBe(true);
+    expect(manifest.hooks).toBeUndefined();
     expect(existsSync(resolve(root, "hooks/session-start.mjs"))).toBe(true);
     expect(hooks.hooks["SessionStart"]).toEqual([
       {

@@ -1,9 +1,18 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { TERMINAL } from "../src/jobs/store.js";
 
 const hook = resolve(import.meta.dirname, "..", "hooks", "session-start.mjs");
 
@@ -20,9 +29,23 @@ beforeEach(() => {
   mkdirSync(other, { recursive: true });
 });
 
+const children: ChildProcess[] = [];
+
 afterEach(() => {
+  for (const child of children.splice(0)) child.kill();
   rmSync(join(home, ".."), { recursive: true, force: true });
 });
+
+/** A long-lived process; `worker` in its argv makes it look like an AgentMate worker. */
+function liveProcess(worker: boolean): number {
+  const child = spawn(
+    process.execPath,
+    ["-e", "setTimeout(() => {}, 60000)", ...(worker ? ["worker", "job-x"] : ["other"])],
+    { stdio: "ignore" },
+  );
+  children.push(child);
+  return child.pid as number;
+}
 
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 
@@ -74,7 +97,7 @@ function seed(): void {
     finishedAt: ago(3 * 60_000),
   });
   writeJob("stale001", { status: "running", cwd, workerPid: deadPid(), startedAt: ago(600_000) });
-  writeJob("alive001", { status: "running", cwd, workerPid: process.pid });
+  writeJob("alive001", { status: "running", cwd, workerPid: liveProcess(true) });
   writeJob("foreign01", { status: "done", cwd: other, finishedAt: ago(60_000) });
 }
 
@@ -180,5 +203,58 @@ describe("SessionStart hook", () => {
 
     expect(text.length).toBeLessThanOrEqual(400);
     expect(text).toMatch(/… and \d+ more/);
+  });
+
+  it("treats every terminal status the job store knows as finished", () => {
+    const source = readFileSync(hook, "utf8");
+    const declared = /const TERMINAL = new Set\(\[([^\]]*)\]\)/.exec(source)?.[1] ?? "";
+    const statuses = [...declared.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+
+    expect([...statuses].sort()).toEqual([...TERMINAL].sort());
+  });
+
+  it("lists quota_exhausted jobs first, flagged as needing hand-off", () => {
+    seed();
+    writeJob("quota001", {
+      status: "quota_exhausted",
+      cwd,
+      finishedAt: ago(30 * 60_000),
+    });
+    const text = (JSON.parse(runHook().stdout) as any).hookSpecificOutput.additionalContext;
+
+    expect(text).toContain("quota001 quota_exhausted (ask, codex, 30m ago) needs hand-off");
+    expect(text.indexOf("quota001")).toBeLessThan(text.indexOf("musn27mj"));
+    expect(text.indexOf("quota001")).toBeLessThan(text.indexOf("musn0r25"));
+  });
+
+  it("includes jobs started in a subdirectory of the session cwd, but not siblings", () => {
+    const sub = join(cwd, "packages", "app");
+    const sibling = `${cwd}-extra`;
+    mkdirSync(sub, { recursive: true });
+    mkdirSync(sibling, { recursive: true });
+    writeJob("subdir01", { status: "done", cwd: sub, finishedAt: ago(60_000) });
+    writeJob("sibling1", { status: "done", cwd: sibling, finishedAt: ago(60_000) });
+    const text = (JSON.parse(runHook().stdout) as any).hookSpecificOutput.additionalContext;
+
+    expect(text).toContain("subdir01");
+    expect(text).not.toContain("sibling1");
+  });
+
+  it("matches the session cwd through symlinks", () => {
+    const link = join(cwd, "..", "repo-link");
+    symlinkSync(cwd, link);
+    writeJob("viaLink1", { status: "done", cwd, finishedAt: ago(60_000) });
+    const text = (JSON.parse(runHook({}, { cwd: link }).stdout) as any).hookSpecificOutput
+      .additionalContext;
+
+    expect(text).toContain("viaLink1");
+  });
+
+  it("does not count a recycled pid (not a worker) as running", () => {
+    writeJob("recycled", { status: "running", cwd, workerPid: liveProcess(false) });
+    const text = (JSON.parse(runHook().stdout) as any).hookSpecificOutput.additionalContext;
+
+    expect(text).toContain("0 running");
+    expect(text).toContain("1 stale");
   });
 });

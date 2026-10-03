@@ -221,11 +221,13 @@ goal -> plan (provider, read-only)
 ```
 
 1. **Plan.** A `plan` job on `provider` returns a fenced `json` block, `{ "parts": [{ "id", "title", "briefing", "files", "agent" }] }`, with 1 to `maxParts` parts (2 to 4, default 3). The worker takes the last such block and checks it: unique ids (`a-z`, `0-9`, `-`), known agents (a missing or unknown agent alternates, starting with the other agent). If the block is invalid the workflow ends `error` with a pointer to `jobs result <plan-job>`. The plan goes into the session notes, so every part sees it.
-2. **Parts, in parallel.** Read-only (default): one `research` job per part on the part's agent, in the working directory. Write (`--mode write`, needs a git repository with a commit): for each part the worker runs `git worktree add -b agentmate/<split-id>/<part-id> ~/.agentmate/worktrees/<split-id>/<part-id> HEAD`, then an `implement` job works in that worktree, so your working tree is untouched. When the implementer finishes, AgentMate commits what it left on the part's branch.
+2. **Parts, in parallel.** Read-only (default): one `research` job per part on the part's agent, in the working directory. Write (`--mode write`): for each part the worker creates a worktree from the recorded base commit, `git worktree add -b agentmate/<split-id>/<part-id> ~/.agentmate/worktrees/<split-id>/<part-id> <base-commit>`, then an `implement` job works there, so your working tree is untouched. When the implementer finishes, AgentMate commits what it left on the part's branch automatically (`--no-verify`, gpg signing off).
 3. **Cross-review.** Each finished part is reviewed read-only by the other agent: in write mode in the part's worktree, against the commit the branch started from (`git diff <base-commit>`); in read-only mode over the research result. The review ends with `Verdict: approve` or `Verdict: request-changes`.
-4. **Report.** `jobs result <id>` has `## Goal`, `## Parts` (part, title, agent, part job, review job, verdict, branch), `## Integration`, `## Needs human` when it applies and `## Next steps` with the `jobs result <child-id>` commands. In write mode `## Integration` lists the `git merge agentmate/<split-id>/<part-id>` commands in order and the `git worktree remove <path>` cleanup; in read-only mode it merges the research results. `jobs events <id>` lists one `important` event per step.
+4. **Report.** `jobs result <id>` has `## Goal`, `## Parts` (part, title, agent, part job, review job, verdict, branch), `## Integration`, `## Needs human` when it applies and `## Next steps` with the `jobs result <child-id>` commands. In write mode the report lists every worktree and branch with its cleanup commands (`git worktree remove <path>`, `git branch -D <branch>`), `## Integration` has the ordered `git merge agentmate/<split-id>/<part-id>` commands for **approved parts only**, and every other part goes under `## Needs human`; in read-only mode it merges the research results. `jobs events <id>` lists one `important` event per step.
 
-A part that fails does not stop the others: they run to completion (and are reviewed), then the workflow ends `error` naming the failed part. `request-changes` or a missing verdict lands in `## Needs human`. The workflow's own `--timeout` is the overall deadline, and `jobs cancel <id>` on it also cancels the running children.
+A part that fails does not stop the others: they run to completion (and are reviewed), then the workflow ends `error` naming the failed part. A part that is not approved (`request-changes`, a missing verdict or a failure) lands in `## Needs human`. The workflow's own `--timeout` is the overall deadline, and `jobs cancel <id>` on it also cancels the running children.
+
+**Write mode limitations.** It needs a git repository with a **clean working tree**, checked **before** the planner runs; commit or stash first. The worktrees are fresh checkouts: they have no `node_modules`, no `.env` and no submodule contents, so a part cannot run checks that need them unless its briefing says how to set them up.
 
 What is **not** automated: AgentMate never merges, pushes, rebases or deletes branches for you, and merge conflicts between parts are not resolved automatically. Run the merges from the report yourself, resolve any conflict, run the tests, then remove the worktrees. There is no second round: a part with `request-changes` is for you (or a follow-up job) to fix.
 
@@ -262,7 +264,9 @@ Every job also writes an append-only event log (`events.jsonl`). Both Codex and 
 
 <a id="sessions"></a>
 
-**Sessions.** A session is shared context across jobs and agents. `mate_session_start(title, cwd?)` creates one under `~/.agentmate/sessions/<id>/` (`session.json` plus `notes.md`); pass its id as `session` to any role tool or `mate_start` (CLI: `jobs start ... --session <id>`) and the job is recorded in it. `mate_session_notes(id, text, author?)` appends a note, `mate_session_show(id)` shows the notes (tail) and the session's jobs, and `mate_session_list(cwd?, limit?)` lists sessions. When a session has notes, every worker started in it receives the last 4000 characters in front of its briefing, under `## Shared session notes`, whatever its role, so keep notes short and factual: decisions, constraints, file locations. Jobs that a workflow starts (`crossreview`, `split`) inherit the workflow's session, and `split` creates a session for itself when you pass none and writes its plan into the notes. The notes are plain text under `~/.agentmate`, so keep secrets out of them.
+**Sessions.** A session is shared context across jobs and agents. `mate_session_start(title, cwd?)` creates one under `~/.agentmate/sessions/<id>/` (`session.json` plus `notes.md`; membership is derived from the jobs that carry the session id, so `session.json` has no `jobs` array); pass its id as `session` to any role tool or `mate_start` (CLI: `jobs start ... --session <id>`) and the job is recorded in it. `mate_session_notes(id, text, author?)` appends a note (a single note is capped at 2000 characters), `mate_session_show(id)` shows the notes (tail) and the session's jobs, and `mate_session_list(cwd?, limit?)` lists sessions. When a session has notes, every worker started in it receives them **after** the task, under `## Shared session notes`, in a code fence and framed as data written by other agents, not as instructions. The injection is capped at 4000 characters of whole entries (the newest that fit), whatever the role, so keep notes short and factual: decisions, constraints, file locations. Jobs that a workflow starts (`crossreview`, `split`) inherit the workflow's session, and `split` creates a session for itself when you pass none and writes its plan into the notes. The notes are plain text under `~/.agentmate`, so keep secrets out of them.
+
+**Session start summary.** In Claude Code the plugin also registers a `SessionStart` hook (`hooks/hooks.json`). When a session opens, it prints one line (400 characters at most) about the jobs started from that directory or a subdirectory: the jobs that finished since the last session there (`quota_exhausted` ones first, marked "needs hand-off"), how many are still running and how many are stale (their worker is gone). It stays silent when there is nothing to report and for 120 seconds after the last summary in the same directory; the first time in a directory it looks back 24 hours. Set `AGENTMATE_HOOK_QUIET=1` to turn it off. It never fails a session: any error exits silently. This is a Claude Code feature only; Codex has no equivalent hook.
 
 Skills prefer the `mate_*` tools. If the host did not load MCP, they run the same job contract through `npx -y agentmate`; they never change a user's host configuration as a fallback.
 
@@ -374,7 +378,7 @@ npx -y agentmate jobs start codex "Address the highest-priority finding." --cont
 - **Cross-review writes only through its implementer.** The `implement` step gets the `implement` permissions above; the `review` step is read-only. The workflow job itself calls no CLI.
 - **Split writes only inside its worktrees.** In write mode each part's `implement` job runs in its own git worktree on its own branch (`agentmate/<split-id>/<part-id>`), the planner and reviewers are read-only, and nothing is merged into your branch for you.
 - **One `write` job per working tree at a time.** Two writers in one tree collide. The skills and the team lead prompt follow this rule; use separate git worktrees for parallel edits (`split` does this for its parts).
-- **A spent plan is a status, not a crash.** When a provider reports that its usage limit, quota or credits are used up, the job ends `quota_exhausted` (terminal; `wait` and `ask` exit `1`). Its `error` reads `<provider> quota exhausted: <line>. Retry after the reset or start the job on <other agent>.`, and `result` adds `Hand off: start the same job with provider <other>.`. A plain HTTP 429 that the runtime already retried does not count. Extend the detection with `AGENTMATE_QUOTA_PATTERNS`, case-insensitive regular expressions separated by `|`; invalid ones are ignored.
+- **A spent plan is a status, not a crash.** When a provider reports that its usage limit, quota or credits are used up, the job ends `quota_exhausted` (terminal; `wait` and `ask` exit `1`). Its `error` reads `<provider> quota exhausted: <line>. Retry after the reset or start the job on <other agent>.`, and `result` adds `Hand off: start the same job with provider <other>.`. Detection reads the stderr tail and parsed errors only, so a 429 alone is not exhaustion, and the job is not retried once a quota line is seen. Extend the detection with `AGENTMATE_QUOTA_PATTERNS`, case-insensitive regular expressions separated by `|`; invalid ones are ignored.
 - **The delegator owns acceptance.** Job output is an input to your judgment. Verify claims and run the tests before you merge anything a worker produced.
 - **No hidden configuration changes.** The plugin registers its own MCP server. The fallback path runs the CLI and never edits host configuration. Do not put secrets in briefings: prompts and results are stored in plain text under `~/.agentmate`, in files created with owner-only permissions (`0600` for files, `0700` for directories).
 
@@ -390,7 +394,7 @@ Start with `npx -y agentmate doctor`. It prints `ok`, `warn` or `fail` for each 
 | A job shows `running` but nothing happens           | The worker process died. `doctor` lists the ids of these jobs; `jobs cancel <id>` clears them.                                         |
 | `Delegation depth limit reached`                    | A job started by a worker tried to start another job (a third level). Return the findings to the session that started the job instead. |
 | `Only a top-level session can start a teamlead job` | A worker tried to start a team lead (or a cross-review or a split: `... a crossreview job`, `... a split job`). Start it from your own session.                      |
-| Job ends `quota_exhausted` | The provider's usage limit, quota or credits are spent. Wait for the reset it names, or start the same job on the other agent (`result` prints the hint). If your provider words it differently, add a pattern to `AGENTMATE_QUOTA_PATTERNS` (for example `AGENTMATE_QUOTA_PATTERNS="plan cap\|budget burned"`). |
+| Job ends `quota_exhausted` | The provider's usage limit, quota or credits are spent. Detection looks at the stderr tail and parsed errors only, a 429 alone is not exhaustion, and the job is not retried once a quota line is seen. Wait for the reset it names, or start the same job on the other agent (`result` prints the hint). If your provider words it differently, add a pattern to `AGENTMATE_QUOTA_PATTERNS` (for example `AGENTMATE_QUOTA_PATTERNS="plan cap\|budget burned"`). |
 | Duplicated or conflicting tools                     | A legacy registration (`serve codex` / `serve claude`) is still present. `doctor` flags it; see "Removed in 0.6.0".                    |
 
 ## Requirements
@@ -415,6 +419,18 @@ pnpm build
 pnpm test
 pnpm lint
 ```
+
+### Cutting a release
+
+```bash
+pnpm version:bump x.y.z          # package.json, src/lib/version.ts, both plugin manifests, the Codex marketplace
+pnpm release:prepare             # version check, build, smoke:pack (real tarball install), smoke:cli
+git commit -am "chore: release vx.y.z"
+git tag vx.y.z
+git push --follow-tags
+```
+
+The Release workflow runs on the tag: it fails when the tag does not match the package version, runs the checks, publishes through npm Trusted Publishing (no token) and verifies that the version appears on the registry.
 
 Release notes are in the [changelog](./CHANGELOG.md).
 

@@ -35,12 +35,12 @@ goal -> plan (1..maxParts parts, closed interfaces, no shared files)
 ## Modes
 
 - **read-only (default)**: each part is a `research` job on the working directory; the report merges the findings. Use it to explore or plan a large change first.
-- **write**: needs a git repository with a commit and the user's authorization to edit files. For each part AgentMate runs `git worktree add -b agentmate/<split-id>/<part> ~/.agentmate/worktrees/<split-id>/<part> HEAD` and an `implement` job works there, so your tree stays untouched. The part's changes are committed on its branch.
+- **write**: needs a git repository with a **clean working tree** (checked before the planner runs; commit or stash first) and the user's authorization to edit files. Each part starts from the recorded base commit in its own worktree `~/.agentmate/worktrees/<split-id>/<part>` on branch `agentmate/<split-id>/<part>`, so your tree stays untouched. Worktrees have no `node_modules`, `.env` or submodule contents. The workflow commits each part automatically (`--no-verify`, gpg signing off).
 
 ## Treat the result
 
-- `## Parts` is a table: part, agent, part job, review job, verdict, branch. `## Needs human` lists parts with `request-changes`, no verdict, or a failure. A failed part ends the workflow `error`, after the other parts finish.
-- `## Integration` (write) lists the ordered `git merge agentmate/<split-id>/<part>` commands and the `git worktree remove` cleanup. **Nothing is merged for you and conflicts are not resolved**; run the merges yourself, then the tests.
+- `## Parts` is a table: part, agent, part job, review job, verdict, branch. `## Needs human` lists parts that were not approved (`request-changes`, no verdict or a failure). A failed part ends the workflow `error`, after the other parts finish.
+- The report lists every worktree and branch with cleanup commands. `## Integration` has the ordered `git merge agentmate/<split-id>/<part>` commands for **approved parts only**; the rest go under `## Needs human`. **Nothing is merged for you and conflicts are not resolved**; run the merges yourself, then the tests.
 - Open any step with `mate_result <child-id>` (`jobs result <id>`). The plan is in the session notes (`mate_session_show`).
 
 ## Rules

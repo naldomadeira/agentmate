@@ -30,15 +30,20 @@ export function bumpVersion(root, version) {
   if (!/^\d+\.\d+\.\d+$/.test(version ?? "")) {
     throw new Error(`Version must look like x.y.z, got "${version}"`);
   }
-  const changed = [];
+  // Validate every carrier before writing any, so a bad file never leaves a half-bumped tree.
+  const pending = [];
   for (const file of VERSION_FILES) {
-    const path = join(root, file);
-    const text = readFileSync(path, "utf8");
+    let text;
+    try {
+      text = readFileSync(join(root, file), "utf8");
+    } catch (error) {
+      throw new Error(`${file} is not readable: ${error.message}`);
+    }
     if (!pattern(file).test(text)) throw new Error(`${file} has no version field`);
-    writeFileSync(path, text.replace(pattern(file), `$1${version}$3`));
-    changed.push(file);
+    pending.push({ file, text: text.replace(pattern(file), `$1${version}$3`) });
   }
-  return changed;
+  for (const { file, text } of pending) writeFileSync(join(root, file), text);
+  return pending.map(({ file }) => file);
 }
 
 /** Compares every carrier with package.json; `mismatches` lists the ones that differ. */

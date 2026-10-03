@@ -20,7 +20,6 @@
     "jobs"
   ],
   "skills": "./skills/",
-  "hooks": "./hooks/hooks.json",
   "agents": [
     "./agents/codex-teammate.md",
     "./agents/codex-reviewer.md",

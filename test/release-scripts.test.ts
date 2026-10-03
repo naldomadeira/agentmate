@@ -79,6 +79,30 @@ describe("bump-version", () => {
     ]);
   });
 
+  it("writes nothing when any file lacks a version field", async () => {
+    const { bumpVersion, VERSION_FILES } = await load();
+    writeFileSync(join(root, "src/lib/version.ts"), "export const NOPE = 1;\n");
+    const before = VERSION_FILES.map((file) => readFileSync(join(root, file), "utf8"));
+
+    expect(() => bumpVersion(root, "9.8.7")).toThrow(/src\/lib\/version\.ts has no version field/);
+    expect(VERSION_FILES.map((file) => readFileSync(join(root, file), "utf8"))).toEqual(before);
+  });
+
+  it("writes nothing when any file is unreadable", async () => {
+    const { bumpVersion, VERSION_FILES } = await load();
+    rmSync(join(root, ".agents/plugins/marketplace.json"));
+    const before = VERSION_FILES.filter((f) => !f.includes("marketplace")).map((file) =>
+      readFileSync(join(root, file), "utf8"),
+    );
+
+    expect(() => bumpVersion(root, "9.8.7")).toThrow(/marketplace\.json is not readable/);
+    expect(
+      VERSION_FILES.filter((f) => !f.includes("marketplace")).map((file) =>
+        readFileSync(join(root, file), "utf8"),
+      ),
+    ).toEqual(before);
+  });
+
   it("rejects a malformed version", async () => {
     const { bumpVersion } = await load();
 

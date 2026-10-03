@@ -54,6 +54,7 @@
     "version:bump": "node scripts/bump-version.mjs",
     "version:check": "node scripts/bump-version.mjs --check",
     "release": "node scripts/bump-version.mjs",
+    "release:prepare": "pnpm version:check && pnpm build && pnpm smoke:pack && pnpm smoke:cli",
     "prepare": "husky"
   },
   "dependencies": {

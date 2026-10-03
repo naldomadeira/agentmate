@@ -30,6 +30,9 @@ describe("project documentation", () => {
     expect(readme).toContain("mate_events");
     expect(readme).toContain("quota_exhausted");
     expect(readme).toContain("AGENTMATE_QUOTA_PATTERNS");
+    expect(readme).toContain("AGENTMATE_HOOK_QUIET");
+    expect(readme).toContain("Cutting a release");
+    expect(readme).toContain("clean working tree");
     expect(readme).not.toContain("## Legacy setup");
     expect(readme).toContain("Removed in 0.6.0");
 
@@ -48,6 +51,9 @@ describe("project documentation", () => {
     expect(portugueseReadme).toContain("mate_events");
     expect(portugueseReadme).toContain("quota_exhausted");
     expect(portugueseReadme).toContain("AGENTMATE_QUOTA_PATTERNS");
+    expect(portugueseReadme).toContain("AGENTMATE_HOOK_QUIET");
+    expect(portugueseReadme).toContain("Publicar uma versão");
+    expect(portugueseReadme).toContain("árvore de trabalho limpa");
   });
 
   it("documents the slash commands in both READMEs and both install guides", () => {
@@ -232,6 +238,7 @@ describe("project documentation", () => {
     expect(changelog).toContain("## [0.4.0]");
     expect(changelog).toContain("crossreview");
     expect(changelog).toContain("split");
+    expect(changelog).toContain("SessionStart");
     expect(changelog).toContain("mate_session_start");
     expect(changelog).toContain("### Deprecated");
     expect(changelog).toContain("0.6.0");
