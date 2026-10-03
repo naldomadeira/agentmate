@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 470" width="1200" height="470" role="img" aria-labelledby="t d">
+  <title id="t">AgentMate: Claude Code and Codex working as teammates</title>
+  <desc id="d">Two terminals. In Claude Code, /mate:review hands a review to Codex and gets a verdict back. In Codex, $mate:ask asks Claude a question and gets the answer in the same turn.</desc>
+  <style>
+    text { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 14px; fill: #c9d1d9; }
+    .title { fill: #8b949e; font-size: 13px; }
+    .muted { fill: #8b949e; }
+    .dim { fill: #6e7681; }
+    .cmd { fill: #e6edf3; font-weight: 600; }
+    .mate { fill: #f0883e; font-weight: 600; }
+    .ok { fill: #3fb950; }
+    .warn { fill: #d29922; }
+    .bad { fill: #f85149; }
+    .tool { fill: #79c0ff; }
+    .brand { fill: #e6edf3; font-size: 15px; font-weight: 700; }
+  </style>
+
+  <rect width="1200" height="470" rx="14" fill="#0b0d10"/>
+
+  <!-- left: Claude Code -->
+  <g transform="translate(24 24)">
+    <rect width="566" height="400" rx="12" fill="#11141a" stroke="#2a2f37"/>
+    <path d="M0 12a12 12 0 0 1 12-12h542a12 12 0 0 1 12 12v24H0z" fill="#161a21"/>
+    <line x1="0" y1="36" x2="566" y2="36" stroke="#2a2f37"/>
+    <circle cx="20" cy="18" r="6" fill="#ff5f57"/><circle cx="40" cy="18" r="6" fill="#febc2e"/><circle cx="60" cy="18" r="6" fill="#28c840"/>
+    <text x="80" y="23" class="title">Claude Code — you · asks for a review</text>
+
+    <text x="20" y="72"><tspan class="ok">❯</tspan> <tspan class="mate">/mate:review</tspan> <tspan class="cmd">codex</tspan> Review my uncommitted</text>
+    <text x="38" y="92">changes. Focus on logic bugs and edge cases.</text>
+
+    <text x="20" y="128"><tspan class="tool">⏺</tspan> <tspan class="muted">Called</tspan> <tspan class="tool">agentmate · mate_review</tspan></text>
+    <text x="38" y="148" class="dim">└ job musk6z90 · codex/read-only · review · done · 51s</text>
+
+    <text x="20" y="184"><tspan class="bad">✗</tspan> verdict <tspan class="warn">request-changes</tspan> <tspan class="muted">· 2 findings</tspan></text>
+    <text x="38" y="208"><tspan class="bad">high</tspan>  <tspan class="cmd">src/average.js:4</tspan></text>
+    <text x="38" y="228" class="muted">i &lt;= length reads past the end → NaN</text>
+    <text x="38" y="252"><tspan class="warn">med</tspan>   <tspan class="cmd">src/average.js:7</tspan></text>
+    <text x="38" y="272" class="muted">empty list divides by zero</text>
+
+    <text x="20" y="308"><tspan class="tool">⏺</tspan> Verified both against the code. Fixing line 4</text>
+    <text x="38" y="328">and adding a guard for the empty list.</text>
+
+    <line x1="0" y1="352" x2="566" y2="352" stroke="#2a2f37"/>
+    <text x="20" y="382"><tspan class="ok">❯</tspan> <tspan class="dim">/mate:</tspan></text>
+    <text x="546" y="382" text-anchor="end" class="dim">~/demos/shop</text>
+  </g>
+
+  <!-- right: Codex -->
+  <g transform="translate(610 24)">
+    <rect width="566" height="400" rx="12" fill="#11141a" stroke="#2a2f37"/>
+    <path d="M0 12a12 12 0 0 1 12-12h542a12 12 0 0 1 12 12v24H0z" fill="#161a21"/>
+    <line x1="0" y1="36" x2="566" y2="36" stroke="#2a2f37"/>
+    <circle cx="20" cy="18" r="6" fill="#ff5f57"/><circle cx="40" cy="18" r="6" fill="#febc2e"/><circle cx="60" cy="18" r="6" fill="#28c840"/>
+    <text x="80" y="23" class="title">Codex — you · asks a teammate</text>
+
+    <text x="20" y="72"><tspan class="muted">›</tspan> <tspan class="mate">$mate:ask</tspan> <tspan class="cmd">claude</tspan> Is the retry loop in</text>
+    <text x="38" y="92">src/queue.ts safe with two workers?</text>
+
+    <text x="20" y="128"><tspan class="ok">•</tspan> <tspan class="muted">Called</tspan> <tspan class="tool">agentmate.mate_ask</tspan></text>
+    <text x="38" y="148" class="dim">└ job musm4jzi · claude/read-only · ask · done · 8s</text>
+
+    <text x="20" y="184"><tspan class="ok">•</tspan> No. Two workers can claim the same job:</text>
+    <text x="38" y="204" class="muted">the read and the status update at lines 31–35</text>
+    <text x="38" y="224" class="muted">are not atomic. Claim with a conditional</text>
+    <text x="38" y="244" class="muted">update (WHERE status = 'queued') and retry</text>
+    <text x="38" y="264" class="muted">only when it changed a row.</text>
+
+    <text x="20" y="300"><tspan class="ok">•</tspan> Checked lines 31–35: confirmed. Applying the</text>
+    <text x="38" y="320">conditional claim.</text>
+
+    <line x1="0" y1="352" x2="566" y2="352" stroke="#2a2f37"/>
+    <text x="20" y="382"><tspan class="muted">›</tspan> <tspan class="dim">$mate:</tspan></text>
+    <text x="546" y="382" text-anchor="end" class="dim">~/demos/shop</text>
+  </g>
+
+  <text x="600" y="452" text-anchor="middle" class="brand">AgentMate <tspan class="muted" style="font-weight:400;font-size:14px">— AI agents work better together.</tspan></text>
+</svg>

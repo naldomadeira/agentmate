@@ -11,7 +11,7 @@
 
 AgentMate connects AI coding agents so they can collaborate, delegate, review, and help each other complete tasks. Give your AI agent a teammate: let [Claude Code](https://code.claude.com/) and the [Codex CLI](https://developers.openai.com/codex/cli/) ask, review, research, plan, implement, cross-review and lead each other as background jobs.
 
-![Two developer environments connected by a secure bridge.](./assets/illustrations/cli-bridge.png)
+![AgentMate: in Claude Code, /mate:review hands a review to Codex; in Codex, $mate:ask asks Claude a question.](./assets/hero.svg)
 
 ## Why AgentMate
 
