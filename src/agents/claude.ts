@@ -1,7 +1,7 @@
 import { parseClaudeOutput } from "../lib/claude-output-parser.js";
 import { VERSION } from "../lib/version.js";
 import type { Job } from "../jobs/store.js";
-import type { AgentAdapter, Invocation, Outcome } from "./types.js";
+import type { AgentAdapter, Invocation, JobEvent, Outcome } from "./types.js";
 
 const READ_ONLY_CLAUDE_TOOLS = [
   "Read",
@@ -57,15 +57,63 @@ function claudeAllowedTools(job: Job): string[] {
   return tools;
 }
 
+const MAX_EVENT_TEXT = 500;
+const MAX_COMMAND_TEXT = 200;
+/** Tools whose use means a file is being changed. */
+const FILE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+
+const event = (partial: Omit<JobEvent, "ts" | "job">): JobEvent => ({
+  ts: new Date().toISOString(),
+  job: "",
+  ...partial,
+});
+
+const str = (value: unknown): string => (typeof value === "string" ? value : "");
+
+/** `Grep TODO`, `Read src/a.ts`, `WebSearch vitest`: the tool name plus its most telling argument. */
+function toolSummary(name: string, input: Record<string, unknown>): string {
+  const arg = str(input["pattern"]) || str(input["file_path"]) || str(input["query"]);
+  return (arg ? `${name} ${arg}` : name).slice(0, MAX_COMMAND_TEXT);
+}
+
+function toolEvent(block: Record<string, unknown>): JobEvent | null {
+  const name = str(block["name"]);
+  if (!name) return null;
+  const input =
+    block["input"] && typeof block["input"] === "object"
+      ? (block["input"] as Record<string, unknown>)
+      : {};
+  if (FILE_TOOLS.has(name)) {
+    const path = str(input["file_path"]) || str(input["notebook_path"]);
+    if (!path) return null;
+    return event({
+      level: "status",
+      kind: "file",
+      text: `${name} ${path}`.slice(0, MAX_EVENT_TEXT),
+      data: { path, kind: name },
+    });
+  }
+  if (name === "Bash") {
+    const command = str(input["command"]);
+    return event({
+      level: "fyi",
+      kind: "command",
+      text: command.slice(0, MAX_COMMAND_TEXT),
+      data: { command },
+    });
+  }
+  return event({ level: "fyi", kind: "command", text: toolSummary(name, input) });
+}
+
 export const claudeAdapter: AgentAdapter = {
   id: "claude",
   displayName: "Claude Code",
   binary: () => process.env["AGENTMATE_CLAUDE_BIN"] ?? "claude",
-  capabilities: { write: true, web: true, resume: true, streaming: "none" },
+  capabilities: { write: true, web: true, resume: true, streaming: "jsonl" },
   versionArgs: ["--version"],
 
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {
-    const args = ["-p", "--output-format", "json"];
+    const args = ["-p", "--output-format", "stream-json", "--verbose"];
     if (resumeSessionId) args.push("--resume", resumeSessionId);
     if (job.model) args.push("--model", job.model);
     if (job.mode === "write") args.push("--permission-mode", "acceptEdits");
@@ -80,8 +128,52 @@ export const claudeAdapter: AgentAdapter = {
 
   parseOutcome(stdout: string, stderr: string, exitCode: number): Outcome {
     const r = parseClaudeOutput(stdout);
-    const outcome: Outcome = { text: r.resultText, sessionId: r.sessionId, errors: r.errors };
+    const outcome: Outcome = {
+      text: r.resultText,
+      sessionId: r.sessionId,
+      errors: r.errors,
+      ...(r.partial ? { partial: true } : {}),
+    };
     if (exitCode !== 0 && !outcome.text && stderr.trim()) outcome.errors.push(stderr.trim());
     return outcome;
+  },
+
+  /** Reads one line of `--output-format stream-json`; only assistant text, tool use and error results matter. */
+  parseStreamLine(line: string): JobEvent[] {
+    let parsed: Record<string, unknown>;
+    try {
+      const value: unknown = JSON.parse(line);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      parsed = value as Record<string, unknown>;
+    } catch {
+      return [];
+    }
+    if (parsed["type"] === "result") {
+      if (parsed["is_error"] !== true) return [];
+      const text =
+        str(parsed["result"]).trim() || str(parsed["subtype"]) || "claude reported an error";
+      return [event({ level: "important", kind: "error", text: text.slice(0, MAX_EVENT_TEXT) })];
+    }
+    if (parsed["type"] !== "assistant") return [];
+    const message = parsed["message"];
+    const content =
+      message && typeof message === "object" ? (message as Record<string, unknown>)["content"] : [];
+    if (!Array.isArray(content)) return [];
+    const events: JobEvent[] = [];
+    for (const block of content as unknown[]) {
+      if (!block || typeof block !== "object") continue;
+      const part = block as Record<string, unknown>;
+      if (part["type"] === "text") {
+        const text = str(part["text"]);
+        if (text.trim())
+          events.push(
+            event({ level: "important", kind: "message", text: text.slice(0, MAX_EVENT_TEXT) }),
+          );
+      } else if (part["type"] === "tool_use") {
+        const toolEventResult = toolEvent(part);
+        if (toolEventResult) events.push(toolEventResult);
+      }
+    }
+    return events;
   },
 };

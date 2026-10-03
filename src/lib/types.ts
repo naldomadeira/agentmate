@@ -1,11 +1,3 @@
-export const CODEX_MODELS = ["gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-max"] as const;
-
-export type CodexModel = (typeof CODEX_MODELS)[number];
-
-export const CLAUDE_MODELS = ["sonnet", "opus", "haiku"] as const;
-
-export type ClaudeModel = (typeof CLAUDE_MODELS)[number];
-
 export interface ExecOptions {
   command: string;
   args: string[];
@@ -13,6 +5,8 @@ export interface ExecOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   maxRetries?: number;
+  /** Consulted before a transient retry; return false to hand the failed result back instead. */
+  shouldRetry?: (result: ExecResult) => boolean;
   signal?: AbortSignal;
   onStdout?: (chunk: Buffer | string) => void;
   onStderr?: (chunk: Buffer | string) => void;
@@ -50,4 +44,6 @@ export interface ClaudeResult {
   sessionId: string | null;
   costUsd: number | null;
   errors: string[];
+  /** `resultText` is the last assistant text of a stream that ended without a `result` event. */
+  partial?: boolean;
 }

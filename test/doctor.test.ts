@@ -50,8 +50,14 @@ describe("doctor", () => {
       '[mcp_servers.claude]\nargs = ["-y", "agentmate", "serve", "claude"]\n',
     );
     const checks = await collectChecks();
-    expect(find(checks, "legacy claude registration").status).toBe("warn");
-    expect(find(checks, "legacy codex registration").status).toBe("warn");
+    const claude = find(checks, "legacy claude registration");
+    const codex = find(checks, "legacy codex registration");
+    expect(claude.status).toBe("warn");
+    expect(claude.detail).toContain("serve codex");
+    expect(claude.hint).toContain("remove it; the synchronous servers were removed in 0.6.0");
+    expect(codex.status).toBe("warn");
+    expect(codex.detail).toContain("serve claude");
+    expect(codex.hint).toContain("remove it; the synchronous servers were removed in 0.6.0");
   });
 
   it("counts jobs and warns about running jobs whose worker died", async () => {

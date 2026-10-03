@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import { StringDecoder } from "node:string_decoder";
 import type { EventLevel, JobEvent } from "../agents/types.js";
-import { getAgent } from "../agents/registry.js";
+import { getAgent, otherAgent } from "../agents/registry.js";
 import { execCommand } from "../lib/exec-runner.js";
 import { runCrossreview } from "./crossreview.js";
 import { appendEvent } from "./events.js";
+import { detectQuotaExhaustion } from "./quota.js";
+import { runSplit } from "./split.js";
 import { buildInvocation, parseOutcome } from "./providers.js";
 import {
   readJob,
@@ -23,6 +25,7 @@ export async function runWorker(id: string): Promise<void> {
   if (!job) throw new Error(`Job not found: ${id}`);
   // A workflow job runs no agent CLI itself; its steps are child jobs.
   if (job.role === "crossreview") return runCrossreview(id);
+  if (job.role === "split") return runSplit(id);
 
   const startedAt = Date.now();
   updateJob(id, {
@@ -83,6 +86,8 @@ export async function runWorker(id: string): Promise<void> {
       cwd: job.cwd,
       timeoutMs: job.timeoutMs,
       signal: controller.signal,
+      // A quota line can look like a transient 429; retrying it only burns the reset window.
+      shouldRetry: (r) => detectQuotaExhaustion(r.stderr, [], "") === null,
       onStdout: (chunk) => {
         out.write(chunk);
         if (streaming) feed(chunk);
@@ -104,16 +109,26 @@ export async function runWorker(id: string): Promise<void> {
     else if (result.timedOut) {
       status = "timeout";
       fields.error = `Exceeded the ${Math.round(job.timeoutMs / 60_000)} minute job deadline.`;
-    } else if (!outcome.text) {
-      status = "error";
-      fields.error =
-        outcome.errors.join("; ") || `${job.provider} exited ${result.exitCode} with no output.`;
+    } else if (!outcome.text || outcome.partial) {
+      const quotaLine = detectQuotaExhaustion(result.stderr, outcome.errors, outcome.text);
+      if (quotaLine) {
+        status = "quota_exhausted";
+        fields.error = `${job.provider} quota exhausted: ${quotaLine.replace(/\.+$/, "")}. Retry after the reset or start the job on ${otherAgent(job.provider)}.`;
+      } else {
+        status = "error";
+        fields.error =
+          outcome.errors.join("; ") ||
+          (outcome.partial
+            ? `${job.provider} ended without a final result (exit ${result.exitCode}); the partial output is kept.`
+            : `${job.provider} exited ${result.exitCode} with no output.`);
+      }
     } else status = "done";
   } catch (error) {
     fields.error = error instanceof Error ? error.message : String(error);
   } finally {
     await Promise.all([closed(out), closed(err)]);
-    if (status === "error" && fields.error) emit("important", "error", fields.error);
+    if ((status === "error" || status === "quota_exhausted") && fields.error)
+      emit("important", "error", fields.error);
     const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
     emit(
       "important",

@@ -17,7 +17,23 @@ import {
   type StartOptions,
 } from "./jobs/api.js";
 import { readEvents } from "./jobs/events.js";
-import { renderEvents, renderList, renderObservation, renderResult } from "./jobs/render.js";
+import {
+  renderEvents,
+  renderList,
+  renderObservation,
+  renderResult,
+  renderSession,
+  renderSessionList,
+} from "./jobs/render.js";
+import {
+  appendNotes,
+  createSession,
+  getSession,
+  listSessions,
+  readNotes,
+  sessionJobCounts,
+  sessionJobs,
+} from "./jobs/sessions.js";
 import { JOB_ROLES, type JobMode, type Provider } from "./jobs/store.js";
 import { logger } from "./lib/logger.js";
 import { VERSION } from "./lib/version.js";
@@ -56,6 +72,13 @@ async function startAndMaybeWait(options: StartOptions, waitSeconds: number): Pr
   return renderResult(settled, readResult(job.id).text);
 }
 
+const sessionArg = z
+  .string()
+  .optional()
+  .describe(
+    "Id of a session (mate_session_start): its short shared notes prefix the worker's briefing and the job is recorded in it",
+  );
+
 const provider = z.enum(["codex", "claude"]).describe("Which agent CLI runs the task");
 const context = z.string().optional().describe("Background the worker needs; it sees nothing else");
 
@@ -75,6 +98,7 @@ const common = {
     .max(300)
     .optional()
     .describe("Wait up to this long for the result (0 = return only the job id)"),
+  session: sessionArg,
 };
 
 interface Common {
@@ -82,6 +106,7 @@ interface Common {
   model?: string | undefined;
   timeoutMinutes?: number | undefined;
   waitSeconds?: number | undefined;
+  session?: string | undefined;
 }
 
 /** Shared body of the role tools: map the tool arguments to a job and honor `waitSeconds`. */
@@ -91,13 +116,26 @@ function runRole(
     provider: Provider;
     mode?: JobMode | undefined;
     maxRounds?: number | undefined;
+    maxParts?: number | undefined;
   },
   fields: RoleFields,
   defaultWaitSeconds = 0,
 ): Promise<string> {
-  const { provider, mode, maxRounds, cwd, model, timeoutMinutes, waitSeconds } = args;
+  const { provider, mode, maxRounds, maxParts, cwd, model, timeoutMinutes, waitSeconds, session } =
+    args;
   return startAndMaybeWait(
-    { provider, role, fields, mode, maxRounds, cwd, model, timeoutMinutes },
+    {
+      provider,
+      role,
+      fields,
+      mode,
+      maxRounds,
+      maxParts,
+      cwd,
+      model,
+      timeoutMinutes,
+      sessionId: session,
+    },
     waitSeconds ?? defaultWaitSeconds,
   );
 }
@@ -122,9 +160,9 @@ server.registerTool(
       ...common,
     },
   },
-  guard(({ continue: continueJob, prompt, role, provider, mode, ...rest }) =>
+  guard(({ continue: continueJob, prompt, role, provider, mode, session, ...rest }) =>
     startAndMaybeWait(
-      { provider, prompt, role, mode, continueJob, ...rest },
+      { provider, prompt, role, mode, continueJob, sessionId: session, ...rest },
       rest.waitSeconds ?? 0,
     ),
   ),
@@ -277,6 +315,7 @@ server.registerTool(
         .optional()
         .describe("Deadline for the whole workflow, default 60, max 120"),
       waitSeconds: common.waitSeconds,
+      session: sessionArg,
     },
   },
   guard(({ task, acceptance, maxRounds, ...args }) =>
@@ -285,11 +324,115 @@ server.registerTool(
 );
 
 server.registerTool(
+  "mate_split",
+  {
+    title: "Split a task across both agents",
+    description:
+      "Split a broad goal into independent parts that run in parallel and are cross-reviewed, without relaying anything by hand: the provider plans 1 to maxParts parts with closed interfaces and no overlapping files, each part goes to one of the two agents, and the other agent reviews each finished part. In read-only mode (default) the parts are research jobs on the working directory; in write mode each part is implemented in its own git worktree and branch (agentmate/<split-id>/<part>) created from HEAD, which needs a git repository with a commit and a clean working tree (it refuses uncommitted changes) and edits files, so use write only when the user authorized edits. The report lists the parts with their verdicts, the ordered `git merge` commands for approved parts (nothing is merged for you; conflicts are not resolved), cleanup commands for every worktree and branch it created, and what needs a human. Creates a session when none is given and records the plan in its notes. Only a top-level session can start it; follow it with mate_observe. The workers have no context beyond the goal and acceptance criteria you pass.",
+    inputSchema: {
+      provider: z
+        .enum(["codex", "claude"])
+        .describe("The agent that plans; the parts use both agents"),
+      goal: z.string().describe("The broad goal to split, with the files and constraints involved"),
+      acceptance: z.string().optional().describe("Criteria that define done for the whole goal"),
+      maxParts: z
+        .number()
+        .int()
+        .min(2)
+        .max(4)
+        .optional()
+        .describe("Most parts the plan may have, 2 to 4, default 3"),
+      mode: z
+        .enum(["read-only", "write"])
+        .optional()
+        .describe("read-only (default) researches the parts; write implements each in a worktree"),
+      cwd: common.cwd,
+      session: sessionArg,
+      model: z.string().optional().describe("Model override for the planner and same-agent parts"),
+      timeoutMinutes: z
+        .number()
+        .positive()
+        .max(120)
+        .optional()
+        .describe("Deadline for the whole workflow, default 60, max 120"),
+      waitSeconds: common.waitSeconds,
+    },
+  },
+  guard(({ goal, acceptance, ...args }) => runRole("split", args, { goal, acceptance })),
+);
+
+const sessionId = z.string().describe("Session id returned by mate_session_start");
+const SESSION_HINT =
+  "A session is shared context across jobs and agents. Pass its id as `session` to any mate_* job tool; every worker in the session reads the notes in its briefing, so keep notes short and factual.";
+
+server.registerTool(
+  "mate_session_start",
+  {
+    title: "Start a session",
+    description: `Create a session: shared context across jobs and agents. Its notes (mate_session_notes) are read by every worker started with that session, so keep them short and factual. ${SESSION_HINT}`,
+    inputSchema: {
+      title: z.string().min(1).describe("A short name for the work, e.g. the feature or bug"),
+      cwd: z
+        .string()
+        .optional()
+        .describe("Working directory the session is about (defaults to the server cwd)"),
+    },
+  },
+  guard(({ title, cwd }) => {
+    const session = createSession({ title, cwd: cwd ?? process.cwd() });
+    return `Started session ${session.id} (${session.title}). Pass session=${session.id} to the mate_* job tools and add notes with mate_session_notes. Notes are read by every worker in the session, so keep them short and factual.`;
+  }),
+);
+
+server.registerTool(
+  "mate_session_show",
+  {
+    title: "Show a session",
+    description:
+      "Show a session: its title, the tail of its shared notes (what workers read) and the jobs started in it.",
+    inputSchema: { id: sessionId },
+  },
+  guard(({ id }) => renderSession(getSession(id), readNotes(id), sessionJobs(id))),
+);
+
+server.registerTool(
+  "mate_session_notes",
+  {
+    title: "Add session notes",
+    description:
+      "Append a note to a session. Notes are read by every worker started in the session (the last 4000 characters), so keep them short and factual: decisions, constraints, file locations, findings that later jobs need.",
+    inputSchema: {
+      id: sessionId,
+      text: z.string().min(1).describe("The note; short and factual"),
+      author: z.string().optional().describe('Who writes it, default "host"'),
+    },
+  },
+  guard(({ id, text, author }) => {
+    appendNotes(id, text, author ?? "host");
+    return `Added a note to session ${id}.`;
+  }),
+);
+
+server.registerTool(
+  "mate_session_list",
+  {
+    title: "List sessions",
+    description:
+      "List recent sessions, newest first; pass cwd to list only those about one directory.",
+    inputSchema: {
+      cwd: z.string().optional().describe("Only sessions about this directory"),
+      limit: z.number().int().positive().max(100).optional(),
+    },
+  },
+  guard(({ cwd, limit }) => renderSessionList(listSessions({ cwd, limit }), sessionJobCounts())),
+);
+
+server.registerTool(
   "mate_wait",
   {
     title: "Wait for a job",
     description:
-      "Block until the job finishes or the wait expires. Expiring does not stop the job; call again to keep waiting. Returns the result when done.",
+      "Block until the job finishes or the wait expires. Expiring does not stop the job; call again to keep waiting. Returns the result when done; a job whose provider is out of usage ends quota_exhausted with a hint to start it on the other agent.",
     inputSchema: {
       id: jobId,
       timeoutSeconds: z.number().positive().max(300).optional().describe("Max wait, default 45"),
@@ -357,7 +500,8 @@ server.registerTool(
   "mate_result",
   {
     title: "Read a job result",
-    description: "Return the stored result of a job without waiting.",
+    description:
+      "Return the stored result of a job without waiting. A quota_exhausted job carries the reset hint and the other agent to hand off to.",
     inputSchema: { id: jobId },
   },
   guard(({ id }) => {

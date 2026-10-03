@@ -1,84 +1,6 @@
+import type { AgentId } from "../agents/types.js";
 import type { Provider } from "../jobs/store.js";
 import { VERSION } from "./version.js";
-
-export type ExplainDepth = "overview" | "detailed" | "trace";
-export type PerfMetric = "latency" | "throughput" | "memory" | "binary-size";
-
-/**
- * Builds a prompt for deep code/logic explanation.
- */
-export function buildExplainCodePrompt(options: {
-  target: string;
-  depth?: ExplainDepth;
-  context?: string;
-}): string {
-  const depth = options.depth ?? "detailed";
-  const depthInstructions: Record<ExplainDepth, string> = {
-    overview:
-      "Provide a high-level overview: what the code does, its role in the system, and key abstractions. Keep it concise.",
-    detailed:
-      "Provide a detailed explanation: purpose, control flow, data flow, key design decisions, edge cases, and how it interacts with surrounding code.",
-    trace:
-      "Provide a full execution trace: step through the code path, explain each branch, data transformation, and side effect. Include call chains and state mutations.",
-  };
-
-  let prompt = `Explain the following code/module/function in depth.\n\nTarget: ${options.target}\n\n${depthInstructions[depth]}`;
-
-  if (options.context) {
-    prompt += `\n\nAdditional context: ${options.context}`;
-  }
-
-  prompt += `\n\nStructure your response with:
-1. **Purpose** - What this code does and why it exists
-2. **Key Components** - Main functions, types, data structures
-3. **Control Flow** - How execution proceeds
-4. **Data Flow** - How data is transformed and passed
-5. **Design Decisions** - Why it's structured this way
-6. **Dependencies** - What it depends on and what depends on it`;
-
-  return prompt;
-}
-
-/**
- * Builds a prompt for planning performance improvements.
- */
-export function buildPlanPerfPrompt(options: {
-  target: string;
-  metrics?: PerfMetric[];
-  constraints?: string;
-  context?: string;
-}): string {
-  const metrics = options.metrics ?? ["latency", "memory"];
-  const metricsList = metrics.join(", ");
-
-  let prompt = `Analyze the performance of the following code and create a concrete improvement plan.
-
-Target: ${options.target}
-
-Focus metrics: ${metricsList}
-
-Perform the following analysis:
-1. **Current State** - Read and understand the target code
-2. **Hot Path Analysis** - Identify the critical execution path and where time/memory is spent
-3. **Bottleneck Identification** - List specific bottlenecks with evidence (e.g., unnecessary allocations, redundant computations, cache misses, algorithmic complexity)
-4. **Optimization Plan** - For each bottleneck, propose a ranked optimization with:
-   - Description of the change
-   - Expected impact (quantified if possible)
-   - Implementation difficulty (low/medium/high)
-   - Any correctness risks or trade-offs
-5. **Implementation Order** - Recommend which optimizations to apply first (highest impact, lowest risk)
-6. **Measurement Plan** - How to verify each optimization works (benchmarks, profiling commands)`;
-
-  if (options.constraints) {
-    prompt += `\n\nConstraints: ${options.constraints}`;
-  }
-
-  if (options.context) {
-    prompt += `\n\nAdditional context: ${options.context}`;
-  }
-
-  return prompt;
-}
 
 // ---------------------------------------------------------------------------
 // Role prompts for delegated jobs. The worker has no context beyond the text
@@ -271,4 +193,60 @@ export function buildCrossreviewPrompt(options: {
   return `Cross-review workflow: ${options.implementer} implements, ${options.reviewer} reviews the uncommitted diff, for up to ${options.maxRounds} round(s).
 
 Task: ${options.task}${acceptance}`;
+}
+
+/**
+ * Planner prompt of a split workflow: divide a goal into independent parts and end with the parts
+ * block that the workflow parses. The workflow reads only the last fenced json block.
+ */
+export function buildSplitPlanPrompt(options: {
+  goal: string;
+  acceptance?: string;
+  maxParts: number;
+  agents: AgentId[];
+}): string {
+  const acceptance = options.acceptance ? `\n\nAcceptance criteria:\n${options.acceptance}` : "";
+  return `Split the goal below into independent parts that different agents can work on at the same time. ${READ_ONLY_RULE} Read the relevant code first so the parts name real files.
+
+Goal: ${options.goal}${acceptance}
+
+Rules for the split:
+- Produce between 1 and ${options.maxParts} parts. Prefer fewer, larger parts over many tiny ones; use one part only if the goal cannot be divided.
+- Parts must be independent: they can run in parallel without waiting for each other.
+- Close the interfaces: when parts meet (a function signature, a file format, a config key), fix that contract in the briefings of both sides so neither has to guess.
+- No overlapping files: every file belongs to exactly one part. If two parts would edit the same file, merge them or move the shared edit into one part.
+- Assign each part to one of the available agents: ${options.agents.join(", ")}. Spread the parts across the agents when that suits the work.
+- Each briefing must be self-contained: the agent sees nothing of this conversation, so state the part's goal, the files it owns, the interfaces it must respect and what done means.
+
+Structure your response with:
+1. **Plan** - The split in a few sentences and why the parts are independent
+2. **Interfaces** - The contracts between parts (omit if there are none)
+3. **Parts** - As the very last thing in your response, exactly one fenced json block in this shape and nothing after it:
+
+\`\`\`json
+{ "parts": [{ "id": "a", "title": "…", "briefing": "…", "files": ["…"], "agent": "${options.agents[0] ?? "codex"}" }] }
+\`\`\`
+
+Each \`id\` is unique and uses only lowercase letters, digits and hyphens.`;
+}
+
+/**
+ * The record of a split workflow job. No agent CLI receives this text: the worker runs a planner,
+ * the parts and their reviews as child jobs, so this only describes the run.
+ */
+export function buildSplitPrompt(options: {
+  goal: string;
+  acceptance?: string;
+  planner: Provider;
+  maxParts: number;
+  mode: "read-only" | "write";
+}): string {
+  const acceptance = options.acceptance ? `\n\nAcceptance criteria:\n${options.acceptance}` : "";
+  const how =
+    options.mode === "write"
+      ? "each part is implemented in its own git worktree and branch"
+      : "each part is researched read-only";
+  return `Split workflow: ${options.planner} plans up to ${options.maxParts} independent part(s), ${how}, and the other agent reviews each part.
+
+Goal: ${options.goal}${acceptance}`;
 }

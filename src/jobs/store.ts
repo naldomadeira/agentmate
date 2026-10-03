@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -6,7 +7,15 @@ import type { AgentId } from "../agents/types.js";
 
 export type Provider = AgentId;
 export type JobMode = "read-only" | "write";
-export type JobStatus = "queued" | "running" | "done" | "error" | "canceled" | "timeout";
+export type JobStatus =
+  | "queued"
+  | "running"
+  | "done"
+  | "error"
+  | "canceled"
+  | "timeout"
+  /** The provider refused to continue because its usage allowance is spent; see `quota.ts`. */
+  | "quota_exhausted";
 
 export type JobRole =
   | "custom"
@@ -16,7 +25,8 @@ export type JobRole =
   | "plan"
   | "implement"
   | "teamlead"
-  | "crossreview";
+  | "crossreview"
+  | "split";
 
 export const JOB_ROLES = [
   "custom",
@@ -27,9 +37,16 @@ export const JOB_ROLES = [
   "implement",
   "teamlead",
   "crossreview",
+  "split",
 ] as const satisfies readonly JobRole[];
 
-export const TERMINAL: readonly JobStatus[] = ["done", "error", "canceled", "timeout"];
+export const TERMINAL: readonly JobStatus[] = [
+  "done",
+  "error",
+  "canceled",
+  "timeout",
+  "quota_exhausted",
+];
 
 /** Inputs of the role prompt builders; each role reads only the fields it documents. */
 export interface RoleFields {
@@ -46,6 +63,8 @@ export interface RoleFields {
   task?: string;
   acceptance?: string;
   objective?: string;
+  /** plan only: asks for the parts block of a split plan instead of an ordinary plan (set by the split workflow). */
+  maxParts?: number;
 }
 
 /** The reviewer's last word on a round; `none` when it gave no clear verdict or the review failed. */
@@ -65,6 +84,35 @@ export interface Workflow {
 
 export const DEFAULT_MAX_ROUNDS = 2;
 export const MAX_ROUNDS_LIMIT = 5;
+
+/** One part of a `split` job: planned by the planner, run by `agent`, reviewed by the other agent. */
+export interface SplitPart {
+  id: string;
+  title: string;
+  agent: Provider;
+  /** The plan job that produced this part. */
+  planJob?: string;
+  /** The research (read-only) or implement (write) job that ran the part. */
+  partJob?: string;
+  reviewJob?: string;
+  verdict: Verdict;
+  /** Write mode: the branch and worktree created for the part, and the commit it started from. */
+  branch?: string;
+  worktree?: string;
+  base?: string;
+  /** Why the part (or its review) failed. */
+  error?: string;
+}
+
+/** Settings and per-part progress of a `split` job. */
+export interface Split {
+  maxParts: number;
+  parts: SplitPart[];
+}
+
+export const DEFAULT_MAX_PARTS = 3;
+export const MIN_MAX_PARTS = 2;
+export const MAX_PARTS_LIMIT = 4;
 
 export interface Job {
   id: string;
@@ -87,13 +135,23 @@ export interface Job {
   finishedAt?: string;
   workerPid?: number;
   exitCode?: number;
+  /** The provider's own conversation id, used to continue the job. Not an AgentMate session. */
   sessionId?: string;
+  /** Id of the AgentMate session (shared notes) this job belongs to; see `sessions.ts`. */
+  session?: string;
   continuesJob?: string;
+  /**
+   * Set by `cancelJob` before it cancels the children, so a workflow worker that sees a child end
+   * `canceled` knows whether the whole job is being canceled or the child was canceled on its own.
+   */
+  cancelRequested?: boolean;
   error?: string;
   /** What a workflow job (crossreview) needs after it is started; other roles leave it unset. */
   fields?: RoleFields;
   /** Settings and per-round progress of a crossreview job. */
   workflow?: Workflow;
+  /** Settings and per-part progress of a split job. */
+  split?: Split;
 }
 
 /** Jobs live outside any repo so ids resolve from any session or cwd. */
@@ -145,7 +203,14 @@ export function readJob(id: string): Job | null {
   }
 }
 
-/** Only the owning worker writes a job, so a plain read-modify-write is safe. */
+/** True once `cancelJob` has asked for this job to be canceled. */
+export const isCancelRequested = (id: string): boolean => readJob(id)?.cancelRequested === true;
+
+/**
+ * Read-modify-write of job.json. The owning worker writes it, and `cancelJob` sets
+ * `cancelRequested`; both go through here, so the lost-update window is the few microseconds between
+ * this read and the rename.
+ */
 export function updateJob(id: string, fields: Partial<Job>): Job {
   const job = readJob(id);
   if (!job) throw new Error(`Job not found: ${id}`);
@@ -162,10 +227,23 @@ export function listJobIds(): string[] {
   }
 }
 
-/** Command line of a process (NUL separators turned into spaces); null where it cannot be read. */
+/**
+ * Command line of a process (NUL separators turned into spaces): from /proc on Linux, from `ps`
+ * elsewhere (macOS has no /proc); null where neither can read it.
+ */
 export function workerCommandLine(pid: number): string | null {
   try {
     return fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").join(" ").trim();
+  } catch {
+    // fall through to ps
+  }
+  try {
+    const line = execFileSync("ps", ["-o", "command=", "-p", String(pid)], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+    }).trim();
+    return line || null;
   } catch {
     return null;
   }

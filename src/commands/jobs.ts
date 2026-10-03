@@ -23,7 +23,9 @@ import {
 } from "../jobs/render.js";
 import {
   JOB_ROLES,
+  MAX_PARTS_LIMIT,
   MAX_ROUNDS_LIMIT,
+  MIN_MAX_PARTS,
   TERMINAL,
   type JobMode,
   type JobRole,
@@ -90,6 +92,14 @@ export default defineCommand({
           type: "string",
           description: "crossreview only: most implement-and-review rounds, 1 to 5 (default 2)",
         },
+        "max-parts": {
+          type: "string",
+          description: "split only: most parts the plan may have, 2 to 4 (default 3)",
+        },
+        session: {
+          type: "string",
+          description: "Session id (sessions start): its notes prefix the briefing",
+        },
       },
       run: userFacing(({ args }) => {
         const provider = parseProvider(args.provider);
@@ -112,10 +122,23 @@ export default defineCommand({
           throw new Error(`max-rounds must be a whole number from 1 to ${MAX_ROUNDS_LIMIT}`);
         if (maxRounds !== undefined && args.role !== "crossreview")
           throw new Error("max-rounds applies only with --role crossreview");
+        const maxPartsArg = args["max-parts"];
+        const maxParts = maxPartsArg === undefined ? undefined : Number(maxPartsArg);
+        if (
+          maxParts !== undefined &&
+          !(Number.isInteger(maxParts) && maxParts >= MIN_MAX_PARTS && maxParts <= MAX_PARTS_LIMIT)
+        )
+          throw new Error(
+            `max-parts must be a whole number from ${MIN_MAX_PARTS} to ${MAX_PARTS_LIMIT}`,
+          );
+        if (maxParts !== undefined && args.role !== "split")
+          throw new Error("max-parts applies only with --role split");
         const job = startJob({
           provider,
           prompt: args.prompt,
           maxRounds,
+          maxParts,
+          sessionId: args.session,
           role: args.role as JobRole | undefined,
           cwd: args.cwd,
           model: args.model,

@@ -4,6 +4,37 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - Unreleased
+
+### Added
+
+- Sessions: shared context across jobs and agents. A session is `~/.agentmate/sessions/<id>/` with `session.json` and an append-only `notes.md`. A job started with a session (`session` on every MCP job tool, `jobs start --session <id>`) is recorded in it, recorded as `job.session`, and its prompt, for every role, is followed by the notes under `## Shared session notes`, fenced and framed as data rather than instructions, capped at 4000 characters of whole entries (a single note is capped at 2000). Membership is derived from the jobs; `session.json` has no `jobs` array. Children started by `crossreview` and `split` inherit the workflow's session.
+- MCP tools `mate_session_start`, `mate_session_show`, `mate_session_notes` and `mate_session_list`, and the CLI `agentmate sessions start|show|notes|list`.
+- `split` role: a workflow job where `provider` plans 1 to `maxParts` (2 to 4, default 3) independent parts with closed interfaces and no overlapping files, the parts run in parallel on both agents, and the other agent reviews each finished part. Read-only mode (default) runs a `research` job per part; write mode requires a git repository with a clean working tree (checked before the planner runs), creates a git worktree and branch per part from the recorded base commit (`git worktree add -b agentmate/<split-id>/<part-id> ~/.agentmate/worktrees/<split-id>/<part-id> <base-commit>`; no `node_modules`, `.env` or submodule contents), runs an `implement` job in it and commits the result automatically (`--no-verify`, gpg signing off). The report has the goal, a parts table with verdicts and branches, every worktree and branch with cleanup commands, `git merge` commands for approved parts only (conflicts are not resolved automatically), a `## Needs human` section for the other parts, and the `jobs result` commands. A failed part ends the workflow `error` naming the part after the others finish. `split` creates a session when none is given and writes its plan into the notes. Only a top-level session can start it.
+- MCP tool `mate_split(provider, goal, acceptance?, maxParts?, mode?, cwd?, session?, model?, timeoutMinutes?, waitSeconds?)`, CLI `jobs start <provider> "<goal>" --role split [--max-parts N] [--mode write]`, the `split` skill (`/mate:split`, `$mate:split`) and the `split` command templates (bare `/split`, `/prompts:split`).
+
+- `SessionStart` hook for Claude Code (`hooks/hooks.json`, `hooks/session-start.mjs`, auto-discovered by the plugin): when a session opens it prints one line (400 characters at most) with the jobs of that directory or its subdirectories that finished since the last session there (`quota_exhausted` first, marked "needs hand-off") and the running and stale counts. A pid counts as alive only when its `/proc/<pid>/cmdline`, if readable, mentions `worker`. 120 s per-directory cooldown, 24 h first-run window, `AGENTMATE_HOOK_QUIET=1` to disable, fail-open. Codex has no equivalent.
+- Release scripts and CI gates: `scripts/bump-version.mjs` (`pnpm version:bump x.y.z` / `version:check`, validates every file before writing any), `scripts/smoke-pack.mjs` (tarball contents, then a real `npm pack` installed into a scratch project and run with `--version` and `--help`; fails with "run `pnpm build` first" when `dist/` is missing) and `scripts/smoke-built-cli.mjs`, all run by CI and the Release workflow. `pnpm release:prepare` runs the same gates locally. The Release workflow now fails when the tag does not match the package version, publishes through npm Trusted Publishing and verifies the package on the registry, deriving its name from `package.json`.
+- README "Cutting a release" steps (English and Portuguese).
+- Claude streams events: the adapter runs `claude -p --output-format stream-json --verbose` and `parseStreamLine` maps assistant text to `message` (`important`), `Edit`/`Write`/`MultiEdit`/`NotebookEdit` tool use to `file` (`status`), `Bash` and every other tool use to `command` (`fyi`) and an error result to `error`. `parseClaudeOutput` reads both stream-json and the legacy single JSON object (the last `result` event wins).
+- `quota_exhausted` job status (terminal): a job whose provider reports a spent usage limit, quota or credits ends with `<provider> quota exhausted: <line>. Retry after the reset or start the job on <other agent>.`, and `jobs result` / `mate_result` print `Hand off: start the same job with provider <other>.`. Detection (`src/jobs/quota.ts`) is extendable with `AGENTMATE_QUOTA_PATTERNS`; a plain 429 is not exhaustion. `crossreview` and `split` end `error` with the child's hint when a step hits its quota.
+
+### Changed
+
+- `pnpm release` is now `scripts/bump-version.mjs`: a lockstep version bump over the five version files that does not commit, tag or publish. Run `pnpm release:prepare` for the checks, then commit, tag and push (the Release workflow publishes).
+- The `SessionStart` hook is no longer declared in `.claude-plugin/plugin.json`; Claude Code auto-discovers `hooks/hooks.json`, and declaring both risked a duplicate-load warning.
+- Cancelling a job cancels its non-terminal children first, recursively, so a workflow whose worker was killed leaves no orphan running.
+- The package now exposes a single binary, `agentmate`. `serve` has only the `jobs` subcommand, and `tsdown` builds only `src/cli.ts` and `src/jobs-server.ts`.
+- `doctor` keeps flagging legacy registrations, now for `agentmate serve codex|claude` and `agents-bridge-mcp serve codex|claude` alike, with the hint "remove it; the synchronous servers were removed in 0.6.0".
+- Version 0.6.0 across `package.json`, `src/lib/version.ts`, both plugin manifests and the Codex marketplace.
+
+### Removed
+
+- The synchronous servers: `serve codex` and `serve claude` (`src/codex-server.ts`, `src/claude-server.ts`) and the `agentmate-codex` and `agentmate-claude` binaries, plus the `dev:codex-server` and `dev:claude-server` scripts.
+- The `setup` command (`src/commands/setup.ts`), `setupClaude` / `setupCodex` and their helpers in `src/lib/installer.ts` (`install skill|agent|commands` stay), the deprecation notice (`src/lib/deprecation.ts`) and the project-local `.claude/skills/setup/` skill.
+- `buildExplainCodePrompt` and `buildPlanPerfPrompt` (with `ExplainDepth` and `PerfMetric`), `CODEX_MODELS` and `CLAUDE_MODELS` (with their types) and `createProgressReporter` / `ProgressReporter`.
+- The "Legacy setup" README section and the "Move from a legacy `setup` install" guide sections, replaced by short "Removed in 0.6.0" notes. To clean up a leftover registration, run `claude mcp remove codex -s user` or delete the `[mcp_servers.claude]` section from `~/.codex/config.toml`; `doctor` flags both.
+
 ## [0.5.0] - Unreleased
 
 ### Added

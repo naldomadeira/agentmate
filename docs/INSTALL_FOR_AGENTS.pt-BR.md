@@ -115,7 +115,7 @@ O modo padrão é `read-only`. A skill `implement` e `mate_implement` sempre rod
 npx -y agentmate doctor
 ```
 
-O `doctor` verifica se o Node.js é 18 ou superior, se `codex` e `claude` estão no `PATH` e respondem a `--version`, se o diretório de estado dos jobs é gravável, quantos jobs existem e quais jobs `running` perderam o worker (ele lista os IDs), e se ainda há um registro legado de `setup`. Cada item é reportado como `ok`, `warn` ou `fail`, com uma dica. Ele sai com código `1` se algum item falhar e funciona quando `codex` ou `claude` não estão instalados (reportado como aviso). Ele não verifica a autenticação: se um job falhar logo ao iniciar, faça login você mesmo no CLI de destino.
+O `doctor` verifica se o Node.js é 18 ou superior, se `codex` e `claude` estão no `PATH` e respondem a `--version`, se o diretório de estado dos jobs é gravável, quantos jobs existem e quais jobs `running` perderam o worker (ele lista os IDs), e se ainda há um registro legado de `serve codex` / `serve claude`. Cada item é reportado como `ok`, `warn` ou `fail`, com uma dica. Ele sai com código `1` se algum item falhar e funciona quando `codex` ou `claude` não estão instalados (reportado como aviso). Ele não verifica a autenticação: se um job falhar logo ao iniciar, faça login você mesmo no CLI de destino.
 
 ## Diagnóstico
 
@@ -126,9 +126,9 @@ O `doctor` verifica se o Node.js é 18 ou superior, se `codex` e `claude` estão
 5. Se o job falhar, confirme que o CLI de destino está disponível no `PATH` do host que iniciou o job (o `doctor` verifica) e autenticado (o `doctor` não verifica).
 6. Se MCP estiver ausente mas o CLI funcionar, use o fallback; não registre automaticamente nenhum servidor na configuração pessoal do usuário.
 
-## Migrar instalações antigas de `setup`
+## Removido na 0.6.0: instalações legadas de `setup`
 
-`npx agentmate setup` e os servidores síncronos (`serve codex`, `serve claude`) estão obsoletos (deprecated): ainda funcionam na 0.5.0, imprimem um aviso de depreciação no stderr e serão removidos na 0.6.0. Eles não integram o fluxo principal do plugin. Ele pode ter criado os servidores síncronos antigos e as skills `/codex` e `/claude`; o `doctor` reporta esses registros como avisos.
+O comando descontinuado `npx agentmate setup`, os servidores síncronos (`serve codex`, `serve claude`) e os binários `agentmate-codex` / `agentmate-claude` foram removidos na 0.6.0. O plugin é o único caminho de instalação. O `doctor` continua avisando quando sobra algum registro antigo.
 
 Antes de remover algo, use `claude mcp list`, `claude plugin list`, `codex plugin list` e abra os arquivos candidatos. Remova somente entradas que apontem exatamente para `agents-bridge-mcp serve codex` ou `agents-bridge-mcp serve claude` (ou `agentmate serve ...`):
 
@@ -136,4 +136,4 @@ Antes de remover algo, use `claude mcp list`, `claude plugin list`, `codex plugi
 - Codex: apague apenas a seção `[mcp_servers.claude]` que contenha `agents-bridge-mcp serve claude` ou `agentmate serve claude` de `~/.codex/config.toml`.
 - Skills e agente antigos: remova somente cópias reconhecidas de `.claude/skills/codex/`, `.claude/agents/codex-teammate.md` e `.agents/skills/claude/` depois de conferir que não foram personalizadas.
 
-Não remova registros com outro nome, outra origem ou conteúdo personalizado. Instale o plugin e reinicie o host antes de limpar registros legados, para manter uma rota de delegação disponível durante a transição.
+Não remova registros com outro nome, outra origem ou conteúdo personalizado. Instale o plugin e reinicie o host antes de limpar registros que sobraram, para manter uma rota de delegação disponível durante a transição.

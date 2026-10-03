@@ -33,6 +33,7 @@ Prefer the MCP tool when it is loaded; use the CLI otherwise.
 ## Rules
 
 - Do not substitute the result of one job for another; match ids exactly.
-- After cancelling a team lead, run `list --parent <id>` and cancel any child job that is still running.
+- `mate_cancel` on a workflow or team lead cancels its running children too.
 - A job with status `timeout` and a saved session can be resumed with a new job that continues it (`continue` / `--continue <id>`).
+- A session (`mate_session_start`, CLI `sessions start`) is shared context across jobs and agents: pass its id as `session` / `--session <id>` when starting jobs, and every worker in it reads the notes (`mate_session_notes`, `sessions notes <id> "<text>"`) in its briefing, so keep them short and factual. `mate_session_show` / `sessions show <id>` lists the notes and the session's jobs; `mate_session_list` / `sessions list` finds ids.
 - Report job state to the user briefly: id, role, provider, status, and what you will do next.

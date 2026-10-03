@@ -23,6 +23,8 @@ export interface Outcome {
   text: string;
   sessionId: string | null;
   errors: string[];
+  /** `text` is what a stream printed before it ended without a final result. */
+  partial?: boolean;
 }
 
 export type EventLevel = "important" | "status" | "fyi";

@@ -16,6 +16,7 @@ const args = process.argv.slice(2);
 const prompt = args[args.length - 1];
 const emit = (e) => console.log(JSON.stringify(e));
 if (prompt.includes("FAIL-IMPLEMENT")) { console.error("implementer boom"); process.exit(1); }
+if (prompt.includes("QUOTA-IMPLEMENT")) { console.error("You've hit your usage limit. Try again at 6pm."); process.exit(1); }
 emit({ type: "thread.started", thread_id: "t-impl" });
 if (prompt.includes("SLEEP-IMPLEMENT")) setInterval(() => {}, 1000);
 else {
@@ -29,6 +30,10 @@ const FAKE_CLAUDE = `#!/usr/bin/env node
 const args = process.argv.slice(2);
 const prompt = args[args.length - 1];
 if (prompt.includes("FAIL-REVIEW")) { console.error("reviewer boom"); process.exit(1); }
+if (prompt.includes("QUOTA-REVIEW")) {
+  console.log(JSON.stringify({ type: "result", subtype: "success", is_error: true, result: "Claude usage limit reached|1759500000", session_id: "s-q" }));
+  process.exit(1);
+}
 let verdict = null;
 if (prompt.includes("NO-VERDICT")) verdict = null;
 else if (prompt.includes("ALWAYS-REQUEST")) verdict = "request-changes";
@@ -87,6 +92,23 @@ async function runCrossreview(
   const started = startCrossreview(task, extra);
   const job = await waitJob(started.id, 80_000);
   return { job, report: readResult(started.id).text ?? "", children: childJobs(started.id) };
+}
+
+/** True while the process exists (a signal-0 probe). */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Polls until the process is gone; a worker writes its final status just before it exits. */
+async function pidGone(pid: number, ms = 5_000): Promise<boolean> {
+  for (const end = Date.now() + ms; pidAlive(pid) && Date.now() < end; )
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  return !pidAlive(pid);
 }
 
 const eventTexts = (id: string) => readEvents(id).map((event) => event.text);
@@ -268,6 +290,29 @@ describe("crossreview workflow", () => {
     ]);
   }, 100_000);
 
+  it("ends in error with the child's hand-off hint when the implementer hits its quota", async () => {
+    const { job, report, children } = await runCrossreview("work QUOTA-IMPLEMENT");
+    expect(job.status).toBe("error");
+    expect(children).toHaveLength(1);
+    expect(children[0]!.status).toBe("quota_exhausted");
+    expect(job.error).toBe(children[0]!.error);
+    expect(job.error).toContain("codex quota exhausted");
+    expect(job.error).toContain("start the job on claude.");
+    expect(report).toContain(`round 1: implement (job ${children[0]!.id}) hit the codex quota`);
+  }, 100_000);
+
+  it("ends in error when the reviewer hits its quota, keeping the round", async () => {
+    const { job, report, children } = await runCrossreview("work QUOTA-REVIEW");
+    expect(job.status).toBe("error");
+    expect(children.map((c) => c.status)).toEqual(["done", "quota_exhausted"]);
+    expect(job.error).toBe(children[1]!.error);
+    expect(job.error).toContain("claude quota exhausted: Claude usage limit reached|1759500000");
+    expect(job.error).toContain("start the job on codex.");
+    expect(report).toContain("round 1: review");
+    expect(report).toContain("hit the claude quota");
+    expect(job.workflow?.rounds).toHaveLength(1);
+  }, 100_000);
+
   it("cancels its running child when the workflow is canceled", async () => {
     const started = startCrossreview("long SLEEP-IMPLEMENT");
     let child: Job | undefined;
@@ -280,10 +325,55 @@ describe("crossreview workflow", () => {
     for (let i = 0; i < 100 && getJob(child!.id).status !== "running"; i++)
       await new Promise((resolve) => setTimeout(resolve, 200));
 
+    const childPid = getJob(child!.id).workerPid;
+    expect(childPid).toBeDefined();
+    expect(pidAlive(childPid!)).toBe(true);
+
+    const canceled = await cancelJob(started.id);
+    expect(canceled.id).toBe(started.id);
+    expect(canceled.status).toBe("canceled");
+    expect(getJob(child!.id).status).toBe("canceled");
+    expect(await pidGone(childPid!)).toBe(true);
+    expect(readResult(started.id).text).toContain("## Rounds");
+    expect(readJob(started.id)?.cancelRequested).toBe(true);
+  }, 100_000);
+
+  it("treats a child canceled on its own as a failure, not as a canceled workflow", async () => {
+    const started = startCrossreview("long SLEEP-IMPLEMENT");
+    let child: Job | undefined;
+    for (let i = 0; i < 200 && !child; i++) {
+      child = childJobs(started.id)[0];
+      if (!child) await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    for (let i = 0; i < 100 && getJob(child!.id).status !== "running"; i++)
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+    await cancelJob(child!.id); // only the child; the workflow was not asked to cancel
+    const done = await waitJob(started.id, 30_000);
+    expect(done.status).toBe("error");
+    expect(done.cancelRequested).toBeUndefined();
+    expect(done.error).toContain(`job ${child!.id} ended canceled`);
+  }, 100_000);
+
+  it("cancels the child first, so a workflow worker killed with SIGKILL leaves no orphan", async () => {
+    const started = startCrossreview("long SLEEP-IMPLEMENT");
+    let child: Job | undefined;
+    for (let i = 0; i < 200 && !child; i++) {
+      child = childJobs(started.id)[0];
+      if (!child) await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    for (let i = 0; i < 100 && getJob(child!.id).status !== "running"; i++)
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    const childPid = getJob(child!.id).workerPid!;
+    const workflowPid = getJob(started.id).workerPid!;
+
+    process.kill(-workflowPid, "SIGKILL"); // the workflow's worker is gone; its child is still running
+    expect(pidAlive(childPid)).toBe(true);
+
     const canceled = await cancelJob(started.id);
     expect(canceled.status).toBe("canceled");
     expect(getJob(child!.id).status).toBe("canceled");
-    expect(readResult(started.id).text).toContain("## Rounds");
+    expect(await pidGone(childPid)).toBe(true);
   }, 100_000);
 
   it("ends as timeout at its own deadline and cancels the running child", async () => {

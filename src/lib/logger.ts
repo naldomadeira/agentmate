@@ -10,38 +10,6 @@ function log(level: LogLevel, msg: string, ...args: unknown[]): void {
 }
 
 // ---------------------------------------------------------------------------
-// Progress notifications — rendered inline by Claude Code during tool calls.
-// ---------------------------------------------------------------------------
-
-export interface ProgressReporter {
-  report(message: string): void;
-}
-
-export function createProgressReporter(
-  sendNotification: (notification: {
-    method: "notifications/progress";
-    params: {
-      progressToken: string | number;
-      progress: number;
-      message?: string;
-    };
-  }) => Promise<void>,
-  progressToken: string | number | undefined,
-): ProgressReporter | undefined {
-  if (progressToken === undefined) return undefined;
-  let step = 0;
-  return {
-    report(message: string) {
-      step++;
-      sendNotification({
-        method: "notifications/progress",
-        params: { progressToken, progress: step, message },
-      }).catch(() => {});
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Logging
 // ---------------------------------------------------------------------------
 

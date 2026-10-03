@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -129,6 +128,7 @@ export const COMMAND_NAMES = [
   "implement",
   "teamlead",
   "crossreview",
+  "split",
   "jobs",
 ] as const;
 
@@ -167,109 +167,4 @@ export async function installCodexPrompts(scope: InstallScope): Promise<string[]
   }
   const names = await installTemplates("templates/codex-prompts", codexPromptsDir());
   return names.map((name) => `/prompts:${name}`);
-}
-
-// ---------------------------------------------------------------------------
-// Setup MCP servers
-// ---------------------------------------------------------------------------
-
-function exec(command: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    execFile(command, args, { timeout: 30_000 }, (error, stdout, stderr) => {
-      if (error) reject(error);
-      else resolve({ stdout, stderr });
-    });
-  });
-}
-
-const CLAUDE_MCP_ARGS = [
-  "mcp",
-  "add",
-  "codex",
-  "-s",
-  "user",
-  "--",
-  "npx",
-  "agentmate",
-  "serve",
-  "codex",
-];
-
-export async function setupClaude(): Promise<void> {
-  console.log("\nSetting up Claude Code → Codex...");
-  try {
-    await exec("claude", CLAUDE_MCP_ARGS);
-    console.log("  Registered 'codex' MCP server in Claude Code.");
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("already exists")) {
-      const overwrite = await consola.prompt(
-        "MCP server 'codex' already registered. Re-register with latest config?",
-        {
-          type: "confirm",
-          initial: true,
-        },
-      );
-      if (typeof overwrite === "symbol") process.exit(0);
-      if (overwrite) {
-        await exec("claude", ["mcp", "remove", "codex", "-s", "user"]);
-        await exec("claude", CLAUDE_MCP_ARGS);
-        console.log("  Re-registered 'codex' MCP server in Claude Code.");
-      } else {
-        console.log("  Skipped.");
-      }
-    } else {
-      console.error(`  Failed: ${msg}`);
-      console.error(
-        "  You can register manually: claude mcp add codex -s user -- npx agentmate serve codex",
-      );
-    }
-  }
-}
-
-const CODEX_TOML_SECTION = `[mcp_servers.claude]
-command = "npx"
-args = ["agentmate", "serve", "claude"]
-tool_timeout_sec = 600
-`;
-
-export async function setupCodex(): Promise<void> {
-  console.log("\nSetting up Codex → Claude...");
-  const configDir = join(homedir(), ".codex");
-  const configPath = join(configDir, "config.toml");
-
-  await mkdir(configDir, { recursive: true });
-
-  let content = "";
-  if (existsSync(configPath)) {
-    content = await readFile(configPath, "utf-8");
-  }
-
-  if (content.includes("[mcp_servers.claude]")) {
-    const overwrite = await consola.prompt(
-      "[mcp_servers.claude] already exists in config.toml. Replace with latest config?",
-      {
-        type: "confirm",
-        initial: true,
-      },
-    );
-    if (typeof overwrite === "symbol") process.exit(0);
-    if (!overwrite) {
-      console.log("  Skipped.");
-      return;
-    }
-    // Remove existing section (everything from [mcp_servers.claude] to next section or EOF)
-    // Can't use [^[]* because TOML array values contain [ characters
-    content = content
-      .replace(/\[mcp_servers\.claude\]\n(?:(?!\[[a-zA-Z]).*\n?)*/g, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-  }
-
-  const separator =
-    content.length > 0 && !content.endsWith("\n") ? "\n\n" : content.length > 0 ? "\n" : "";
-  await writeFile(configPath, content + separator + CODEX_TOML_SECTION, "utf-8");
-  console.log(
-    `  ${content.includes("[mcp_servers.claude]") ? "Updated" : "Added"} [mcp_servers.claude] in ${configPath}`,
-  );
 }

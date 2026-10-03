@@ -4,6 +4,7 @@ import { cancelJob, isTerminal, readResult, startJob, waitJob, type StartOptions
 import { appendEvent } from "./events.js";
 import {
   DEFAULT_MAX_ROUNDS,
+  isCancelRequested,
   readJob,
   updateJob,
   writeResult,
@@ -38,6 +39,8 @@ class Stop extends Error {
   constructor(
     readonly status: Exclude<JobStatus, "queued" | "running" | "done">,
     message: string,
+    /** Replaces the default outcome line, for example to name the step that hit a provider quota. */
+    readonly outcome?: string,
   ) {
     super(message);
   }
@@ -116,6 +119,7 @@ export async function runCrossreview(id: string): Promise<void> {
   });
 
   const implementer = job.provider;
+  const sessionId = job.session;
   const reviewer = otherAgent(implementer);
   const maxRounds = job.workflow?.maxRounds ?? DEFAULT_MAX_ROUNDS;
   const task = job.fields?.task ?? job.prompt;
@@ -134,6 +138,8 @@ export async function runCrossreview(id: string): Promise<void> {
   const controller = new AbortController();
   process.on("SIGTERM", () => controller.abort());
   process.on("SIGINT", () => controller.abort());
+  /** SIGTERM reached this worker, or `cancelJob` marked the job. */
+  const stopRequested = (): boolean => controller.signal.aborted || isCancelRequested(id);
   const deadlineMessage = `Exceeded the ${Math.round(job.timeoutMs / 60_000)} minute job deadline.`;
 
   const rounds: WorkflowRound[] = [];
@@ -159,13 +165,17 @@ export async function runCrossreview(id: string): Promise<void> {
     options: StartOptions,
     onStarted?: (childId: string) => void,
   ): Promise<{ job: Job; text: string }> {
-    if (controller.signal.aborted) throw new Stop("canceled", "Canceled.");
+    if (stopRequested()) throw new Stop("canceled", "Canceled.");
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Stop("timeout", deadlineMessage);
 
     let child: Job;
     try {
-      child = startJob({ ...options, timeoutMinutes: Math.max(remaining / 60_000, 1 / 60) });
+      child = startJob({
+        ...options,
+        ...(sessionId ? { sessionId } : {}),
+        timeoutMinutes: Math.max(remaining / 60_000, 1 / 60),
+      });
     } catch (cause) {
       throw new Stop(
         "error",
@@ -180,7 +190,7 @@ export async function runCrossreview(id: string): Promise<void> {
     for (;;) {
       settled = await waitJob(child.id, SLICE_MS);
       if (isTerminal(settled)) break;
-      if (controller.signal.aborted) {
+      if (stopRequested()) {
         await cancelJob(child.id);
         throw new Stop("canceled", "Canceled.");
       }
@@ -190,8 +200,17 @@ export async function runCrossreview(id: string): Promise<void> {
       }
     }
     if (settled.status !== "done") {
-      if (controller.signal.aborted) throw new Stop("canceled", "Canceled.");
+      // `cancelJob` marks this job before it cancels the children: a canceled child under that mark is
+      // the whole workflow being canceled; without it the child was canceled on its own, a plain failure.
+      if (stopRequested()) throw new Stop("canceled", "Canceled.");
       if (Date.now() >= deadline) throw new Stop("timeout", deadlineMessage);
+      if (settled.status === "quota_exhausted" && settled.error)
+        // The child's error already carries the reset and hand-off hint.
+        throw new Stop(
+          "error",
+          settled.error,
+          `**Outcome:** stopped: ${label} (job ${child.id}) hit the ${settled.provider} quota. ${settled.error}`,
+        );
       throw new Stop(
         "error",
         `${label} job ${child.id} ended ${settled.status}${settled.error ? `: ${settled.error}` : ""}`,
@@ -293,7 +312,9 @@ export async function runCrossreview(id: string): Promise<void> {
     if (failure instanceof Stop) {
       status = failure.status;
       error = failure.status === "canceled" ? undefined : failure.message;
-      outcome = `**Outcome:** ${failure.status === "canceled" ? "canceled" : `stopped (${failure.status})`}: ${failure.message}`;
+      outcome =
+        failure.outcome ??
+        `**Outcome:** ${failure.status === "canceled" ? "canceled" : `stopped (${failure.status})`}: ${failure.message}`;
     } else {
       status = "error";
       error = failure instanceof Error ? failure.message : String(failure);
