@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] - Unreleased
+## [0.7.0] - 2026-10-03
 
 ### Added
 
@@ -28,7 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `AgentAdapter` gains `teamleadNeedsWrite` (and `teamleadWriteReason`, the refusal text): `startJob` refuses a read-only team lead on any adapter that sets it, instead of checking for `gemini` by name. Gemini keeps its message; an `agy` lead is refused with `An agy team lead needs mode write: delegation requires the shell, which agy only allows with --dangerously-skip-permissions.`
 - `otherAgent()` stays the static pairing (codex with claude, `claude` for `gemini`); workflows resolve their default partner with `firstAvailableOther()` instead. The quota hand-off hint and `Hand off:` line name the first installed other agent, or omit the agent when none is installed. A read-only Gemini team lead is refused; the README, ARCHITECTURE and the `teamlead` and `gemini` skills document the Gemini limits.
 
-## [0.6.0] - Unreleased
+## [0.6.0] - 2026-10-03 (shipped in 0.7.0, not published separately)
 
 ### Added
 
@@ -59,7 +59,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `buildExplainCodePrompt` and `buildPlanPerfPrompt` (with `ExplainDepth` and `PerfMetric`), `CODEX_MODELS` and `CLAUDE_MODELS` (with their types) and `createProgressReporter` / `ProgressReporter`.
 - The "Legacy setup" README section and the "Move from a legacy `setup` install" guide sections, replaced by short "Removed in 0.6.0" notes. To clean up a leftover registration, run `claude mcp remove codex -s user` or delete the `[mcp_servers.claude]` section from `~/.codex/config.toml`; `doctor` flags both.
 
-## [0.5.0] - Unreleased
+## [0.5.0] - 2026-10-03 (shipped in 0.7.0, not published separately)
 
 ### Added
 
