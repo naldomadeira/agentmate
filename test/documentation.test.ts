@@ -16,6 +16,11 @@ describe("project documentation", () => {
     expect(readme).toContain("## Usage examples");
     expect(readme).toContain("--mode write");
     expect(readme).toContain("--continue <job-id>");
+
+    const portugueseReadme = read("docs/README.pt-BR.md");
+    expect(portugueseReadme).toContain("## Exemplos de uso");
+    expect(portugueseReadme).toContain("--mode write");
+    expect(portugueseReadme).toContain("--continue <job-id>");
   });
 
   it("provides installation guides in English and Portuguese", () => {
