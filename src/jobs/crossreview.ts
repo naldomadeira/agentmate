@@ -4,6 +4,7 @@ import { cancelJob, isTerminal, readResult, startJob, waitJob, type StartOptions
 import { appendEvent } from "./events.js";
 import {
   DEFAULT_MAX_ROUNDS,
+  isCancelRequested,
   readJob,
   updateJob,
   writeResult,
@@ -31,16 +32,6 @@ export function parseVerdict(text: string): Verdict {
   let verdict: Verdict = "none";
   for (const match of text.matchAll(VERDICT_LINE)) verdict = match[1]!.toLowerCase() as Verdict;
   return verdict;
-}
-
-/**
- * `cancelJob` cancels the children before it signals the workflow worker, so a child that ends
- * `canceled` may be the first sign of a workflow cancel whose SIGTERM is still in flight.
- */
-export async function abortedSoon(signal: AbortSignal, ms = 3_000): Promise<boolean> {
-  for (const end = Date.now() + ms; !signal.aborted && Date.now() < end; )
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  return signal.aborted;
 }
 
 /** Ends the workflow early with a final status; thrown from a step, caught by the runner. */
@@ -147,6 +138,8 @@ export async function runCrossreview(id: string): Promise<void> {
   const controller = new AbortController();
   process.on("SIGTERM", () => controller.abort());
   process.on("SIGINT", () => controller.abort());
+  /** SIGTERM reached this worker, or `cancelJob` marked the job. */
+  const stopRequested = (): boolean => controller.signal.aborted || isCancelRequested(id);
   const deadlineMessage = `Exceeded the ${Math.round(job.timeoutMs / 60_000)} minute job deadline.`;
 
   const rounds: WorkflowRound[] = [];
@@ -172,7 +165,7 @@ export async function runCrossreview(id: string): Promise<void> {
     options: StartOptions,
     onStarted?: (childId: string) => void,
   ): Promise<{ job: Job; text: string }> {
-    if (controller.signal.aborted) throw new Stop("canceled", "Canceled.");
+    if (stopRequested()) throw new Stop("canceled", "Canceled.");
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Stop("timeout", deadlineMessage);
 
@@ -197,7 +190,7 @@ export async function runCrossreview(id: string): Promise<void> {
     for (;;) {
       settled = await waitJob(child.id, SLICE_MS);
       if (isTerminal(settled)) break;
-      if (controller.signal.aborted) {
+      if (stopRequested()) {
         await cancelJob(child.id);
         throw new Stop("canceled", "Canceled.");
       }
@@ -207,8 +200,9 @@ export async function runCrossreview(id: string): Promise<void> {
       }
     }
     if (settled.status !== "done") {
-      if (settled.status === "canceled") await abortedSoon(controller.signal);
-      if (controller.signal.aborted) throw new Stop("canceled", "Canceled.");
+      // `cancelJob` marks this job before it cancels the children: a canceled child under that mark is
+      // the whole workflow being canceled; without it the child was canceled on its own, a plain failure.
+      if (stopRequested()) throw new Stop("canceled", "Canceled.");
       if (Date.now() >= deadline) throw new Stop("timeout", deadlineMessage);
       if (settled.status === "quota_exhausted" && settled.error)
         // The child's error already carries the reset and hand-off hint.

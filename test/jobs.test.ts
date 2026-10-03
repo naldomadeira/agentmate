@@ -27,6 +27,11 @@ const prompt = args[args.length - 1];
 const emit = (e) => console.log(JSON.stringify(e));
 if (prompt === "sleep") { emit({ type: "thread.started", thread_id: "t-sleep" }); setInterval(() => {}, 1000); }
 else if (prompt === "fail") { console.error("boom"); process.exit(1); }
+else if (prompt === "quota-429" || prompt === "plain-429") {
+  require("node:fs").appendFileSync(process.env.FAKE_COUNT_FILE, "x");
+  console.error(prompt === "quota-429" ? "429 rate limit, try again at 6pm" : "429 rate limit exceeded, slow down");
+  process.exit(1);
+}
 else if (prompt === "quota") { console.error("You've hit your usage limit. Try again at 6pm."); process.exit(1); }
 else {
   emit({ type: "thread.started", thread_id: "t-1" });
@@ -43,6 +48,15 @@ const args = process.argv.slice(2);
 const prompt = args[args.length - 1];
 const emit = (e) => console.log(JSON.stringify(e));
 emit({ type: "system", subtype: "init", session_id: "c-1" });
+if (prompt === "cut") {
+  emit({ type: "assistant", message: { content: [{ type: "text", text: "Half an answ" }] } });
+  process.exit(0);
+}
+if (prompt === "partial-sleep") {
+  emit({ type: "assistant", message: { content: [{ type: "text", text: "Half an answ" }] } });
+  setInterval(() => {}, 1000);
+  return;
+}
 if (prompt === "stream-quota") {
   emit({ type: "result", subtype: "success", is_error: true, result: "You've hit your limit \u00b7 resets 6pm", session_id: "c-1" });
   process.exit(1);
@@ -301,6 +315,26 @@ describe("jobs", () => {
     expect(renderResult(read, text)).toContain("quota_exhausted");
   }, 30_000);
 
+  it("never retries a quota line, but still retries a plain transient 429", async () => {
+    const count = path.join(home, "invocations");
+    process.env["FAKE_COUNT_FILE"] = count;
+    process.env["AGENTMATE_MAX_RETRIES"] = "1";
+    try {
+      fs.writeFileSync(count, "");
+      const quota = await waitJob(start("quota-429").id, 20_000);
+      expect(quota.status).toBe("quota_exhausted");
+      expect(fs.readFileSync(count, "utf8")).toBe("x");
+
+      fs.writeFileSync(count, "");
+      const plain = await waitJob(start("plain-429").id, 30_000);
+      expect(plain.status).toBe("error");
+      expect(fs.readFileSync(count, "utf8")).toBe("xx");
+    } finally {
+      delete process.env["FAKE_COUNT_FILE"];
+      delete process.env["AGENTMATE_MAX_RETRIES"];
+    }
+  }, 60_000);
+
   it("keeps a plain failure as error, not quota_exhausted", async () => {
     const done = await waitJob(start("fail").id, 20_000);
     expect(done.status).toBe("error");
@@ -332,6 +366,43 @@ describe("jobs", () => {
     expect(done.error).toContain("start the job on codex.");
     expect(readEvents(job.id).filter((e) => e.kind === "error").length).toBeGreaterThan(0);
   }, 30_000);
+
+  it("keeps a claude stream's last assistant text as partial output when it ends without a result", async () => {
+    const cut = await waitJob(
+      startJob({ provider: "claude", prompt: "cut", cwd: home }).id,
+      20_000,
+    );
+    expect(cut.status).toBe("error");
+    expect(cut.error).toMatch(/ended without a final result/);
+    const read = readResult(cut.id);
+    expect(read.text).toBe("Half an answ");
+    expect(renderResult(read.job, read.text)).toContain("Partial output:\nHalf an answ");
+
+    const slow = startJob({
+      provider: "claude",
+      prompt: "partial-sleep",
+      cwd: home,
+      timeoutMinutes: 0.03,
+    });
+    const timedOut = await waitJob(slow.id, 20_000);
+    expect(timedOut.status).toBe("timeout");
+    expect(readResult(slow.id).text).toBe("Half an answ");
+  }, 60_000);
+
+  it("keeps partial output when a claude job is canceled", async () => {
+    const job = startJob({ provider: "claude", prompt: "partial-sleep", cwd: home });
+    const seen = () => {
+      try {
+        return fs.readFileSync(stdoutFile(job.id), "utf8").includes("Half");
+      } catch {
+        return false;
+      }
+    };
+    for (let i = 0; i < 100 && !seen(); i++) await new Promise((r) => setTimeout(r, 100));
+    const canceled = await cancelJob(job.id);
+    expect(canceled.status).toBe("canceled");
+    expect(readResult(job.id).text).toBe("Half an answ");
+  }, 60_000);
 
   it("expires a wait without stopping the job, then cancels it", async () => {
     const job = start("sleep");

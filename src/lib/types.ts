@@ -5,6 +5,8 @@ export interface ExecOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   maxRetries?: number;
+  /** Consulted before a transient retry; return false to hand the failed result back instead. */
+  shouldRetry?: (result: ExecResult) => boolean;
   signal?: AbortSignal;
   onStdout?: (chunk: Buffer | string) => void;
   onStderr?: (chunk: Buffer | string) => void;
@@ -42,4 +44,6 @@ export interface ClaudeResult {
   sessionId: string | null;
   costUsd: number | null;
   errors: string[];
+  /** `resultText` is the last assistant text of a stream that ended without a `result` event. */
+  partial?: boolean;
 }

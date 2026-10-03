@@ -180,6 +180,28 @@ describe("parseClaudeOutput (stream-json)", () => {
     expect(noText.resultText).toBe("");
   });
 
+  it("returns the last assistant text as partial output when the stream has no result event", () => {
+    const cut = parseClaudeOutput(
+      jsonl([
+        { type: "system", subtype: "init", session_id: "s-cut" },
+        { type: "assistant", message: { content: [{ type: "text", text: "First thought." }] } },
+        { type: "assistant", message: { content: [{ type: "tool_use", id: "t", name: "Bash" }] } },
+        { type: "assistant", message: { content: [{ type: "text", text: "Half an answ" }] } },
+      ]),
+    );
+    expect(cut).toMatchObject({
+      resultText: "Half an answ",
+      sessionId: "s-cut",
+      partial: true,
+      errors: [],
+    });
+    const none = parseClaudeOutput(jsonl([{ type: "system", subtype: "init" }]));
+    expect(none.resultText).toBe("");
+    expect(none.partial).toBeUndefined();
+    // a stream that ends properly is never partial
+    expect(parseClaudeOutput(jsonl(STREAM)).partial).toBeUndefined();
+  });
+
   it("still accepts a single legacy JSON object", () => {
     const result = parseClaudeOutput(
       JSON.stringify({ type: "result", result: "ok", session_id: "s" }),

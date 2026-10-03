@@ -139,6 +139,11 @@ export interface Job {
   /** Id of the AgentMate session (shared notes) this job belongs to; see `sessions.ts`. */
   session?: string;
   continuesJob?: string;
+  /**
+   * Set by `cancelJob` before it cancels the children, so a workflow worker that sees a child end
+   * `canceled` knows whether the whole job is being canceled or the child was canceled on its own.
+   */
+  cancelRequested?: boolean;
   error?: string;
   /** What a workflow job (crossreview) needs after it is started; other roles leave it unset. */
   fields?: RoleFields;
@@ -197,7 +202,14 @@ export function readJob(id: string): Job | null {
   }
 }
 
-/** Only the owning worker writes a job, so a plain read-modify-write is safe. */
+/** True once `cancelJob` has asked for this job to be canceled. */
+export const isCancelRequested = (id: string): boolean => readJob(id)?.cancelRequested === true;
+
+/**
+ * Read-modify-write of job.json. The owning worker writes it, and `cancelJob` sets
+ * `cancelRequested`; both go through here, so the lost-update window is the few microseconds between
+ * this read and the rename.
+ */
 export function updateJob(id: string, fields: Partial<Job>): Job {
   const job = readJob(id);
   if (!job) throw new Error(`Job not found: ${id}`);

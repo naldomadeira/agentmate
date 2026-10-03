@@ -86,6 +86,8 @@ export async function runWorker(id: string): Promise<void> {
       cwd: job.cwd,
       timeoutMs: job.timeoutMs,
       signal: controller.signal,
+      // A quota line can look like a transient 429; retrying it only burns the reset window.
+      shouldRetry: (r) => detectQuotaExhaustion(r.stderr, [], "") === null,
       onStdout: (chunk) => {
         out.write(chunk);
         if (streaming) feed(chunk);
@@ -107,7 +109,7 @@ export async function runWorker(id: string): Promise<void> {
     else if (result.timedOut) {
       status = "timeout";
       fields.error = `Exceeded the ${Math.round(job.timeoutMs / 60_000)} minute job deadline.`;
-    } else if (!outcome.text) {
+    } else if (!outcome.text || outcome.partial) {
       const quotaLine = detectQuotaExhaustion(result.stderr, outcome.errors, outcome.text);
       if (quotaLine) {
         status = "quota_exhausted";
@@ -115,7 +117,10 @@ export async function runWorker(id: string): Promise<void> {
       } else {
         status = "error";
         fields.error =
-          outcome.errors.join("; ") || `${job.provider} exited ${result.exitCode} with no output.`;
+          outcome.errors.join("; ") ||
+          (outcome.partial
+            ? `${job.provider} ended without a final result (exit ${result.exitCode}); the partial output is kept.`
+            : `${job.provider} exited ${result.exitCode} with no output.`);
       }
     } else status = "done";
   } catch (error) {

@@ -24,7 +24,8 @@ function contentText(content: unknown): string {
  * Parses the output of `claude -p`: either the legacy single JSON object (`--output-format json`)
  * or stream-json (`--output-format stream-json --verbose`, one JSON object per line). For a stream
  * the last `result` event decides: its `result` text (or, if it has none, the text of the last
- * assistant message), `session_id` and `total_cost_usd`. An `is_error` result is reported in
+ * assistant message), `session_id` and `total_cost_usd`. A stream with no `result` event returns the
+ * last assistant text as `resultText` with `partial: true`. An `is_error` result is reported in
  * `errors` and leaves `resultText` empty.
  */
 export function parseClaudeOutput(jsonOutput: string): ClaudeResult {
@@ -71,13 +72,21 @@ export function parseClaudeOutput(jsonOutput: string): ClaudeResult {
   return fromObject(parsed, result);
 }
 
-/** Stream-json: the last `result` event wins; a stream cut off before one yields no text. */
+/** Stream-json: the last `result` event wins; a stream cut off before one yields the last assistant text, flagged `partial`. */
 function fromStream(events: Obj[], result: ClaudeResult): ClaudeResult {
   const last = lastWhere(events, (event) => event["type"] === "result");
   for (const event of events) {
     if (typeof event["session_id"] === "string") result.sessionId = event["session_id"];
   }
-  if (!last) return result;
+  if (!last) {
+    // Cut off (timeout, cancel, crash): the last thing the assistant said is the partial output.
+    const text = lastAssistantText(events);
+    if (text) {
+      result.resultText = text;
+      result.partial = true;
+    }
+    return result;
+  }
 
   if (typeof last["session_id"] === "string") result.sessionId = last["session_id"];
   if (typeof last["total_cost_usd"] === "number") result.costUsd = last["total_cost_usd"];
@@ -93,12 +102,17 @@ function fromStream(events: Obj[], result: ClaudeResult): ClaudeResult {
     result.resultText = last["result"];
     return result;
   }
+  result.resultText = lastAssistantText(events);
+  return result;
+}
+
+/** The text of the last assistant message that has any; empty when there is none. */
+function lastAssistantText(events: Obj[]): string {
   const lastAssistant = lastWhere(
     events,
     (event) => event["type"] === "assistant" && contentText(messageOf(event)["content"]) !== "",
   );
-  if (lastAssistant) result.resultText = contentText(messageOf(lastAssistant)["content"]);
-  return result;
+  return lastAssistant ? contentText(messageOf(lastAssistant)["content"]) : "";
 }
 
 const messageOf = (event: Obj): Obj => (isObject(event["message"]) ? event["message"] : {});

@@ -7,6 +7,7 @@ import {
   getSession,
   listSessions,
   readNotes,
+  sessionJobCounts,
   sessionJobs,
 } from "../jobs/sessions.js";
 
@@ -55,7 +56,7 @@ export default defineCommand({
       meta: { name: "list", description: "List recent sessions" },
       args: { cwd: { type: "string", description: "Only sessions about this directory" } },
       run: userFacing(({ args }) => {
-        console.log(renderSessionList(listSessions({ cwd: args.cwd })));
+        console.log(renderSessionList(listSessions({ cwd: args.cwd }), sessionJobCounts()));
       }),
     }),
   },

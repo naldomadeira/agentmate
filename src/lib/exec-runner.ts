@@ -197,7 +197,12 @@ export async function execCommand(options: ExecOptions): Promise<ExecResult> {
   for (let attempt = 0; ; attempt++) {
     const result = await execOnce(options);
 
-    if (attempt < maxRetries && !result.aborted && isTransientError(result)) {
+    if (
+      attempt < maxRetries &&
+      !result.aborted &&
+      isTransientError(result) &&
+      (options.shouldRetry?.(result) ?? true)
+    ) {
       const delay = retryDelayMs(attempt);
       logger.warn(
         `Transient error detected (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`,

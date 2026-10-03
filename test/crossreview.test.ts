@@ -335,6 +335,24 @@ describe("crossreview workflow", () => {
     expect(getJob(child!.id).status).toBe("canceled");
     expect(await pidGone(childPid!)).toBe(true);
     expect(readResult(started.id).text).toContain("## Rounds");
+    expect(readJob(started.id)?.cancelRequested).toBe(true);
+  }, 100_000);
+
+  it("treats a child canceled on its own as a failure, not as a canceled workflow", async () => {
+    const started = startCrossreview("long SLEEP-IMPLEMENT");
+    let child: Job | undefined;
+    for (let i = 0; i < 200 && !child; i++) {
+      child = childJobs(started.id)[0];
+      if (!child) await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    for (let i = 0; i < 100 && getJob(child!.id).status !== "running"; i++)
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+    await cancelJob(child!.id); // only the child; the workflow was not asked to cancel
+    const done = await waitJob(started.id, 30_000);
+    expect(done.status).toBe("error");
+    expect(done.cancelRequested).toBeUndefined();
+    expect(done.error).toContain(`job ${child!.id} ended canceled`);
   }, 100_000);
 
   it("cancels the child first, so a workflow worker killed with SIGKILL leaves no orphan", async () => {

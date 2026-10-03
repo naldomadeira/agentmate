@@ -5,12 +5,13 @@ import { promisify } from "node:util";
 import type { EventLevel, JobEvent } from "../agents/types.js";
 import { isAgentId, otherAgent } from "../agents/registry.js";
 import { cancelJob, getJob, isTerminal, readResult, startJob, type StartOptions } from "./api.js";
-import { abortedSoon, parseVerdict } from "./crossreview.js";
+import { parseVerdict } from "./crossreview.js";
 import { appendEvent } from "./events.js";
-import { appendNotes, createSession, attachJob } from "./sessions.js";
+import { appendNotes, createSession } from "./sessions.js";
 import {
   DEFAULT_MAX_PARTS,
   homeDir,
+  isCancelRequested,
   readJob,
   updateJob,
   writeResult,
@@ -121,16 +122,46 @@ interface Child {
   label: string;
 }
 
+/** Every git call gets this long; a hook or a prompt that hangs must not hang the workflow. */
+const GIT_TIMEOUT_MS = 60_000;
+
 async function git(args: string[], cwd: string): Promise<string> {
   try {
-    const { stdout } = await execFileAsync("git", args, { cwd, maxBuffer: 16 * 1024 * 1024 });
+    const { stdout } = await execFileAsync("git", args, {
+      cwd,
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: GIT_TIMEOUT_MS,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    });
     return stdout.trim();
   } catch (cause) {
-    const failure = cause as { stderr?: string; message: string };
-    const detail = failure.stderr?.trim().split("\n")[0] || failure.message;
-    throw new Error(detail);
+    const failure = cause as { stderr?: string; message: string; killed?: boolean };
+    if (failure.killed)
+      throw new Error(`git ${args[0]} timed out after ${GIT_TIMEOUT_MS / 1000} s`);
+    // The cause is the `fatal:`/`error:` line; the first line is often just progress ("Preparing worktree").
+    const lines = (failure.stderr ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const detail =
+      lines.find((line) => /^(fatal|error):/i.test(line)) ?? lines.at(-1) ?? failure.message;
+    throw new Error(detail.replace(/^(fatal|error):\s*/i, ""));
   }
 }
+
+/** How a write-mode part's branch ended up after the implementer finished. */
+interface CommitResult {
+  state: "committed" | "unchanged" | "failed" | "switched";
+  /** `failed`: the git error. `switched`: the branch the worktree is on. */
+  detail?: string;
+}
+
+/** Double-quoted for a shell, so a path with spaces or `$` survives being pasted. */
+const quote = (value: string) => `"${value.replace(/(["\\$`])/g, "\\$1")}"`;
+const oneLine = (value: string, max = 120) => {
+  const flat = value.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+};
 
 const cell = (value: string) => value.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
 const code = (value: string | undefined) => (value ? `\`${value}\`` : "-");
@@ -146,8 +177,65 @@ interface ReportInput {
   outcome: string;
   write: boolean;
   results: Map<string, string>;
-  changed: Map<string, boolean>;
+  commits: Map<string, CommitResult>;
   needsHuman: string[];
+}
+
+/** The `## Integration` section of a write-mode split: every created worktree and branch is accounted for. */
+function renderWriteIntegration(input: ReportInput): string {
+  const created = input.parts.filter((part) => part.worktree && part.branch);
+  if (created.length === 0) return "No worktree was created, so there is nothing to integrate.";
+
+  const merge: SplitPart[] = [];
+  const discard: SplitPart[] = [];
+  const lines = created.flatMap((part): string[] => {
+    const commit = input.commits.get(part.id);
+    const review = part.reviewJob ? `read review job \`${part.reviewJob}\`` : "read the review";
+    switch (commit?.state) {
+      case "failed":
+        return [`# part ${part.id}: commit failed, work is uncommitted in ${part.worktree}`];
+      case "switched":
+        return [
+          `# part ${part.id}: the worktree is on branch ${commit.detail}, not ${part.branch}; inspect ${part.worktree}`,
+        ];
+      case "committed":
+        if (part.verdict === "approve") {
+          merge.push(part);
+          return [`git merge ${part.branch}`];
+        }
+        discard.push(part);
+        return [
+          part.verdict === "request-changes"
+            ? `# git merge ${part.branch}  # request-changes: ${review} before merging`
+            : `# git merge ${part.branch}  # no clear verdict: ${review} before merging`,
+        ];
+      case "unchanged":
+        discard.push(part);
+        return [`# git merge ${part.branch}  # no changes on this branch`];
+      default:
+        discard.push(part);
+        return [
+          `# part ${part.id}: nothing to merge (${oneLine(part.error ?? "it did not finish")})`,
+        ];
+    }
+  });
+
+  const sections = [
+    `Each part is committed on its own branch, created from \`${created[0]?.base?.slice(0, 12) ?? "HEAD"}\`. From \`${input.job.cwd}\`, merge the approved parts in this order:`,
+    `\`\`\`bash\n${lines.join("\n")}\n\`\`\``,
+    "Merge conflicts are not resolved automatically: if two parts collide, resolve them by hand or ask an agent. Nothing has been merged, pushed or deleted for you.",
+  ];
+  if (merge.length > 0)
+    sections.push(
+      "After merging, remove the merged worktrees and branches:",
+      `\`\`\`bash\n${merge.map((part) => `git worktree remove ${quote(part.worktree!)}\ngit branch -d ${part.branch}`).join("\n")}\n\`\`\``,
+    );
+  if (discard.length > 0)
+    sections.push(
+      "These worktrees and branches are not merged (failed, canceled, timed out, unchanged or waiting for a human). Delete them when you no longer need them; the removal is forced and drops anything left in the worktree:",
+      `\`\`\`bash\n${discard.map((part) => `git worktree remove --force ${quote(part.worktree!)}\ngit branch -D ${part.branch}`).join("\n")}\n\`\`\``,
+    );
+  return sections.join("\n\n");
 }
 
 function renderReport(input: ReportInput): string {
@@ -167,27 +255,10 @@ function renderReport(input: ReportInput): string {
       : "No part was planned.";
 
   let integration: string;
-  if (finished.length === 0) integration = "No part finished, so there is nothing to integrate.";
-  else if (write) {
-    const merges = finished.map((part) => {
-      const note = !input.changed.get(part.id)
-        ? "  # no changes on this branch"
-        : part.verdict === "approve"
-          ? ""
-          : "  # review this part before merging (see Needs human)";
-      return `git merge ${part.branch}${note}`;
-    });
-    const cleanup = finished
-      .filter((part) => part.worktree)
-      .map((part) => `git worktree remove ${part.worktree}`);
-    integration = [
-      `Each part is committed on its own branch, created from \`${finished[0]?.base?.slice(0, 12) ?? "HEAD"}\`. From \`${job.cwd}\`, merge them in this order:`,
-      `\`\`\`bash\n${merges.join("\n")}\n\`\`\``,
-      "Merge conflicts are not resolved automatically: if two parts collide, resolve them by hand or ask an agent. Nothing has been merged, pushed or deleted for you.",
-      `After merging, remove the worktrees (and delete the branches with \`git branch -d\`):`,
-      `\`\`\`bash\n${cleanup.join("\n")}\n\`\`\``,
-    ].join("\n\n");
-  } else {
+  if (write) integration = renderWriteIntegration(input);
+  else if (finished.length === 0)
+    integration = "No part finished, so there is nothing to integrate.";
+  else {
     integration = finished
       .map(
         (part) =>
@@ -265,7 +336,7 @@ export async function runSplit(id: string): Promise<void> {
   const children: Child[] = [];
   const results = new Map<string, string>();
   const reviews = new Map<string, string>();
-  const changed = new Map<string, boolean>();
+  const commits = new Map<string, CommitResult>();
   const failures: string[] = [];
   const failedJobs: string[] = [];
   const needsHuman: string[] = [];
@@ -290,8 +361,10 @@ export async function runSplit(id: string): Promise<void> {
     }
   };
 
+  /** SIGTERM reached this worker, or `cancelJob` marked the job. */
+  const stopRequested = (): boolean => controller.signal.aborted || isCancelRequested(id);
   const checkLive = (): void => {
-    if (controller.signal.aborted) throw new Stop("canceled", "Canceled.");
+    if (stopRequested()) throw new Stop("canceled", "Canceled.");
     if (Date.now() >= deadline) throw new Stop("timeout", deadlineMessage);
   };
 
@@ -325,7 +398,9 @@ export async function runSplit(id: string): Promise<void> {
         if (settled.has(child.id)) continue;
         const current = getJob(child.id);
         if (isTerminal(current)) {
-          if (current.status === "canceled" && (await abortedSoon(controller.signal)))
+          // `cancelJob` marks this job before it cancels the children: a canceled child under that mark
+          // is the whole workflow being canceled; without it the child was canceled on its own.
+          if (current.status === "canceled" && stopRequested())
             throw new Stop("canceled", "Canceled.");
           settled.set(child.id, current);
           const name = children.find((c) => c.id === child.id)?.label ?? label;
@@ -338,7 +413,7 @@ export async function runSplit(id: string): Promise<void> {
       }
       if (settled.size === started.length) return started.map((child) => settled.get(child.id)!);
       const pending = started.filter((child) => !settled.has(child.id));
-      const stopWith = controller.signal.aborted
+      const stopWith = stopRequested()
         ? new Stop("canceled", "Canceled.")
         : Date.now() >= deadline
           ? new Stop("timeout", deadlineMessage)
@@ -367,26 +442,78 @@ export async function runSplit(id: string): Promise<void> {
       ...(acceptance ? [`Acceptance criteria for the whole goal:\n${acceptance}`] : []),
     ].join("\n\n");
 
-  /** Commits what the implementer left in a part's worktree so the branch carries the work. */
-  async function commitPart(part: SplitPart): Promise<boolean> {
+  /**
+   * Commits what the implementer left in a part's worktree so the branch carries the work. Hooks and
+   * signing are off for this commit: it is bookkeeping, and the user's hooks would reject it. A worktree
+   * the implementer moved to another branch is left alone.
+   */
+  async function commitPart(part: SplitPart): Promise<CommitResult> {
     const dir = part.worktree!;
-    if (await git(["status", "--porcelain"], dir)) {
-      await git(["add", "-A"], dir);
-      const identity = await git(["config", "user.email"], dir).catch(() => "");
-      const ident = identity
-        ? []
-        : ["-c", "user.name=AgentMate", "-c", "user.email=agentmate@localhost"];
-      await git(
-        [...ident, "commit", "-m", `agentmate split ${id}: part ${part.id} (${part.title})`],
-        dir,
+    try {
+      const current = await git(["rev-parse", "--abbrev-ref", "HEAD"], dir);
+      if (current !== part.branch) {
+        needsHuman.push(
+          `part ${part.id}: the implementer switched the worktree ${dir} to branch ${current} (expected ${part.branch}), so AgentMate did not commit; inspect it there.`,
+        );
+        return { state: "switched", detail: current };
+      }
+      if (await git(["status", "--porcelain"], dir)) {
+        await git(["add", "-A"], dir);
+        const identity = await git(["config", "user.email"], dir).catch(() => "");
+        const ident = identity
+          ? []
+          : ["-c", "user.name=AgentMate", "-c", "user.email=agentmate@localhost"];
+        await git(
+          [
+            "-c",
+            "commit.gpgsign=false",
+            ...ident,
+            "commit",
+            "--no-verify",
+            "-m",
+            `agentmate split ${id}: part ${part.id} (${part.title})`,
+          ],
+          dir,
+        );
+        return { state: "committed" };
+      }
+      // The implementer may have committed on its own.
+      if ((await git(["rev-parse", "HEAD"], dir)) !== part.base) return { state: "committed" };
+      needsHuman.push(`part ${part.id} made no changes on ${part.branch}.`);
+      return { state: "unchanged" };
+    } catch (cause) {
+      const detail = (cause as Error).message;
+      needsHuman.push(
+        `part ${part.id}: AgentMate could not commit the changes in ${dir} (${detail}); commit them there before merging.`,
       );
-      return true;
+      return { state: "failed", detail };
     }
-    // The implementer may have committed on its own.
-    return (await git(["rev-parse", "HEAD"], dir)) !== part.base;
   }
 
   try {
+    // Write mode needs a repository with a commit and a clean tree: each part starts from this commit
+    // in its own worktree, and uncommitted changes would silently be left out of every part.
+    let base = "";
+    if (write) {
+      try {
+        base = await git(["rev-parse", "HEAD"], job.cwd);
+      } catch {
+        const isRepo = await git(["rev-parse", "--git-dir"], job.cwd).then(
+          () => true,
+          () => false,
+        );
+        throw new Stop(
+          "error",
+          `${job.cwd} ${isRepo ? "has no commits yet; task splitting in write mode needs a commit to start from" : "is not a git repository; task splitting in write mode needs one"}. Run \`agentmate jobs result ${id}\``,
+        );
+      }
+      if (await git(["status", "--porcelain"], job.cwd).catch(() => ""))
+        throw new Stop(
+          "error",
+          "the working tree has uncommitted changes; commit or stash them first, because each part starts from HEAD in its own worktree",
+        );
+    }
+
     // Every child shares one session; create it when the caller did not bring one.
     if (!session) {
       const created = createSession({
@@ -394,7 +521,6 @@ export async function runSplit(id: string): Promise<void> {
         cwd: job.cwd,
       });
       session = created.id;
-      attachJob(session, id);
       updateJob(id, { session });
     }
 
@@ -464,26 +590,24 @@ export async function runSplit(id: string): Promise<void> {
     );
     if (write) {
       checkLive();
-      let base: string;
-      try {
-        base = await git(["rev-parse", "HEAD"], job.cwd);
-      } catch (cause) {
-        throw new Stop(
-          "error",
-          `cannot split in write mode: ${(cause as Error).message}. Run it from a git repository with at least one commit, or use read-only mode.`,
-        );
-      }
       for (const part of parts) {
         const dir = path.join(homeDir(), "worktrees", id, part.id);
         const branch = `agentmate/${id}/${part.id}`;
         try {
           fs.mkdirSync(path.dirname(dir), { recursive: true, mode: 0o700 });
-          await git(["worktree", "add", "-b", branch, dir, "HEAD"], job.cwd);
+          await git(["worktree", "add", "-b", branch, dir, base], job.cwd);
         } catch (cause) {
-          throw new Stop(
-            "error",
-            `git worktree add failed for part ${part.id}: ${(cause as Error).message}. Check \`git worktree list\` in ${job.cwd}.`,
+          // The other parts go on; this one is reported and not run. `worktree add -b` may already have
+          // created the branch, which belongs to this job alone, so it is removed instead of orphaned.
+          await git(["branch", "-D", branch], job.cwd).catch(() => undefined);
+          const message = (cause as Error).message;
+          part.error = `git worktree add failed: ${message}`;
+          failures.push(`part ${part.id} could not start: git worktree add failed`);
+          needsHuman.push(
+            `part ${part.id}: git worktree add failed (${message}), so the part was not run. Check \`git worktree list\` in ${job.cwd}.`,
           );
+          emit("important", "error", `part ${part.id}: git worktree add failed: ${message}`);
+          continue;
         }
         Object.assign(part, { branch, worktree: dir, base });
         saveParts();
@@ -491,7 +615,9 @@ export async function runSplit(id: string): Promise<void> {
       }
     }
 
-    const partChildren = parts.map((part) => {
+    // A part whose worktree could not be created has no child.
+    const runnable = parts.filter((part) => !write || part.worktree);
+    const partChildren = runnable.map((part) => {
       const spec = planned.get(part.id)!;
       const brief = workflowBriefing(spec);
       const sameProvider = part.agent === planner;
@@ -500,7 +626,7 @@ export async function runSplit(id: string): Promise<void> {
             provider: part.agent,
             role: "implement",
             fields: {
-              task: `${brief}\n\nYou work in your own git worktree (${part.worktree}) on branch ${part.branch}, created from commit ${part.base}. Leave your changes uncommitted: AgentMate commits them on the branch after you finish.`,
+              task: `${brief}\n\nYou work in your own git worktree (${part.worktree}) on branch ${part.branch}, created from commit ${part.base}. Stay on that branch and leave your changes uncommitted: AgentMate commits them on the branch after you finish.`,
             },
             mode: "write",
             cwd: part.worktree!,
@@ -520,7 +646,7 @@ export async function runSplit(id: string): Promise<void> {
     saveParts();
 
     const settledParts = await settle("parts", partChildren);
-    for (const [index, part] of parts.entries()) {
+    for (const [index, part] of runnable.entries()) {
       const child = settledParts[index]!;
       if (child.status !== "done") {
         part.error = failure(child);
@@ -531,18 +657,7 @@ export async function runSplit(id: string): Promise<void> {
         continue;
       }
       results.set(part.id, readResult(child.id).text ?? "");
-      if (write) {
-        try {
-          const hasChanges = await commitPart(part);
-          changed.set(part.id, hasChanges);
-          if (!hasChanges) needsHuman.push(`part ${part.id} made no changes on ${part.branch}.`);
-        } catch (cause) {
-          changed.set(part.id, true);
-          needsHuman.push(
-            `part ${part.id}: AgentMate could not commit the changes in ${part.worktree} (${(cause as Error).message}); commit them there before merging.`,
-          );
-        }
-      }
+      if (write) commits.set(part.id, await commitPart(part));
     }
     saveParts();
 
@@ -603,7 +718,7 @@ export async function runSplit(id: string): Promise<void> {
     const approved = parts.filter((part) => part.verdict === "approve").length;
     if (failures.length > 0) {
       status = "error";
-      error = `${failures.join("; ")}. Run \`agentmate jobs result ${failedJobs[0]}\`.`;
+      error = `${failures.join("; ")}. Run \`agentmate jobs result ${failedJobs[0] ?? id}\`.`;
       outcome = `**Outcome:** stopped with failures: ${error}`;
       const hit = quotaHits[0];
       if (hit) {
@@ -647,7 +762,7 @@ export async function runSplit(id: string): Promise<void> {
           outcome,
           write,
           results,
-          changed,
+          commits,
           needsHuman,
         }),
       );

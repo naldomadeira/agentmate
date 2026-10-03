@@ -31,6 +31,7 @@ import {
   getSession,
   listSessions,
   readNotes,
+  sessionJobCounts,
   sessionJobs,
 } from "./jobs/sessions.js";
 import { JOB_ROLES, type JobMode, type Provider } from "./jobs/store.js";
@@ -327,7 +328,7 @@ server.registerTool(
   {
     title: "Split a task across both agents",
     description:
-      "Split a broad goal into independent parts that run in parallel and are cross-reviewed, without relaying anything by hand: the provider plans 1 to maxParts parts with closed interfaces and no overlapping files, each part goes to one of the two agents, and the other agent reviews each finished part. In read-only mode (default) the parts are research jobs on the working directory; in write mode each part is implemented in its own git worktree and branch (agentmate/<split-id>/<part>) created from HEAD, which needs a git repository with a commit and edits files, so use write only when the user authorized edits. The report lists the parts with their verdicts, the ordered `git merge` commands (nothing is merged for you; conflicts are not resolved) and what needs a human. Creates a session when none is given and records the plan in its notes. Only a top-level session can start it; follow it with mate_observe. The workers have no context beyond the goal and acceptance criteria you pass.",
+      "Split a broad goal into independent parts that run in parallel and are cross-reviewed, without relaying anything by hand: the provider plans 1 to maxParts parts with closed interfaces and no overlapping files, each part goes to one of the two agents, and the other agent reviews each finished part. In read-only mode (default) the parts are research jobs on the working directory; in write mode each part is implemented in its own git worktree and branch (agentmate/<split-id>/<part>) created from HEAD, which needs a git repository with a commit and a clean working tree (it refuses uncommitted changes) and edits files, so use write only when the user authorized edits. The report lists the parts with their verdicts, the ordered `git merge` commands for approved parts (nothing is merged for you; conflicts are not resolved), cleanup commands for every worktree and branch it created, and what needs a human. Creates a session when none is given and records the plan in its notes. Only a top-level session can start it; follow it with mate_observe. The workers have no context beyond the goal and acceptance criteria you pass.",
     inputSchema: {
       provider: z
         .enum(["codex", "claude"])
@@ -423,7 +424,7 @@ server.registerTool(
       limit: z.number().int().positive().max(100).optional(),
     },
   },
-  guard(({ cwd, limit }) => renderSessionList(listSessions({ cwd, limit }))),
+  guard(({ cwd, limit }) => renderSessionList(listSessions({ cwd, limit }), sessionJobCounts())),
 );
 
 server.registerTool(

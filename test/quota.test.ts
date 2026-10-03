@@ -23,18 +23,42 @@ describe("detectQuotaExhaustion", () => {
     expect(detectQuotaExhaustion(line, [], "")).toBe(line);
   });
 
-  it("matches in stderr, parsed errors and result text and returns the first matching line, trimmed", () => {
+  it.each([
+    "Disk quota exceeded",
+    "write error: disk quota exceeded (os error 122)",
+    "cannot read /repo/src/jobs/quota.ts",
+    "connection limit reached to database",
+    "limit reached",
+    "quota",
+    "GitHub API rate limit exceeded for user. Try again at 6pm",
+    "HTTP 429: rate limit exceeded",
+  ])("does not match %s", (line) => {
+    expect(detectQuotaExhaustion(line, [], "")).toBeNull();
+    expect(detectQuotaExhaustion("", [line], "")).toBeNull();
+  });
+
+  it("scans only the errors and the last 20 lines of stderr, never the result text", () => {
+    const noise = Array.from({ length: 20 }, (_, i) => `noise ${i}`).join("\n");
+    expect(detectQuotaExhaustion(`usage limit reached\n${noise}`, [], "")).toBeNull();
+    expect(detectQuotaExhaustion(`${noise}\nusage limit reached`, [], "")).toBe(
+      "usage limit reached",
+    );
+    expect(detectQuotaExhaustion("", [], "the log says: usage limit reached")).toBeNull();
+    expect(detectQuotaExhaustion("", ["usage limit reached"], "")).toBe("usage limit reached");
+  });
+
+  it("matches in stderr and parsed errors and returns the first matching line, trimmed", () => {
     expect(detectQuotaExhaustion("starting\n  usage limit hit \nmore", [], "")).toBe(
       "usage limit hit",
     );
     expect(detectQuotaExhaustion("", ["boom", "You have hit your limit."], "")).toBe(
       "You have hit your limit.",
     );
-    expect(detectQuotaExhaustion("", [], "fine\nout of credits here")).toBe("out of credits here");
+    expect(detectQuotaExhaustion("fine\nout of credits here", [], "")).toBe("out of credits here");
   });
 
   it("clips the line to 200 characters", () => {
-    const found = detectQuotaExhaustion(`usage limit ${"x".repeat(400)}`, [], "");
+    const found = detectQuotaExhaustion(`usage limit reached ${"x".repeat(400)}`, [], "");
     expect(found).toHaveLength(200);
   });
 
@@ -63,7 +87,7 @@ describe("detectQuotaExhaustion", () => {
     process.env["AGENTMATE_QUOTA_PATTERNS"] = "budget burned|plan cap \\d+";
     expect(detectQuotaExhaustion("budget burned", [], "")).toBe("budget burned");
     expect(detectQuotaExhaustion("Plan CAP 5 hit", [], "")).toBe("Plan CAP 5 hit");
-    expect(detectQuotaExhaustion("usage limit", [], "")).toBe("usage limit");
+    expect(detectQuotaExhaustion("usage limit hit", [], "")).toBe("usage limit hit");
   });
 
   it("ignores invalid and empty extra patterns", () => {

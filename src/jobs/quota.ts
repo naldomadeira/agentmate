@@ -4,27 +4,31 @@
  */
 
 const MAX_LINE_CHARS = 200;
+/** Only the end of stderr is scanned: that is where a CLI reports why it stopped, and earlier lines are tool noise. */
+const STDERR_TAIL_LINES = 20;
 
-/** Phrases that mean the usage allowance is spent. Case-insensitive. */
-const STRONG_PATTERNS = [
-  "usage limit",
-  "hit your limit",
-  "quota",
-  "insufficient_quota",
-  "exceeded your current quota",
-  "out of credits",
-  "rate limit.*(reset|try again at)",
+/**
+ * Phrases that mean the usage allowance is spent. Case-insensitive, matched per line.
+ *
+ * Deliberately narrow: bare `quota` and bare `limit reached` are gone because they matched
+ * `Disk quota exceeded`, a path such as `src/jobs/quota.ts` or `connection limit reached`. A generic
+ * `rate limit ... exceeded` is not here either: it is what transient 429s and third-party APIs (a
+ * GitHub call made by the agent) say, so a rate limit counts only as a `usage` limit or when the
+ * line also promises a reset (`reset`, `try again at`); lines naming GitHub or a disk are
+ * excluded below (a line naming a disk is never an agent allowance).
+ */
+export const QUOTA_PATTERNS: readonly RegExp[] = [
+  /\b(usage|weekly|monthly|daily|\d+-hour|session) limit\b.*\b(reached|exceeded|hit)\b/i,
+  /\b(hit|reached|exceeded) your (\w+ )?limit\b/i,
+  /\bquota\b.*\b(exceeded|exhausted|reached)\b/i,
+  /insufficient_quota/i,
+  /exceeded your current quota/i,
+  /out of credits/i,
+  /\brate limit\b.*(\breset|\btry again at\b)/i,
 ];
-/** Weaker: also what some transient 429 messages say, so it never counts on a 429 line. */
-const WEAK_PATTERNS = ["limit reached"];
 
-/** `QUOTA_PATTERNS` default regex list, before `AGENTMATE_QUOTA_PATTERNS` extends it. */
-export const QUOTA_PATTERNS: readonly RegExp[] = [...STRONG_PATTERNS, ...WEAK_PATTERNS].map(
-  (source) => new RegExp(source, "i"),
-);
-
-/** A plain transient rate-limit line, which `exec-runner` already retried. */
-const TRANSIENT_429 = /\b429\b|too many requests/i;
+/** Lines that look like a quota but are not the agent's own allowance. */
+const NOT_QUOTA = /\bdisk\b|\bgithub\b/i;
 
 function extraPatterns(): RegExp[] {
   const patterns: RegExp[] = [];
@@ -45,23 +49,25 @@ export function quotaPatterns(): RegExp[] {
 }
 
 /**
- * The first line of stderr, parsed errors or the result text that says the quota is spent (trimmed,
- * at most 200 characters), or null. A 429 alone is not exhaustion: such a line counts only when it
- * also carries a reset or limit phrase.
+ * The first line of `errors` or of the last 20 lines of stderr that says the quota is spent
+ * (trimmed, at most 200 characters), or null. The result text is not scanned: an agent that quotes
+ * a log or a file would otherwise look out of quota. The third argument is ignored and kept so
+ * callers need not change.
  */
 export function detectQuotaExhaustion(
   stderr: string,
   errors: string[],
-  resultText: string,
+  _resultText?: string,
 ): string | null {
-  const extra = extraPatterns();
-  const all = [...QUOTA_PATTERNS, ...extra];
-  const strong = [...STRONG_PATTERNS.map((source) => new RegExp(source, "i")), ...extra];
-  const lines = [stderr, ...errors, resultText].flatMap((text) => text.split(/\r?\n/));
+  const patterns = quotaPatterns();
+  const stderrLines = stderr.split(/\r?\n/).filter((line) => line.trim());
+  const lines = [
+    ...errors.flatMap((text) => text.split(/\r?\n/)),
+    ...stderrLines.slice(-STDERR_TAIL_LINES),
+  ];
   for (const raw of lines) {
     const line = raw.trim();
-    if (!line) continue;
-    const patterns = TRANSIENT_429.test(line) ? strong : all;
+    if (!line || NOT_QUOTA.test(line)) continue;
     if (patterns.some((pattern) => pattern.test(line))) return line.slice(0, MAX_LINE_CHARS);
   }
   return null;

@@ -5,6 +5,7 @@ import type { Session } from "./sessions.js";
 import { TERMINAL, type Job } from "./store.js";
 
 const MAX_RESULT_CHARS = 80_000;
+const NOTES_MARKER = "\n\n---\n## Shared session notes (";
 
 export function renderResult(job: Job, text: string | null): string {
   const head = summarize(job);
@@ -53,10 +54,9 @@ export function renderObservation({
 }
 
 function listLine(job: Job): string {
-  // Skip the shared-notes prefix that sessions put in front of the role prompt.
-  const own = job.prompt.startsWith("## Shared session notes")
-    ? job.prompt.slice(job.prompt.indexOf("\n\n---\n\n") + 7)
-    : job.prompt;
+  // Skip the shared-notes block that sessions put after the role prompt.
+  const notes = job.prompt.indexOf(NOTES_MARKER);
+  const own = notes >= 0 ? job.prompt.slice(0, notes) : job.prompt;
   const prompt = own.replace(/\s+/g, " ").slice(0, 60);
   const session = job.session ? `session ${job.session}  ` : "";
   return `${job.id}  ${job.status.padEnd(8)} ${job.role.padEnd(11)} ${job.provider}/${job.mode}  ${elapsedSeconds(job)}s  ${session}${prompt}`;
@@ -94,12 +94,15 @@ export function renderSession(session: Session, notes: string, jobs: Job[]): str
 }
 
 /** One line per session, newest first. */
-export function renderSessionList(sessions: Session[]): string {
+export function renderSessionList(
+  sessions: Session[],
+  jobCounts: ReadonlyMap<string, number> = new Map(),
+): string {
   if (sessions.length === 0) return "No sessions.";
   return sessions
     .map(
       (session) =>
-        `${session.id}  ${session.jobs.length} job(s)  ${session.updatedAt.slice(0, 19)}Z  ${session.cwd}  ${session.title}`,
+        `${session.id}  ${jobCounts.get(session.id) ?? 0} job(s)  ${session.updatedAt.slice(0, 19)}Z  ${session.cwd}  ${session.title}`,
     )
     .join("\n");
 }

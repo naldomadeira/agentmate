@@ -128,7 +128,12 @@ export const claudeAdapter: AgentAdapter = {
 
   parseOutcome(stdout: string, stderr: string, exitCode: number): Outcome {
     const r = parseClaudeOutput(stdout);
-    const outcome: Outcome = { text: r.resultText, sessionId: r.sessionId, errors: r.errors };
+    const outcome: Outcome = {
+      text: r.resultText,
+      sessionId: r.sessionId,
+      errors: r.errors,
+      ...(r.partial ? { partial: true } : {}),
+    };
     if (exitCode !== 0 && !outcome.text && stderr.trim()) outcome.errors.push(stderr.trim());
     return outcome;
   },

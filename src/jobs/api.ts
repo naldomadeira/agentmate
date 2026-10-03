@@ -15,7 +15,7 @@ import {
   buildTeamleadPrompt,
 } from "../lib/prompt-builder.js";
 import { readEvents } from "./events.js";
-import { attachJob, getSession, withSessionNotes } from "./sessions.js";
+import { getSession, withSessionNotes } from "./sessions.js";
 import {
   DEFAULT_MAX_PARTS,
   DEFAULT_MAX_ROUNDS,
@@ -309,7 +309,6 @@ export function startJob(options: StartOptions): Job {
     ...(role === "split" ? { fields: splitFields(options), split: { maxParts, parts: [] } } : {}),
   };
   writeJob(job);
-  if (options.sessionId) attachJob(options.sessionId, job.id);
 
   const { command, args } = workerCommand(job.id);
   const child = spawn(command, args, {
@@ -431,8 +430,10 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
 }
 
 /**
- * Cancels the job. Its non-terminal children (recursively) go first, so a workflow worker that dies
- * from SIGKILL cannot leave orphans running; the returned job is `id` itself.
+ * Cancels the job. It is first marked `cancelRequested`, so a workflow worker can tell a cancel of
+ * the whole job from a child that was canceled on its own. Its non-terminal children (recursively)
+ * are canceled next, in parallel, so a workflow worker that dies from SIGKILL cannot leave orphans
+ * running; then the job's own worker gets SIGTERM. The returned job is `id` itself.
  */
 export function cancelJob(id: string): Promise<Job> {
   return cancelTree(id, new Set());
@@ -440,10 +441,14 @@ export function cancelJob(id: string): Promise<Job> {
 
 async function cancelTree(id: string, visited: Set<string>): Promise<Job> {
   visited.add(id);
-  if (isTerminal(getJob(id))) return getJob(id);
-  for (const child of childJobs(id)) {
-    if (!visited.has(child.id) && !isTerminal(child)) await cancelTree(child.id, visited);
-  }
+  const job = getJob(id);
+  if (isTerminal(job)) return job;
+  updateJob(id, { cancelRequested: true });
+  await Promise.all(
+    childJobs(id)
+      .filter((child) => !visited.has(child.id) && !isTerminal(child))
+      .map((child) => cancelTree(child.id, visited)),
+  );
   return cancelOne(id);
 }
 
