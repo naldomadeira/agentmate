@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-03
+
+### Changed / Breaking
+
+- The plugin is renamed from `agents-bridge` to `bridge`, following the `agy` plugin pattern: the plugin name is the command namespace in both hosts. The marketplace stays `agents-bridge` and the npm package stays `agents-bridge-mcp`. The install id changes from `agents-bridge@agents-bridge` to `bridge@agents-bridge` (`claude plugin install bridge@agents-bridge`, `codex plugin add bridge@agents-bridge`), and the commands change from `/agents-bridge:<skill>` to `/bridge:<skill>` in Claude Code and from `$<skill>` to `$bridge:<skill>` in Codex. The MCP server key stays `agents-bridge`, so `bridge_*` tool names are unchanged.
+- Migrating from 0.2.0: remove the old plugin (`claude plugin uninstall agents-bridge@agents-bridge`; in Codex, remove the `agents-bridge@agents-bridge` plugin, see `codex plugin --help` for the exact verb), install `bridge@agents-bridge` and restart the host.
+- Update commands are now `claude plugin marketplace update agents-bridge && claude plugin update bridge@agents-bridge` and `codex plugin marketplace upgrade agents-bridge && codex plugin add bridge@agents-bridge`.
+- Every skill description now lists trigger phrases (for example `/bridge:ask`, "ask codex", "pergunte ao claude") so the model selects the skill on its own.
+- README (English and Portuguese) is restructured: an "Invoke a role" subsection, a "For agents" snippet that points at the raw install guide, an "Upgrade" subsection and a "Use cases" table. The "Slash commands" section lists `/bridge:ask` and `$bridge:ask` as the plugin forms; bare `/ask` and `/prompts:ask` remain optional extras. Both installation guides gain a migration note.
+- npm package, plugin manifests and marketplace moved to 0.3.0.
+
+### Added
+
+- Slash-command templates in a new `templates/` directory (shipped in the npm package, not scanned by either host): `templates/claude-commands/` for Claude Code and `templates/codex-prompts/` for Codex, each with `ask`, `review`, `research`, `plan`, `implement`, `teamlead` and `jobs`.
+- `install commands <claude|codex|both> [--global|--local]` copies them: bare `/ask`, `/review`, ... to `~/.claude/commands/` (or `./.claude/commands/`) for Claude Code, and `/prompts:ask`, `/prompts:review`, ... to `$CODEX_HOME/prompts/` (default `~/.codex/prompts/`) for Codex. Codex custom prompts are user-level only, so the local scope installs them globally. It asks before overwriting and prints the installed command names.
+- The README notes that OpenAI marks Codex custom prompts deprecated in favour of skills, and both installation guides document the optional `install commands` step.
+
 ## [0.2.0] - 2026-10-03
 
 ### Added

@@ -14,32 +14,85 @@ Faça o [Claude Code](https://code.claude.com/) e o [Codex CLI](https://develope
 
 ## Início rápido em 60 segundos
 
+### Instalação
+
 Instale o plugin no host que você usa (ou nos dois) e reinicie o host.
 
 ```bash
 # Claude Code
 claude plugin marketplace add naldomadeira/agents-bridge-mcp
-claude plugin install agents-bridge@agents-bridge
+claude plugin install bridge@agents-bridge
 
 # Codex
 codex plugin marketplace add naldomadeira/agents-bridge-mcp
-codex plugin add agents-bridge@agents-bridge
+codex plugin add bridge@agents-bridge
 ```
 
-Pergunte algo ao outro modelo. No Claude Code, as skills de plugin têm namespace; no Codex você cita a skill com `$` ou a escolhe no menu de skills:
+O marketplace se chama `agents-bridge` e o plugin se chama `bridge`; por isso o id de instalação é `bridge@agents-bridge` e todo comando começa com `bridge:`.
+
+> **Vindo da 0.2.0?** O plugin foi renomeado de `agents-bridge` para `bridge`, então o id de instalação mudou.
+> Remova o antigo: `claude plugin uninstall agents-bridge@agents-bridge`; no Codex, remova o plugin `agents-bridge@agents-bridge` (use `codex plugin --help` para ver o verbo exato).
+> Depois instale `bridge@agents-bridge` como acima e reinicie o host.
+
+### Invocar um papel
+
+Digite `/bridge:` no Claude Code para ver todos os papéis; no Codex digite `$bridge` ou abra `/skills`. Os dois hosts recebem primeiro o provider e depois o pedido:
 
 ```text
-/agents-bridge:ask codex É seguro rodar esta migração duas vezes? Veja db/migrate/0042.sql
-$ask claude Este loop de retry em src/queue.ts tem uma condição de corrida?
+/bridge:ask codex É seguro rodar esta migração duas vezes? Veja db/migrate/0042.sql
+$bridge:ask claude Este loop de retry em src/queue.ts tem uma condição de corrida?
 ```
 
-Verifique a instalação:
+Quer comandos mais curtos (`/ask`, `/prompts:ask`)? Veja [Comandos de barra](#comandos-de-barra). Há mais exemplos em [Casos de uso](#casos-de-uso).
+
+### Verificar a instalação
 
 ```bash
 npx -y agents-bridge-mcp doctor
 ```
 
 O `doctor` confere o Node.js, se os CLIs `codex` e `claude` estão no `PATH` e respondem a `--version`, o diretório de estado dos jobs, jobs `running` obsoletos (ele lista os IDs) e registros legados, e mostra a correção de cada problema. Ele não verifica a autenticação: se um job falhar logo ao iniciar, faça login você mesmo no CLI de destino. Consulte o [guia de instalação](./INSTALL_FOR_AGENTS.pt-BR.md) para atualizar, testar localmente e migrar instalações legadas de `setup`.
+
+### Para agentes
+
+Cole isto em qualquer agente de código:
+
+```text
+Read the raw text of https://raw.githubusercontent.com/naldomadeira/agents-bridge-mcp/main/docs/INSTALL_FOR_AGENTS.md
+(curl it - do not work from a summary) and follow it to install and verify the Agents Bridge plugin
+for the host you are running in. Respond in the user's language.
+```
+
+### Atualização
+
+O Claude Code e o Codex instalam uma cópia do plugin, então uma versão nova só chega quando você a puxa:
+
+```bash
+claude plugin marketplace update agents-bridge && claude plugin update bridge@agents-bridge
+```
+
+```bash
+codex plugin marketplace upgrade agents-bridge && codex plugin add bridge@agents-bridge
+```
+
+Os hosts mantêm o plugin em cache por versão; reinicie o Claude Code ou o Codex depois. A correção só chega se a versão do plugin mudou.
+
+## Casos de uso
+
+Os exemplos usam o `/bridge:...` do Claude Code; no Codex use `$bridge:...`. O provider (`codex` ou `claude`) vem primeiro; escolha o que não é o seu host.
+
+| Caso de uso                  | Invocação                                                                                     |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| Segunda opinião rápida       | `/bridge:ask codex Esta migração é idempotente?`                                              |
+| Revisar a árvore de trabalho | `/bridge:review codex Revise a árvore de trabalho atual`                                      |
+| Revisar um PR ou diff        | `/bridge:review codex Revise o PR #730, com foco em tratamento de erros`                      |
+| Desafiar um plano            | `/bridge:plan codex critique o plano de migração em docs/plan.md`                             |
+| Pesquisar um tema            | `/bridge:research claude Como funciona a autenticação neste repo? Compare as opções.`         |
+| Implementar uma correção     | `/bridge:implement codex Corrija o teste instável em test/queue.test.ts`                      |
+| Acionar um team lead         | `/bridge:teamlead claude Audite o tratamento de erros e proponha correções; delegue ao codex` |
+| Operar jobs                  | `/bridge:jobs list`, `/bridge:jobs result <id>`, `/bridge:jobs cancel <id>`                   |
+
+O `implement` edita arquivos; use-o somente quando você autorizar isso. Os demais são somente leitura.
 
 ## O que você pode fazer
 
@@ -67,6 +120,25 @@ Outras quatro skills completam o conjunto:
 No Claude Code, o plugin também adiciona quatro agentes que usam o Codex: `codex-teammate` (perguntas e delegação geral), `codex-reviewer`, `codex-researcher` e `codex-teamlead`. Eles escrevem o briefing, verificam o que o Codex devolve e reportam a própria conclusão em vez de repassar a saída bruta.
 
 Todo comando da tabela funciona sem MCP. Use o prefixo `npx -y agents-bridge-mcp` nos comandos de CLI.
+
+## Comandos de barra
+
+Sete papéis (`ask`, `review`, `research`, `plan`, `implement`, `teamlead` e `jobs`) podem ser iniciados como comando nos dois hosts. Os dois recebem primeiro o provider e depois o pedido.
+
+| Host e estilo       | Como chamar                      | Como obter                                                            |
+| ------------------- | -------------------------------- | --------------------------------------------------------------------- |
+| Claude Code plugin  | `/bridge:ask codex <pergunta>`   | Instalado com o plugin.                                               |
+| Claude Code simples | `/ask codex <pergunta>`          | `npx -y agents-bridge-mcp install commands claude --global`           |
+| Codex skill         | `$bridge:ask claude <pergunta>`  | Instalado com o plugin; ou escolha "Bridge: Ask" no menu `/skills`.   |
+| Codex barra         | `/prompts:ask claude <pergunta>` | `npx -y agents-bridge-mcp install commands codex` e reinicie o Codex. |
+
+As formas do plugin (`/bridge:ask`, `$bridge:ask`) não exigem instalação extra. As linhas `/ask` simples e `/prompts:ask` são extras opcionais. Por que dois passos: o Claude Code sempre prefixa as skills de plugin com o nome do plugin, então um `/ask` simples exige um arquivo de comando no nível do usuário. Plugins do Codex trazem skills, mas não comandos de barra; por isso `/prompts:<nome>` vem de um custom prompt em `$CODEX_HOME/prompts/` (padrão `~/.codex/prompts/`).
+
+`npx -y agents-bridge-mcp install commands [claude|codex|both] [--global|--local]` copia os modelos do pacote (`templates/claude-commands/` e `templates/codex-prompts/`) e imprime os nomes dos comandos instalados. O alvo padrão é `both`. O comando pergunta antes de sobrescrever um arquivo existente. `--local` instala os comandos do Claude Code em `./.claude/commands/`; os custom prompts do Codex são somente no nível do usuário, então sempre são instalados globalmente.
+
+> **Os custom prompts do Codex estão obsoletos (deprecated).** A OpenAI os marca como obsoletos em favor das skills. Eles ainda funcionam hoje, e a skill `$bridge:ask` não exige instalação extra; use o que preferir. Reinicie o Codex depois de instalar os prompts.
+
+Cada comando chama a mesma ferramenta `bridge_*` da skill, usa o CLI `npx -y agents-bridge-mcp jobs ...` quando o MCP não está carregado e aponta para a skill para as regras completas. O `jobs` recebe um verbo em vez de um provider: `/jobs list`, `/jobs observe <id>`, `/jobs result <id>`, `/jobs cancel <id>`.
 
 ## Modo team lead
 

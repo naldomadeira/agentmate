@@ -1,9 +1,16 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = resolve(import.meta.dirname, "..");
 const read = (relativePath: string) => readFileSync(resolve(root, relativePath), "utf8");
+
+/** Lists files under a repository directory, relative to the repository root. */
+function filesUnder(relativeDir: string): string[] {
+  return readdirSync(resolve(root, relativeDir), { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(root, join(entry.parentPath, entry.name)));
+}
 
 describe("project documentation", () => {
   it("keeps the README in English and links its Portuguese translation", () => {
@@ -30,6 +37,64 @@ describe("project documentation", () => {
     expect(portugueseReadme).toContain("AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS");
     expect(portugueseReadme).toContain("waitSeconds: 45");
     expect(portugueseReadme).toContain("git clone");
+  });
+
+  it("documents the slash commands in both READMEs and both install guides", () => {
+    const readme = read("README.md");
+    expect(readme).toContain("## Slash commands");
+    expect(readme).toContain("/bridge:ask");
+    expect(readme).toContain("$bridge:ask");
+    expect(readme).toContain("/prompts:ask");
+    expect(readme).toContain("install commands");
+    expect(readme).toContain("deprecated");
+    expect(readme.indexOf("## Slash commands")).toBeGreaterThan(
+      readme.indexOf("## What you can do"),
+    );
+    expect(readme.indexOf("## Slash commands")).toBeLessThan(readme.indexOf("## Team lead mode"));
+
+    const portuguese = read("docs/README.pt-BR.md");
+    expect(portuguese).toContain("## Comandos de barra");
+    expect(portuguese).toContain("/prompts:ask");
+    expect(portuguese).toContain("install commands");
+
+    for (const guide of ["docs/INSTALL_FOR_AGENTS.md", "docs/INSTALL_FOR_AGENTS.pt-BR.md"]) {
+      expect(read(guide), guide).toContain("install commands");
+    }
+  });
+
+  it("documents the bridge command namespace, agent snippet, upgrade and use cases", () => {
+    const readme = read("README.md");
+    expect(readme).toContain("bridge@agents-bridge");
+    expect(readme).toContain("## Use cases");
+    expect(readme).toContain("For agents");
+    expect(readme).toMatch(/^#{2,3} Upgrade$/m);
+    expect(readme).toContain(
+      "https://raw.githubusercontent.com/naldomadeira/agents-bridge-mcp/main/docs/INSTALL_FOR_AGENTS.md",
+    );
+    expect(read("docs/README.pt-BR.md")).toContain("## Casos de uso");
+    expect(read("docs/README.pt-BR.md")).toContain("bridge@agents-bridge");
+    for (const guide of ["docs/INSTALL_FOR_AGENTS.md", "docs/INSTALL_FOR_AGENTS.pt-BR.md"]) {
+      expect(read(guide), guide).toContain("bridge@agents-bridge");
+      expect(read(guide), guide).toContain("agents-bridge@agents-bridge");
+    }
+  });
+
+  it("uses only the bridge namespace for plugin commands", () => {
+    const files = [
+      "README.md",
+      "docs/README.pt-BR.md",
+      "docs/INSTALL_FOR_AGENTS.md",
+      "docs/INSTALL_FOR_AGENTS.pt-BR.md",
+      ...["skills", "agents", "templates", ".claude/skills"].flatMap(filesUnder),
+    ];
+
+    for (const file of files) {
+      const content = read(file);
+      expect(content, file).not.toContain("/agents-bridge:");
+      expect(content, file).not.toMatch(
+        /\$(ask|review|research|plan|implement|teamlead|jobs|delegate)\b/,
+      );
+    }
   });
 
   it("provides installation guides in English and Portuguese", () => {
@@ -90,6 +155,8 @@ describe("project documentation", () => {
   it("keeps a changelog with the current release", () => {
     const changelog = read("CHANGELOG.md");
 
+    expect(changelog).toContain("## [0.3.0]");
+    expect(changelog).toContain("bridge@agents-bridge");
     expect(changelog).toContain("## [0.2.0]");
     expect(changelog).toContain("## [0.1.0]");
     expect(changelog).toContain("--allowedTools");

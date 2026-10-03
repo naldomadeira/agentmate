@@ -1,6 +1,6 @@
 ---
 name: teamlead
-description: Hand a broad objective to Codex or Claude acting as team lead, which breaks it down and delegates pieces to the other model as child jobs. Use for multi-part work where you want one owner to coordinate.
+description: Hand a broad objective to Codex or Claude acting as team lead, which breaks it down and delegates pieces to the other model as child jobs. Use when the user says /bridge:teamlead, 'run a team lead', 'let codex lead this', 'coloque o claude como líder', or has multi-part work that needs one coordinating owner.
 argument-hint: "<codex|claude> <objective>"
 ---
 

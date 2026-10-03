@@ -1,6 +1,6 @@
 ---
 name: codex
-description: Route a task or question to OpenAI Codex — quick questions, reviews, research, plans, scoped implementation or a team lead — by picking the matching Agents Bridge tool. Use when the user says to ask, check with or hand something to OpenAI Codex.
+description: Route a task or question to OpenAI Codex (quick questions, reviews, research, plans, scoped implementation or a team lead) by picking the matching Agents Bridge tool. Use when the user says /bridge:codex, 'ask codex', 'check with codex', 'hand this to codex', 'pergunte ao codex'.
 argument-hint: "<task or question>"
 ---
 

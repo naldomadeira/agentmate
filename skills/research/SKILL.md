@@ -1,6 +1,6 @@
 ---
 name: research
-description: Investigate a technical topic with Codex or Claude and get findings, compared options and a recommendation with evidence. Use for library choices, unfamiliar APIs, root-cause hunts or design trade-offs.
+description: Investigate a technical topic with Codex or Claude and get findings, compared options and a recommendation with evidence. Use when the user says /bridge:research, 'research this with codex', 'pesquise com o claude', or needs a library choice, root-cause hunt or design trade-off surveyed.
 argument-hint: "<codex|claude> <topic>"
 ---
 

@@ -51,6 +51,7 @@ describe("cli", () => {
     const result = await runCli(["install", "--help"]);
     expect(result.stdout).toContain("skill");
     expect(result.stdout).toContain("agent");
+    expect(result.stdout).toContain("commands");
   });
 
   it("lists ask among the jobs subcommands", async () => {

@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Ask Codex or Claude a direct question and get the answer in the same turn. Use for a quick second opinion, a factual check about the codebase, or a sanity check on an approach.
+description: Ask Codex or Claude a direct question and get the answer in the same turn. Use when the user says /bridge:ask, 'ask codex', 'ask claude', 'pergunte ao codex/claude', or wants a quick second opinion from the other model.
 argument-hint: "<codex|claude> <question>"
 ---
 

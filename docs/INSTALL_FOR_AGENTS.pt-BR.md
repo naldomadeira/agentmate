@@ -18,19 +18,42 @@ O host que recebe uma delegação também precisa conseguir executar o outro CLI
 
 ```bash
 claude plugin marketplace add naldomadeira/agents-bridge-mcp
-claude plugin install agents-bridge@agents-bridge
+claude plugin install bridge@agents-bridge
 ```
 
-Reinicie o Claude Code. As skills ficam disponíveis como `/agents-bridge:ask`, `/agents-bridge:review` e assim por diante, os quatro agentes são adicionados, e o plugin inicia somente o MCP de jobs.
+Reinicie o Claude Code. As skills ficam disponíveis como `/bridge:ask`, `/bridge:review` e assim por diante, os quatro agentes são adicionados, e o plugin inicia somente o MCP de jobs.
 
 ### Codex
 
 ```bash
 codex plugin marketplace add naldomadeira/agents-bridge-mcp
-codex plugin add agents-bridge@agents-bridge
+codex plugin add bridge@agents-bridge
 ```
 
-Reinicie o Codex. As skills (cite uma com `$ask` ou use o menu de skills) e as ferramentas `bridge_*` são carregadas pelo plugin. A instalação registra o marketplace pelo CLI; não exige editar `~/.codex/config.toml`.
+Reinicie o Codex. As skills (digite `$bridge:ask`, ou `$bridge` para filtrar todas, ou escolha uma no menu `/skills`) e as ferramentas `bridge_*` são carregadas pelo plugin. A instalação registra o marketplace pelo CLI; não exige editar `~/.codex/config.toml`.
+
+### Migrando da 0.2.0
+
+O plugin foi renomeado de `agents-bridge` para `bridge`, então o id de instalação mudou. Remova o plugin antigo: `claude plugin uninstall agents-bridge@agents-bridge`; no Codex, remova o plugin `agents-bridge@agents-bridge` (use `codex plugin --help` para ver o verbo exato).
+Depois instale `bridge@agents-bridge` como acima e reinicie o host.
+Os comandos agora são `/bridge:ask` no Claude Code e `$bridge:ask` no Codex.
+
+### Opcional: comandos de barra
+
+No Claude Code as skills de plugin sempre têm namespace, e os plugins do Codex não trazem comandos de barra. Para ter comandos mais curtos, instale os modelos de comando que acompanham o pacote npm:
+
+```bash
+# Claude Code: /ask, /review, /research, /plan, /implement, /teamlead e /jobs simples
+npx -y agents-bridge-mcp install commands claude --global
+
+# Codex: /prompts:ask, /prompts:review, ... (reinicie o Codex depois)
+npx -y agents-bridge-mcp install commands codex
+
+# Os dois hosts
+npx -y agents-bridge-mcp install commands both --global
+```
+
+Os comandos do Claude Code vão para `~/.claude/commands/` (`--local`: `./.claude/commands/`); os prompts do Codex vão para `$CODEX_HOME/prompts/` (padrão `~/.codex/prompts/`) e são sempre no nível do usuário. O instalador pergunta antes de sobrescrever um arquivo existente e imprime os nomes dos comandos instalados. A OpenAI marca os custom prompts do Codex como obsoletos em favor das skills; eles ainda funcionam, e a skill `$bridge:ask` não exige instalação extra.
 
 ### Desenvolvimento local
 
@@ -38,10 +61,10 @@ Use a raiz do checkout como marketplace quando estiver validando uma alteração
 
 ```bash
 claude plugin marketplace add /caminho/absoluto/agents-bridge-mcp
-claude plugin install agents-bridge@agents-bridge
+claude plugin install bridge@agents-bridge
 
 codex plugin marketplace add /caminho/absoluto/agents-bridge-mcp
-codex plugin add agents-bridge@agents-bridge
+codex plugin add bridge@agents-bridge
 ```
 
 Remova um marketplace local antes de testar o repositório remoto com o mesmo nome. O modo team lead executa o CLI fixado na versão instalada (`npx -y agents-bridge-mcp@<versão> jobs ...`); por isso, um checkout local não publicado precisa ser publicado ou vinculado para os jobs de team lead funcionarem.
@@ -51,17 +74,16 @@ Remova um marketplace local antes de testar o repositório remoto com o mesmo no
 No Claude Code, atualize o marketplace e o plugin:
 
 ```bash
-claude plugin marketplace update agents-bridge
-claude plugin update agents-bridge@agents-bridge
+claude plugin marketplace update agents-bridge && claude plugin update bridge@agents-bridge
 ```
 
 No Codex, atualize o snapshot do marketplace e reinicie:
 
 ```bash
-codex plugin marketplace upgrade agents-bridge
+codex plugin marketplace upgrade agents-bridge && codex plugin add bridge@agents-bridge
 ```
 
-O Codex recarrega o plugin após reiniciar. Confirme a versão ativa com `codex plugin list`; no Claude Code use `claude plugin list`. O CLI publicado também mostra sua versão com `npx -y agents-bridge-mcp --version`. A versão 0.2.0 adiciona as skills e ferramentas por papel; veja o [changelog](../CHANGELOG.md).
+O Codex recarrega o plugin após reiniciar. Confirme a versão ativa com `codex plugin list`; no Claude Code use `claude plugin list`. O CLI publicado também mostra sua versão com `npx -y agents-bridge-mcp --version`. Os hosts mantêm o plugin em cache por versão, então a versão nova só aparece depois do reinício. Veja o [changelog](../CHANGELOG.md) para o que mudou.
 
 ## Smoke test de leitura
 
@@ -98,7 +120,7 @@ O `doctor` verifica se o Node.js é 18 ou superior, se `codex` e `claude` estão
 ## Diagnóstico
 
 1. Rode `npx -y agents-bridge-mcp doctor` e siga as dicas.
-2. Rode `claude plugin list` ou `codex plugin list` para conferir se `agents-bridge@agents-bridge` está habilitado e qual versão foi instalada.
+2. Rode `claude plugin list` ou `codex plugin list` para conferir se `bridge@agents-bridge` está habilitado e qual versão foi instalada.
 3. Reinicie o host após instalar ou atualizar; a sessão atual não recarrega skills e ferramentas já registradas.
 4. Rode `npx -y agents-bridge-mcp jobs list` para verificar se o fallback CLI está funcional.
 5. Se o job falhar, confirme que o CLI de destino está disponível no `PATH` do host que iniciou o job (o `doctor` verifica) e autenticado (o `doctor` não verifica).

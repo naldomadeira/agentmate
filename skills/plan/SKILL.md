@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Get an implementation plan from Codex or Claude, or a critique of a plan you already have, with files, risks and verification steps. Use before non-trivial changes or to stress-test a design.
+description: Get an implementation plan from Codex or Claude, or a critique of a plan you already have, with files, risks and verification steps. Use when the user says /bridge:plan, 'plan this with codex', 'challenge this plan', 'planeje com o claude', or before a non-trivial change.
 argument-hint: "<codex|claude> <goal> | <codex|claude> critique <plan>"
 ---
 

@@ -111,5 +111,5 @@ v0.1 shipped generic background jobs, but only with a free-form prompt. Skills a
 - [x] `pnpm test` — unit, CLI and documentation tests
 - [x] `claude plugin validate .` — `Validation passed`
 - [x] `pnpm fmt`, `pnpm lint`, `pnpm build`, `pnpm publint`
-- [ ] Live test: Claude `bridge_ask` to Codex, and Codex `$ask` to Claude, on a machine with both CLIs authenticated
+- [ ] Live test: Claude `bridge_ask` to Codex, and Codex `$bridge:ask` to Claude, on a machine with both CLIs authenticated
 - [ ] Live test: a Codex team lead that delegates a `review` job to Claude and reports the child ids

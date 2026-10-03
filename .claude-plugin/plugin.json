@@ -1,6 +1,6 @@
 {
-  "name": "agents-bridge",
-  "version": "0.2.0",
+  "name": "bridge",
+  "version": "0.3.0",
   "description": "Let Claude Code and Codex CLI ask, review, research, plan, implement and lead each other as background jobs.",
   "author": {
     "name": "Naldo Madeira",

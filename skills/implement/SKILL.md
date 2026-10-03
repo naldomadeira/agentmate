@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Delegate a scoped code change to Codex or Claude with write access, with acceptance criteria and verification. Use only when the user explicitly authorizes the other agent to edit files.
+description: Delegate a scoped code change to Codex or Claude with write access, with acceptance criteria and verification. Use only when the user says /bridge:implement, 'have codex implement this', 'peça ao claude para implementar', or otherwise explicitly authorizes the other agent to edit files.
 argument-hint: "<codex|claude> <task>"
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: review
-description: Get an independent code review of a diff, branch, files or a plan from Codex or Claude, with findings ranked by severity. Use before merging, after a large change, or when you want a second reviewer.
+description: Get an independent code review of a diff, branch, files or a plan from Codex or Claude, with findings ranked by severity. Use when the user says /bridge:review, 'have codex review this', 'peça ao claude para revisar', or wants a second reviewer before merging.
 argument-hint: "<codex|claude> [target] [focus]"
 ---
 
