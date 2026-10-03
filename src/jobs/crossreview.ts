@@ -33,11 +33,23 @@ export function parseVerdict(text: string): Verdict {
   return verdict;
 }
 
+/**
+ * `cancelJob` cancels the children before it signals the workflow worker, so a child that ends
+ * `canceled` may be the first sign of a workflow cancel whose SIGTERM is still in flight.
+ */
+export async function abortedSoon(signal: AbortSignal, ms = 3_000): Promise<boolean> {
+  for (const end = Date.now() + ms; !signal.aborted && Date.now() < end; )
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  return signal.aborted;
+}
+
 /** Ends the workflow early with a final status; thrown from a step, caught by the runner. */
 class Stop extends Error {
   constructor(
     readonly status: Exclude<JobStatus, "queued" | "running" | "done">,
     message: string,
+    /** Replaces the default outcome line, for example to name the step that hit a provider quota. */
+    readonly outcome?: string,
   ) {
     super(message);
   }
@@ -195,8 +207,16 @@ export async function runCrossreview(id: string): Promise<void> {
       }
     }
     if (settled.status !== "done") {
+      if (settled.status === "canceled") await abortedSoon(controller.signal);
       if (controller.signal.aborted) throw new Stop("canceled", "Canceled.");
       if (Date.now() >= deadline) throw new Stop("timeout", deadlineMessage);
+      if (settled.status === "quota_exhausted" && settled.error)
+        // The child's error already carries the reset and hand-off hint.
+        throw new Stop(
+          "error",
+          settled.error,
+          `**Outcome:** stopped: ${label} (job ${child.id}) hit the ${settled.provider} quota. ${settled.error}`,
+        );
       throw new Stop(
         "error",
         `${label} job ${child.id} ended ${settled.status}${settled.error ? `: ${settled.error}` : ""}`,
@@ -298,7 +318,9 @@ export async function runCrossreview(id: string): Promise<void> {
     if (failure instanceof Stop) {
       status = failure.status;
       error = failure.status === "canceled" ? undefined : failure.message;
-      outcome = `**Outcome:** ${failure.status === "canceled" ? "canceled" : `stopped (${failure.status})`}: ${failure.message}`;
+      outcome =
+        failure.outcome ??
+        `**Outcome:** ${failure.status === "canceled" ? "canceled" : `stopped (${failure.status})`}: ${failure.message}`;
     } else {
       status = "error";
       error = failure instanceof Error ? failure.message : String(failure);

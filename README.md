@@ -193,7 +193,7 @@ Stop rules:
 - `Verdict: approve` ends the workflow as `done`.
 - `Verdict: request-changes` starts another round while rounds remain (`maxRounds`, 1 to 5, default 2). When the budget is used up the workflow is `done` and the report says so; the latest edits stay in the working tree.
 - No clear verdict ends the workflow at once as `done` with a `## Needs human` section; it never loops blindly.
-- A child that ends `error`, `timeout` or `canceled` ends the workflow as `error`, naming that child's id and error. The workflow's own `--timeout` is the overall deadline, and `jobs cancel <id>` on the workflow also cancels its running child.
+- A child that ends `error`, `timeout` or `canceled` ends the workflow as `error`, naming that child's id and error. A child that ends `quota_exhausted` ends it as `error` with that child's own error, which already says how to hand the work to the other agent. The workflow's own `--timeout` is the overall deadline, and `jobs cancel <id>` on the workflow cancels its running children first (recursively), then the workflow itself.
 
 The report (`jobs result <id>`) has `## Task`, `## Rounds` (round, implement job, review job, verdict), `## Final review`, `## Changes`, `## Needs human` when it applies, and `## Next steps` with the `jobs result <child-id>` commands. `jobs events <id>` lists one `important` event per step, such as `round 1: review verdict approve`.
 
@@ -248,7 +248,7 @@ AgentMate treats delegated work as a durable background job:
 
 The jobs MCP server (`npx -y agentmate serve jobs`, registered by the plugin) and the `jobs` CLI share one runtime. State lives under `~/.agentmate`. A detached worker runs the provider CLI and records the output, so an expired wait never stops a job.
 
-Every job also writes an append-only event log (`events.jsonl`). Events carry one of three levels: `important` (the agent's messages, errors, start and finish), `status` (files changed) and `fyi` (commands run). `mate_observe` and `jobs observe` show only `important` and `status` events, so progress checks stay small; ask for `fyi` with `levels` / `--level`, read the full log with `mate_events` / `jobs events <id>`, and pull the raw stdout/stderr tails only when needed with `raw` / `--raw`. See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the runtime, adapters and event model.
+Every job also writes an append-only event log (`events.jsonl`). Both Codex and Claude (`--output-format stream-json`) stream events while they run. Events carry one of three levels: `important` (the agent's messages, errors, start and finish), `status` (files changed) and `fyi` (commands run). `mate_observe` and `jobs observe` show only `important` and `status` events, so progress checks stay small; ask for `fyi` with `levels` / `--level`, read the full log with `mate_events` / `jobs events <id>`, and pull the raw stdout/stderr tails only when needed with `raw` / `--raw`. See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the runtime, adapters and event model.
 
 | Capability           | MCP                                                                                                                    | CLI                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
@@ -347,7 +347,7 @@ npx -y agentmate jobs start codex "Address the highest-priority finding." --cont
 | `wait` exit code | Meaning                               | Next action                                      |
 | ---------------- | ------------------------------------- | ------------------------------------------------ |
 | `0`              | Job completed                         | Read and assess the returned result.             |
-| `1`              | Job failed or was canceled            | Read `result` for the retained output and error. |
+| `1`              | Job failed, was canceled or hit its quota (`quota_exhausted`) | Read `result` for the retained output and error. |
 | `2`              | Wait expired while job remains active | Repeat `wait`; do not create a duplicate job.    |
 
 `jobs ask` uses the same exit codes. Do not pipe `wait` or `ask`: a pipe discards the exit code.
@@ -374,6 +374,7 @@ npx -y agentmate jobs start codex "Address the highest-priority finding." --cont
 - **Cross-review writes only through its implementer.** The `implement` step gets the `implement` permissions above; the `review` step is read-only. The workflow job itself calls no CLI.
 - **Split writes only inside its worktrees.** In write mode each part's `implement` job runs in its own git worktree on its own branch (`agentmate/<split-id>/<part-id>`), the planner and reviewers are read-only, and nothing is merged into your branch for you.
 - **One `write` job per working tree at a time.** Two writers in one tree collide. The skills and the team lead prompt follow this rule; use separate git worktrees for parallel edits (`split` does this for its parts).
+- **A spent plan is a status, not a crash.** When a provider reports that its usage limit, quota or credits are used up, the job ends `quota_exhausted` (terminal; `wait` and `ask` exit `1`). Its `error` reads `<provider> quota exhausted: <line>. Retry after the reset or start the job on <other agent>.`, and `result` adds `Hand off: start the same job with provider <other>.`. A plain HTTP 429 that the runtime already retried does not count. Extend the detection with `AGENTMATE_QUOTA_PATTERNS`, case-insensitive regular expressions separated by `|`; invalid ones are ignored.
 - **The delegator owns acceptance.** Job output is an input to your judgment. Verify claims and run the tests before you merge anything a worker produced.
 - **No hidden configuration changes.** The plugin registers its own MCP server. The fallback path runs the CLI and never edits host configuration. Do not put secrets in briefings: prompts and results are stored in plain text under `~/.agentmate`, in files created with owner-only permissions (`0600` for files, `0700` for directories).
 
@@ -389,6 +390,7 @@ Start with `npx -y agentmate doctor`. It prints `ok`, `warn` or `fail` for each 
 | A job shows `running` but nothing happens           | The worker process died. `doctor` lists the ids of these jobs; `jobs cancel <id>` clears them.                                         |
 | `Delegation depth limit reached`                    | A job started by a worker tried to start another job (a third level). Return the findings to the session that started the job instead. |
 | `Only a top-level session can start a teamlead job` | A worker tried to start a team lead (or a cross-review or a split: `... a crossreview job`, `... a split job`). Start it from your own session.                      |
+| Job ends `quota_exhausted` | The provider's usage limit, quota or credits are spent. Wait for the reset it names, or start the same job on the other agent (`result` prints the hint). If your provider words it differently, add a pattern to `AGENTMATE_QUOTA_PATTERNS` (for example `AGENTMATE_QUOTA_PATTERNS="plan cap\|budget burned"`). |
 | Duplicated or conflicting tools                     | A legacy registration (`serve codex` / `serve claude`) is still present. `doctor` flags it; see "Removed in 0.6.0".                    |
 
 ## Requirements

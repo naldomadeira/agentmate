@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import type { EventLevel, JobEvent } from "../agents/types.js";
 import { isAgentId, otherAgent } from "../agents/registry.js";
 import { cancelJob, getJob, isTerminal, readResult, startJob, type StartOptions } from "./api.js";
-import { parseVerdict } from "./crossreview.js";
+import { abortedSoon, parseVerdict } from "./crossreview.js";
 import { appendEvent } from "./events.js";
 import { appendNotes, createSession, attachJob } from "./sessions.js";
 import {
@@ -109,6 +109,8 @@ class Stop extends Error {
   constructor(
     readonly status: Exclude<JobStatus, "queued" | "running" | "done">,
     message: string,
+    /** Replaces the default outcome line, for example to name the step that hit a provider quota. */
+    readonly outcome?: string,
   ) {
     super(message);
   }
@@ -323,6 +325,8 @@ export async function runSplit(id: string): Promise<void> {
         if (settled.has(child.id)) continue;
         const current = getJob(child.id);
         if (isTerminal(current)) {
+          if (current.status === "canceled" && (await abortedSoon(controller.signal)))
+            throw new Stop("canceled", "Canceled.");
           settled.set(child.id, current);
           const name = children.find((c) => c.id === child.id)?.label ?? label;
           emit(
@@ -349,6 +353,11 @@ export async function runSplit(id: string): Promise<void> {
 
   const failure = (child: Job) =>
     `job ${child.id} ended ${child.status}${child.error ? `: ${child.error}` : ""}`;
+  /** Children that ended `quota_exhausted`; their error already carries the reset and hand-off hint. */
+  const quotaHits: { label: string; job: Job }[] = [];
+  const noteQuota = (label: string, child: Job): void => {
+    if (child.status === "quota_exhausted" && child.error) quotaHits.push({ label, job: child });
+  };
 
   const workflowBriefing = (part: PlannedPart): string =>
     [
@@ -403,6 +412,13 @@ export async function runSplit(id: string): Promise<void> {
     if (planDone!.status !== "done") {
       checkLive();
       failedJobs.push(planChild.id);
+      noteQuota("plan", planDone!);
+      if (quotaHits.length > 0)
+        throw new Stop(
+          "error",
+          planDone!.error!,
+          `**Outcome:** stopped: plan (job ${planChild.id}) hit the ${planDone!.provider} quota. ${planDone!.error}`,
+        );
       throw new Stop("error", `plan ${failure(planDone!)}`);
     }
     const plan = parseSplitPlan(readResult(planChild.id).text ?? "", { maxParts, planner });
@@ -508,6 +524,7 @@ export async function runSplit(id: string): Promise<void> {
       const child = settledParts[index]!;
       if (child.status !== "done") {
         part.error = failure(child);
+        noteQuota(`part ${part.id}`, child);
         failures.push(`part ${part.id} failed: ${part.error}`);
         failedJobs.push(child.id);
         needsHuman.push(`part ${part.id} (${part.agent}) failed: ${part.error}`);
@@ -559,6 +576,7 @@ export async function runSplit(id: string): Promise<void> {
         const review = settledReviews[index]!;
         if (review.status !== "done") {
           part.error = `review ${failure(review)}`;
+          noteQuota(`part ${part.id}: review`, review);
           failures.push(`part ${part.id} review failed: ${failure(review)}`);
           failedJobs.push(review.id);
           needsHuman.push(`part ${part.id}: its review failed (${failure(review)}).`);
@@ -587,6 +605,14 @@ export async function runSplit(id: string): Promise<void> {
       status = "error";
       error = `${failures.join("; ")}. Run \`agentmate jobs result ${failedJobs[0]}\`.`;
       outcome = `**Outcome:** stopped with failures: ${error}`;
+      const hit = quotaHits[0];
+      if (hit) {
+        // A quota ends the workflow with the child's own hint so the reader can hand the work off.
+        error = hit.job.error!;
+        outcome = `**Outcome:** stopped with failures: ${quotaHits
+          .map((q) => `${q.label} (job ${q.job.id}) hit the ${q.job.provider} quota`)
+          .join("; ")}. ${error}`;
+      }
     } else {
       status = "done";
       outcome = `**Outcome:** ${parts.length} part(s) finished, ${approved} approved by the reviewing agent${needsHuman.length > 0 ? `, ${needsHuman.length} item(s) need a human` : ""}.`;
@@ -595,13 +621,15 @@ export async function runSplit(id: string): Promise<void> {
     if (cause instanceof Stop) {
       status = cause.status;
       error = cause.status === "canceled" ? undefined : cause.message;
-      outcome = `**Outcome:** ${cause.status === "canceled" ? "canceled" : `stopped (${cause.status})`}: ${cause.message}`;
+      outcome =
+        cause.outcome ??
+        `**Outcome:** ${cause.status === "canceled" ? "canceled" : `stopped (${cause.status})`}: ${cause.message}`;
     } else {
       status = "error";
       error = cause instanceof Error ? cause.message : String(cause);
       outcome = `**Outcome:** stopped: ${error}`;
     }
-    if (failedJobs.length > 0 && error && !error.includes("jobs result"))
+    if (failedJobs.length > 0 && error && quotaHits.length === 0 && !error.includes("jobs result"))
       error = `${error}. Run \`agentmate jobs result ${failedJobs[0]}\`.`;
     emit("important", "error", `${status}: ${error ?? "Canceled."}`);
     // A step that stops the workflow must not leave started children running unattended.

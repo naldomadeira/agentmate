@@ -28,7 +28,7 @@ An adapter knows how to run one agent CLI and nothing else: which binary to call
 | Adapter | Invocation | Read-only | Write | Streaming |
 | --- | --- | --- | --- | --- |
 | `codex` | `codex exec --json --skip-git-repo-check` | `--sandbox read-only` | `--sandbox workspace-write` (team lead: `danger-full-access`) | JSONL items |
-| `claude` | `claude -p --output-format json` | tool allowlist plus explicit deny of `Edit`, `Write`, `NotebookEdit` | `--permission-mode acceptEdits` plus a verification allowlist | none (single JSON result) |
+| `claude` | `claude -p --output-format stream-json --verbose` | tool allowlist plus explicit deny of `Edit`, `Write`, `NotebookEdit` | `--permission-mode acceptEdits` plus a verification allowlist | JSONL (stream-json): assistant text, tool use and error results |
 
 ## Jobs (`src/jobs/`)
 
@@ -45,6 +45,8 @@ Agents must not receive each other's tool noise. Every event has a level:
 | `important` | the agent's message, errors, start and finish | yes, always |
 | `status` | a file changed | summarized on request (`observe`) |
 | `fyi` | a command ran, with its exit code | only with `--raw` or `levels: ["fyi"]` |
+
+A job whose provider reports a spent usage allowance ends `quota_exhausted` (`src/jobs/quota.ts`); `cancelJob` cancels a job's non-terminal children, recursively, before the job itself.
 
 `mate_observe` returns the recent `important` and `status` events by default; `mate_events` returns the full filtered log; raw stdout and stderr are available on demand.
 

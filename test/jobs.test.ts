@@ -17,7 +17,7 @@ import {
 import { buildInvocation } from "../src/jobs/providers.js";
 import { VERSION } from "../src/lib/version.js";
 import { readEvents } from "../src/jobs/events.js";
-import { renderObservation } from "../src/jobs/render.js";
+import { renderObservation, renderResult } from "../src/jobs/render.js";
 import { stdoutFile, updateJob, type Job } from "../src/jobs/store.js";
 
 // A stand-in for the codex CLI. The prompt (last argument) selects the behavior.
@@ -27,6 +27,7 @@ const prompt = args[args.length - 1];
 const emit = (e) => console.log(JSON.stringify(e));
 if (prompt === "sleep") { emit({ type: "thread.started", thread_id: "t-sleep" }); setInterval(() => {}, 1000); }
 else if (prompt === "fail") { console.error("boom"); process.exit(1); }
+else if (prompt === "quota") { console.error("You've hit your usage limit. Try again at 6pm."); process.exit(1); }
 else {
   emit({ type: "thread.started", thread_id: "t-1" });
   emit({ type: "item.completed", item: { type: "command_execution", command: "ls", exit_code: 0 } });
@@ -36,6 +37,24 @@ else {
 }
 `;
 
+// A stand-in for the claude CLI that speaks stream-json (JSONL), one event per line.
+const FAKE_CLAUDE = `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const prompt = args[args.length - 1];
+const emit = (e) => console.log(JSON.stringify(e));
+emit({ type: "system", subtype: "init", session_id: "c-1" });
+if (prompt === "stream-quota") {
+  emit({ type: "result", subtype: "success", is_error: true, result: "You've hit your limit \u00b7 resets 6pm", session_id: "c-1" });
+  process.exit(1);
+}
+emit({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "ls -la" } }] } });
+emit({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "a" }] } });
+emit({ type: "rate_limit_event", rate_limit_info: { status: "allowed" } });
+emit({ type: "assistant", message: { content: [{ type: "text", text: "pong from stream" }] } });
+emit({ type: "result", subtype: "success", is_error: false, result: "pong from stream", session_id: "c-1", total_cost_usd: 0.01 });
+emit({ type: "system", subtype: "task_summary", detail: null });
+`;
+
 let home: string;
 const saved = { ...process.env };
 
@@ -43,8 +62,11 @@ beforeAll(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), "abm-test-"));
   const bin = path.join(home, "fake-codex");
   fs.writeFileSync(bin, FAKE_CODEX, { mode: 0o755 });
+  const claudeBin = path.join(home, "fake-claude");
+  fs.writeFileSync(claudeBin, FAKE_CLAUDE, { mode: 0o755 });
   process.env["AGENTMATE_HOME"] = path.join(home, "state");
   process.env["AGENTMATE_CODEX_BIN"] = bin;
+  process.env["AGENTMATE_CLAUDE_BIN"] = claudeBin;
   process.env["AGENTMATE_CLI"] = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 });
 
@@ -260,6 +282,55 @@ describe("jobs", () => {
     const done = await waitJob(job.id, 20_000);
     expect(done.status).toBe("error");
     expect(done.error).toContain("boom");
+  }, 30_000);
+
+  it("ends a job as quota_exhausted with a hand-off hint when the provider is out of usage", async () => {
+    const job = start("quota");
+    const done = await waitJob(job.id, 20_000);
+    expect(done.status).toBe("quota_exhausted");
+    expect(done.error).toBe(
+      "codex quota exhausted: You've hit your usage limit. Try again at 6pm. Retry after the reset or start the job on claude.",
+    );
+    const events = readEvents(job.id);
+    expect(events.find((e) => e.kind === "error")?.text).toBe(done.error);
+    expect(events.at(-1)).toMatchObject({ kind: "finished", text: done.error });
+    const { job: read, text } = readResult(job.id);
+    expect(renderResult(read, text)).toContain(
+      "Hand off: start the same job with provider claude.",
+    );
+    expect(renderResult(read, text)).toContain("quota_exhausted");
+  }, 30_000);
+
+  it("keeps a plain failure as error, not quota_exhausted", async () => {
+    const done = await waitJob(start("fail").id, 20_000);
+    expect(done.status).toBe("error");
+    expect(done.error).not.toMatch(/quota/);
+  }, 30_000);
+
+  it("streams claude stream-json events and takes the answer from the result line", async () => {
+    const job = startJob({ provider: "claude", prompt: "stream", cwd: home });
+    const done = await waitJob(job.id, 20_000);
+    expect(done.status).toBe("done");
+    expect(done.sessionId).toBe("c-1");
+    expect(readResult(job.id).text).toBe("pong from stream");
+    const events = readEvents(job.id);
+    expect(events.map((e) => `${e.level}:${e.kind}`)).toEqual([
+      "important:started",
+      "fyi:command",
+      "important:message",
+      "important:finished",
+    ]);
+    expect(events[1]).toMatchObject({ text: "ls -la", data: { command: "ls -la" } });
+    expect(events[2]!.text).toBe("pong from stream");
+  }, 30_000);
+
+  it("ends a claude job as quota_exhausted when the stream's result is an error about the limit", async () => {
+    const job = startJob({ provider: "claude", prompt: "stream-quota", cwd: home });
+    const done = await waitJob(job.id, 20_000);
+    expect(done.status).toBe("quota_exhausted");
+    expect(done.error).toContain("claude quota exhausted: You've hit your limit");
+    expect(done.error).toContain("start the job on codex.");
+    expect(readEvents(job.id).filter((e) => e.kind === "error").length).toBeGreaterThan(0);
   }, 30_000);
 
   it("expires a wait without stopping the job, then cancels it", async () => {

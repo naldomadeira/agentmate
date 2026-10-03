@@ -431,7 +431,7 @@ server.registerTool(
   {
     title: "Wait for a job",
     description:
-      "Block until the job finishes or the wait expires. Expiring does not stop the job; call again to keep waiting. Returns the result when done.",
+      "Block until the job finishes or the wait expires. Expiring does not stop the job; call again to keep waiting. Returns the result when done; a job whose provider is out of usage ends quota_exhausted with a hint to start it on the other agent.",
     inputSchema: {
       id: jobId,
       timeoutSeconds: z.number().positive().max(300).optional().describe("Max wait, default 45"),
@@ -499,7 +499,8 @@ server.registerTool(
   "mate_result",
   {
     title: "Read a job result",
-    description: "Return the stored result of a job without waiting.",
+    description:
+      "Return the stored result of a job without waiting. A quota_exhausted job carries the reset hint and the other agent to hand off to.",
     inputSchema: { id: jobId },
   },
   guard(({ id }) => {

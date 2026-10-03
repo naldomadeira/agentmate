@@ -6,7 +6,15 @@ import type { AgentId } from "../agents/types.js";
 
 export type Provider = AgentId;
 export type JobMode = "read-only" | "write";
-export type JobStatus = "queued" | "running" | "done" | "error" | "canceled" | "timeout";
+export type JobStatus =
+  | "queued"
+  | "running"
+  | "done"
+  | "error"
+  | "canceled"
+  | "timeout"
+  /** The provider refused to continue because its usage allowance is spent; see `quota.ts`. */
+  | "quota_exhausted";
 
 export type JobRole =
   | "custom"
@@ -31,7 +39,13 @@ export const JOB_ROLES = [
   "split",
 ] as const satisfies readonly JobRole[];
 
-export const TERMINAL: readonly JobStatus[] = ["done", "error", "canceled", "timeout"];
+export const TERMINAL: readonly JobStatus[] = [
+  "done",
+  "error",
+  "canceled",
+  "timeout",
+  "quota_exhausted",
+];
 
 /** Inputs of the role prompt builders; each role reads only the fields it documents. */
 export interface RoleFields {

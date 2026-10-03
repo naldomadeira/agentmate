@@ -1,4 +1,5 @@
 import type { JobEvent } from "../agents/types.js";
+import { otherAgent } from "../agents/registry.js";
 import { elapsedSeconds, summarize, type Observation } from "./api.js";
 import type { Session } from "./sessions.js";
 import { TERMINAL, type Job } from "./store.js";
@@ -14,7 +15,9 @@ export function renderResult(job: Job, text: string | null): string {
     const hint =
       job.status === "timeout" && job.sessionId
         ? `\nThe session is resumable: start a new job with continue=${job.id}.`
-        : "";
+        : job.status === "quota_exhausted"
+          ? `\nHand off: start the same job with provider ${otherAgent(job.provider)}.`
+          : "";
     return `${head}${text ? `\n\nPartial output:\n${text}` : ""}${hint}`;
   }
   const body = text ?? "(no output)";

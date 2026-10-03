@@ -74,9 +74,9 @@ describe("agent registry", () => {
       write: true,
       web: true,
       resume: true,
-      streaming: "none",
+      streaming: "jsonl",
     });
-    expect(AGENTS.claude.parseStreamLine).toBeUndefined();
+    expect(AGENTS.claude.parseStreamLine).toBeDefined();
   });
 
   it("honors the binary override", () => {
@@ -140,7 +140,7 @@ describe("claude buildInvocation", () => {
 
   it("read-only denies edits and allows git inspection", () => {
     const args = build();
-    expect(args.slice(0, 3)).toEqual(["-p", "--output-format", "json"]);
+    expect(args.slice(0, 4)).toEqual(["-p", "--output-format", "stream-json", "--verbose"]);
     expect(args.at(-1)).toBe("the prompt");
     expect(args).not.toContain("--permission-mode");
     expect(flag(args, "--allowedTools")).toEqual([
@@ -176,10 +176,11 @@ describe("claude buildInvocation", () => {
 
   it("resumes and passes the model", () => {
     const args = build({ model: "m" }, "s-1");
-    expect(args.slice(0, 7)).toEqual([
+    expect(args.slice(0, 8)).toEqual([
       "-p",
       "--output-format",
-      "json",
+      "stream-json",
+      "--verbose",
       "--resume",
       "s-1",
       "--model",
@@ -264,6 +265,93 @@ describe("codex parseStreamLine", () => {
     expect(AGENTS.codex.parseStreamLine!("not json")).toEqual([]);
     expect(AGENTS.codex.parseStreamLine!("")).toEqual([]);
     expect(AGENTS.codex.parseStreamLine!("42")).toEqual([]);
+  });
+});
+
+describe("claude parseStreamLine", () => {
+  const parse = (value: unknown) => AGENTS.claude.parseStreamLine!(JSON.stringify(value));
+  const toolUse = (name: string, input: Record<string, unknown>) => ({
+    type: "assistant",
+    message: { content: [{ type: "tool_use", id: "t", name, input }] },
+  });
+
+  it("maps assistant text to an important message, clipped to 500 characters", () => {
+    const events = parse({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "x".repeat(600) }] },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ level: "important", kind: "message", job: "" });
+    expect(events[0]!.text).toHaveLength(500);
+    expect(
+      parse({ type: "assistant", message: { content: [{ type: "text", text: "" }] } }),
+    ).toEqual([]);
+  });
+
+  it("maps edit tools to status file events", () => {
+    for (const name of ["Edit", "Write", "MultiEdit", "NotebookEdit"]) {
+      expect(parse(toolUse(name, { file_path: "src/a.ts" }))).toEqual([
+        expect.objectContaining({
+          level: "status",
+          kind: "file",
+          text: `${name} src/a.ts`,
+          data: { path: "src/a.ts", kind: name },
+        }),
+      ]);
+    }
+  });
+
+  it("maps Bash to a fyi command event with the first 200 characters", () => {
+    expect(parse(toolUse("Bash", { command: "git status" }))).toEqual([
+      expect.objectContaining({
+        level: "fyi",
+        kind: "command",
+        text: "git status",
+        data: { command: "git status" },
+      }),
+    ]);
+    expect(parse(toolUse("Bash", { command: "y".repeat(300) }))[0]!.text).toHaveLength(200);
+  });
+
+  it("maps other tools to fyi commands with a short argument", () => {
+    expect(parse(toolUse("Grep", { pattern: "TODO" }))[0]).toMatchObject({
+      level: "fyi",
+      kind: "command",
+      text: "Grep TODO",
+    });
+    expect(parse(toolUse("Read", { file_path: "a.md" }))[0]!.text).toBe("Read a.md");
+    expect(parse(toolUse("WebSearch", { query: "vitest" }))[0]!.text).toBe("WebSearch vitest");
+    expect(parse(toolUse("Glob", {}))[0]!.text).toBe("Glob");
+  });
+
+  it("emits one event per content block, in order", () => {
+    const events = parse({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "text", text: "Looking." },
+          { type: "tool_use", name: "Read", input: { file_path: "a" } },
+        ],
+      },
+    });
+    expect(events.map((e) => e.kind)).toEqual(["message", "command"]);
+  });
+
+  it("reports an error result and ignores the rest", () => {
+    expect(
+      parse({ type: "result", subtype: "error_during_execution", is_error: true, result: "boom" }),
+    ).toEqual([expect.objectContaining({ level: "important", kind: "error", text: "boom" })]);
+    expect(parse({ type: "result", subtype: "error_max_turns", is_error: true })[0]!.text).toBe(
+      "error_max_turns",
+    );
+    expect(parse({ type: "result", subtype: "success", is_error: false, result: "ok" })).toEqual(
+      [],
+    );
+    for (const type of ["system", "user", "rate_limit_event", "active_goal"])
+      expect(parse({ type })).toEqual([]);
+    expect(AGENTS.claude.parseStreamLine!("not json")).toEqual([]);
+    expect(AGENTS.claude.parseStreamLine!("")).toEqual([]);
+    expect(AGENTS.claude.parseStreamLine!("42")).toEqual([]);
   });
 });
 

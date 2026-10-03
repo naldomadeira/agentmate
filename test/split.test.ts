@@ -31,6 +31,8 @@ const isPlan = prompt.includes("Split the goal below");
 const isReview = prompt.includes("Review the following change");
 if (isPlan && prompt.includes("SLEEP-PLAN")) { setInterval(() => {}, 1000); return; }
 if (!isPlan && !isReview && prompt.includes("FAIL-PART")) { console.error("part boom"); process.exit(1); }
+if (!isPlan && !isReview && prompt.includes("QUOTA-PART")) { console.error("You've hit your usage limit. Try again at 6pm."); process.exit(1); }
+if (isPlan && prompt.includes("QUOTA-PLAN")) { console.error("You've hit your usage limit. Try again at 6pm."); process.exit(1); }
 if (!isPlan && !isReview && prompt.includes("SLEEP-PART")) { setInterval(() => {}, 1000); return; }
 
 if (isPlan) {
@@ -43,7 +45,7 @@ if (isPlan) {
   ]));
   else if (goal.includes("PLAN-2")) reply(block([
     { id: "a", title: "Part A", briefing: "Do A in src/a.ts." + (goal.includes("MARK-A-NOVERDICT") ? " NO-VERDICT" : ""), files: ["src/a.ts"], agent: "codex" },
-    { id: "b", title: "Part B", briefing: "Do B in src/b.ts." + (goal.includes("MARK-B-FAIL") ? " FAIL-PART" : "") + (goal.includes("MARK-B-REQUEST") ? " ALWAYS-REQUEST" : ""), files: ["src/b.ts"], agent: "claude" },
+    { id: "b", title: "Part B", briefing: "Do B in src/b.ts." + (goal.includes("MARK-B-FAIL") ? " FAIL-PART" : "") + (goal.includes("MARK-B-QUOTA") ? " QUOTA-PART" : "") + (goal.includes("MARK-B-REQUEST") ? " ALWAYS-REQUEST" : ""), files: ["src/b.ts"], agent: "claude" },
   ]));
   else reply("no parts");
 } else if (isReview) {
@@ -385,6 +387,29 @@ describe("split workflow, read-only", () => {
     expect(report).toContain("## Needs human");
     expect(report).toMatch(/part b \(claude\) failed/);
     expect(report).toContain("RESEARCH by codex");
+  }, 120_000);
+
+  it("ends in error with the child's hand-off hint when a part hits its quota", async () => {
+    const { job, report, children } = await runSplit("Do it PLAN-2 MARK-B-QUOTA");
+    expect(job.status).toBe("error");
+    const [a, b] = job.split!.parts;
+    const hit = children.find((c) => c.id === b!.partJob)!;
+    expect(hit.status).toBe("quota_exhausted");
+    expect(hit.error).toContain("quota exhausted");
+    expect(job.error).toBe(hit.error);
+    expect(job.error).toContain("start the job on");
+    expect(report).toContain(`part b (job ${hit.id}) hit the claude quota`);
+    // the other part still ran to completion
+    expect(children.find((c) => c.id === a!.partJob)!.status).toBe("done");
+  }, 120_000);
+
+  it("ends in error with the planner's hint when the planner hits its quota", async () => {
+    const { job, report, children } = await runSplit("Do it PLAN-2 QUOTA-PLAN");
+    expect(job.status).toBe("error");
+    expect(children).toHaveLength(1);
+    expect(children[0]!.status).toBe("quota_exhausted");
+    expect(job.error).toBe(children[0]!.error);
+    expect(report).toContain(`plan (job ${children[0]!.id}) hit the codex quota`);
   }, 120_000);
 
   it("cancels its running children when the workflow is canceled", async () => {

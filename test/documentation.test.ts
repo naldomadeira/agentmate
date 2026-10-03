@@ -28,6 +28,8 @@ describe("project documentation", () => {
     expect(readme).toContain("waitSeconds: 45");
     expect(readme).toContain("docs/ARCHITECTURE.md");
     expect(readme).toContain("mate_events");
+    expect(readme).toContain("quota_exhausted");
+    expect(readme).toContain("AGENTMATE_QUOTA_PATTERNS");
     expect(readme).not.toContain("## Legacy setup");
     expect(readme).toContain("Removed in 0.6.0");
 
@@ -44,6 +46,8 @@ describe("project documentation", () => {
     expect(portugueseReadme).toContain("git clone");
     expect(portugueseReadme).toContain("ARCHITECTURE.md");
     expect(portugueseReadme).toContain("mate_events");
+    expect(portugueseReadme).toContain("quota_exhausted");
+    expect(portugueseReadme).toContain("AGENTMATE_QUOTA_PATTERNS");
   });
 
   it("documents the slash commands in both READMEs and both install guides", () => {

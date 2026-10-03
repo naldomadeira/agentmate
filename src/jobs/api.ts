@@ -430,7 +430,24 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
-export async function cancelJob(id: string): Promise<Job> {
+/**
+ * Cancels the job. Its non-terminal children (recursively) go first, so a workflow worker that dies
+ * from SIGKILL cannot leave orphans running; the returned job is `id` itself.
+ */
+export function cancelJob(id: string): Promise<Job> {
+  return cancelTree(id, new Set());
+}
+
+async function cancelTree(id: string, visited: Set<string>): Promise<Job> {
+  visited.add(id);
+  if (isTerminal(getJob(id))) return getJob(id);
+  for (const child of childJobs(id)) {
+    if (!visited.has(child.id) && !isTerminal(child)) await cancelTree(child.id, visited);
+  }
+  return cancelOne(id);
+}
+
+async function cancelOne(id: string): Promise<Job> {
   const job = getJob(id);
   if (isTerminal(job)) return job;
   if (job.workerPid && isAlive(job.workerPid)) {
