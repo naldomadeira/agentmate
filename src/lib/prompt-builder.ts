@@ -100,7 +100,7 @@ Structure your response with:
 3. **Caveats** - Anything you could not verify or that could change the answer (omit if none)`;
 }
 
-/** Code review: severity-ordered findings and a final verdict. */
+/** Code review: severity-ordered findings and a final verdict line that workflows parse. */
 export function buildReviewPrompt(options: {
   target: string;
   focus?: string;
@@ -116,7 +116,9 @@ Report only real problems: correctness bugs, security issues, data loss, race co
 Structure your response with:
 1. **Findings** - Ordered by severity (critical, high, medium, low). For each: severity, file:line, what is wrong, and the **Failure scenario** (the concrete input or sequence that breaks it)
 2. **Suggested fixes** - One line per finding
-3. **Verdict** - Exactly one of: approve, request-changes, followed by a one-sentence reason`;
+3. **Verdict** - A one-sentence reason, then, as the very last line of your response, exactly one of these two lines and nothing after it:
+Verdict: approve
+Verdict: request-changes`;
 }
 
 /** Investigation: evidence-backed findings, compared options and a recommendation. */
@@ -252,4 +254,21 @@ Structure your final report with:
 5. **Decisions** - What you chose and why, including rejected delegated advice
 6. **Deliverables** - Files changed or artifacts produced, and how you verified them
 7. **Open questions** - What still needs a human decision`;
+}
+
+/**
+ * The record of a crossreview workflow job. No agent CLI receives this text: the worker runs the
+ * steps as child jobs with the implement and review prompts, so this only describes the run.
+ */
+export function buildCrossreviewPrompt(options: {
+  task: string;
+  acceptance?: string;
+  implementer: Provider;
+  reviewer: Provider;
+  maxRounds: number;
+}): string {
+  const acceptance = options.acceptance ? `\n\nAcceptance criteria:\n${options.acceptance}` : "";
+  return `Cross-review workflow: ${options.implementer} implements, ${options.reviewer} reviews the uncommitted diff, for up to ${options.maxRounds} round(s).
+
+Task: ${options.task}${acceptance}`;
 }

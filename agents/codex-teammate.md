@@ -33,5 +33,6 @@ If the `mate_*` tools are not available, use the CLI instead: `npx -y agentmate 
 ## Principles
 
 - Read-only by default. Never start a `write` job without explicit permission, and never run two write jobs in the same working tree.
+- For a scoped change that Codex should implement and Claude should review (or the reverse) without relaying by hand, call `mate_crossreview` instead of chaining two jobs. It edits files, so only with explicit permission.
 - Do not send secrets in a briefing.
 - You own the result: the caller hears your conclusion, with Codex as one input.

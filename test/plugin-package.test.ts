@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { COMMAND_NAMES } from "../src/lib/installer.js";
 
 const root = resolve(import.meta.dirname, "..");
 
@@ -24,7 +25,7 @@ describe("plugin package", () => {
 
     expect(manifest).toMatchObject({
       name: "mate",
-      version: "0.4.0",
+      version: "0.5.0",
       skills: "./skills/",
       mcpServers: "./.mcp.json",
     });
@@ -94,8 +95,8 @@ describe("plugin package", () => {
     const pkg = json<{ version: string }>("package.json");
     const source = readFileSync(resolve(root, "src/lib/version.ts"), "utf8");
 
-    expect(pkg.version).toBe("0.4.0");
-    expect(source).toMatch(/VERSION\s*=\s*"0\.4\.0"/);
+    expect(pkg.version).toBe("0.5.0");
+    expect(source).toMatch(/VERSION\s*=\s*"0\.5\.0"/);
   });
 
   it("points package metadata at the public repository", () => {
@@ -150,6 +151,7 @@ const SKILLS = [
   "plan",
   "implement",
   "teamlead",
+  "crossreview",
   "jobs",
   "delegate",
   "codex",
@@ -158,7 +160,7 @@ const SKILLS = [
 const AGENTS = ["codex-teammate", "codex-reviewer", "codex-researcher", "codex-teamlead"];
 
 describe("skills", () => {
-  it("ships the ten skills", () => {
+  it("ships the eleven skills", () => {
     const names = readdirSync(resolve(root, "skills"), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
@@ -192,6 +194,8 @@ describe("skills", () => {
     expect(read("teamlead")).toContain("teamlead job (depth 0, started by you)");
     expect(read("teamlead")).toContain("child jobs (depth 1, cannot start jobs)");
     expect(read("implement")).toContain("always runs in write mode");
+    expect(read("crossreview")).toContain("write mode");
+    expect(read("crossreview")).toContain("mate_crossreview");
   });
 });
 
@@ -233,17 +237,24 @@ const COMMANDS: Record<string, string> = {
   plan: "mate_plan",
   implement: "mate_implement",
   teamlead: "mate_teamlead",
+  crossreview: "mate_crossreview",
   jobs: "mate_list",
 };
 const TEMPLATE_DIRS = ["templates/claude-commands", "templates/codex-prompts"];
 
 describe("command templates", () => {
-  it.each(TEMPLATE_DIRS)("%s ships exactly the seven command files", (dir) => {
+  it.each(TEMPLATE_DIRS)("%s ships exactly the eight command files", (dir) => {
     const names = readdirSync(resolve(root, dir))
       .filter((file) => file.endsWith(".md"))
       .map((file) => basename(file, ".md"));
 
     expect(names.sort()).toEqual(Object.keys(COMMANDS).sort());
+  });
+
+  it("registers every template as an installable command", () => {
+    expect(COMMAND_NAMES).toHaveLength(8);
+    expect([...COMMAND_NAMES].sort()).toEqual(Object.keys(COMMANDS).sort());
+    expect(COMMAND_NAMES).toContain("crossreview");
   });
 
   it("keeps templates out of the directories the hosts scan", () => {

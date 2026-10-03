@@ -1,7 +1,7 @@
 ---
 name: jobs
 description: List, observe, collect or cancel background jobs started through AgentMate. Use when the user says /mate:jobs, 'is the job done', 'list my jobs', 'cancel that job', 'ver os jobs', or needs a job id or a stored result.
-argument-hint: "[list|observe|result|cancel] [id]"
+argument-hint: "[list|observe|events|result|cancel] [id]"
 ---
 
 # Manage jobs
@@ -14,6 +14,7 @@ Jobs are durable: they keep running and their results stay stored after the sess
 | --------- | ---------------- | -------------------------------------------- |
 | `list`    | `mate_list`    | `npx -y agentmate jobs list`         |
 | `observe` | `mate_observe` | `npx -y agentmate jobs observe <id>` |
+| `events`  | `mate_events`  | `npx -y agentmate jobs events <id>`  |
 | `result`  | `mate_result`  | `npx -y agentmate jobs result <id>`  |
 | `cancel`  | `mate_cancel`  | `npx -y agentmate jobs cancel <id>`  |
 | wait      | `mate_wait`    | `npx -y agentmate jobs wait <id>`    |
@@ -23,7 +24,8 @@ Prefer the MCP tool when it is loaded; use the CLI otherwise.
 ## How to use each
 
 - **list** — `mate_list` accepts `cwd`, `limit` and `parent` (only children of that team lead job). The CLI takes `--cwd` and `--parent <id>`. Children of a team lead appear indented under it. Use it to recover an id after a restart.
-- **observe** — non-blocking snapshot of status and recent output; for a team lead it also lists child jobs. Run it when the user asks for progress, not on a timer.
+- **observe** — non-blocking snapshot of status and recent events (`important` and `status` only, so it stays small); for a team lead it also lists child jobs. Add `raw` / `--raw` for the stdout/stderr tails, or `levels` / `--level fyi` for command-level detail. Run it when the user asks for progress, not on a timer.
+- **events** — the job's event log, one line per event (`important`, `status`, `fyi`). Filter with `levels` / `--level`, read only what is new with `since` / `--since`, or stream with `--follow` until the job ends.
 - **result** — the stored final output, without waiting. Use it after an interrupted `wait`.
 - **cancel** — stops the job and keeps the output produced so far. Cancel only when the user asks or the job is clearly stuck or wrong.
 - **wait** — blocks until done or the wait expires. Expiry does not stop the job. CLI exit codes: `0` done, `1` failed or canceled, `2` still running.

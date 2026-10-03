@@ -2,8 +2,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import type { EventLevel } from "./agents/types.js";
 import {
   cancelJob,
+  getJob,
   isTerminal,
   listJobs,
   observeJob,
@@ -14,7 +16,8 @@ import {
   type RoleFields,
   type StartOptions,
 } from "./jobs/api.js";
-import { renderList, renderObservation, renderResult } from "./jobs/render.js";
+import { readEvents } from "./jobs/events.js";
+import { renderEvents, renderList, renderObservation, renderResult } from "./jobs/render.js";
 import { JOB_ROLES, type JobMode, type Provider } from "./jobs/store.js";
 import { logger } from "./lib/logger.js";
 import { VERSION } from "./lib/version.js";
@@ -84,13 +87,17 @@ interface Common {
 /** Shared body of the role tools: map the tool arguments to a job and honor `waitSeconds`. */
 function runRole(
   role: NonNullable<StartOptions["role"]>,
-  args: Common & { provider: Provider; mode?: JobMode | undefined },
+  args: Common & {
+    provider: Provider;
+    mode?: JobMode | undefined;
+    maxRounds?: number | undefined;
+  },
   fields: RoleFields,
   defaultWaitSeconds = 0,
 ): Promise<string> {
-  const { provider, mode, cwd, model, timeoutMinutes, waitSeconds } = args;
+  const { provider, mode, maxRounds, cwd, model, timeoutMinutes, waitSeconds } = args;
   return startAndMaybeWait(
-    { provider, role, fields, mode, cwd, model, timeoutMinutes },
+    { provider, role, fields, mode, maxRounds, cwd, model, timeoutMinutes },
     waitSeconds ?? defaultWaitSeconds,
   );
 }
@@ -243,6 +250,41 @@ server.registerTool(
 );
 
 server.registerTool(
+  "mate_crossreview",
+  {
+    title: "Implement and cross-review",
+    description:
+      "Have one agent implement a scoped change and the other agent review it, looping on the reviewer's findings, without relaying anything by hand; use it for one well-scoped change you want implemented by one agent and reviewed by the other. WARNING: it edits files, because the provider you name runs in write mode in the working directory (the other agent only reads and reviews the uncommitted diff); use it only when the user authorized edits, and run one write job per working tree. It stops when the reviewer approves, gives no clear verdict (then a human decides) or maxRounds is used up; the report lists the rounds, the final review and the changes. Only a top-level session can start it; follow it with mate_observe. The workers have no context beyond the task and acceptance criteria you pass.",
+    inputSchema: {
+      provider: z
+        .enum(["codex", "claude"])
+        .describe("The agent that implements; the other one reviews"),
+      task: z.string().describe("A complete, scoped description of the change"),
+      acceptance: z.string().optional().describe("Criteria that define done"),
+      maxRounds: z
+        .number()
+        .int()
+        .min(1)
+        .max(5)
+        .optional()
+        .describe("Most implement-and-review rounds, default 2"),
+      cwd: common.cwd,
+      model: z.string().optional().describe("Model override for the implementer only"),
+      timeoutMinutes: z
+        .number()
+        .positive()
+        .max(120)
+        .optional()
+        .describe("Deadline for the whole workflow, default 60, max 120"),
+      waitSeconds: common.waitSeconds,
+    },
+  },
+  guard(({ task, acceptance, maxRounds, ...args }) =>
+    runRole("crossreview", { ...args, mode: "write", maxRounds }, { task, acceptance }),
+  ),
+);
+
+server.registerTool(
   "mate_wait",
   {
     title: "Wait for a job",
@@ -259,15 +301,56 @@ server.registerTool(
   }),
 );
 
+const eventLevels = z
+  .array(z.enum(["important", "status", "fyi"]))
+  .optional()
+  .describe(
+    "Event levels to include: important (messages, errors, finish), status (files changed), fyi (commands run)",
+  );
+
 server.registerTool(
   "mate_observe",
   {
     title: "Observe a running job",
     description:
-      "Non-blocking snapshot of a job's status, recent output and, for a team lead, the jobs it started with their status. Use only when progress was asked for.",
-    inputSchema: { id: jobId },
+      "Non-blocking snapshot of a job's status, its recent important and status events (not raw output) and, for a team lead, the jobs it started with their status. Pass raw to also get the stdout/stderr tails, or levels to widen the events. Use only when progress was asked for.",
+    inputSchema: {
+      id: jobId,
+      raw: z.boolean().optional().describe("Also include the raw stdout/stderr tails"),
+      levels: eventLevels,
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .max(500)
+        .optional()
+        .describe("Newest N events, default 30"),
+    },
   },
-  guard(({ id }) => renderObservation(observeJob(id))),
+  guard(({ id, raw, levels, limit }) =>
+    renderObservation(observeJob(id, { raw, levels: levels as EventLevel[] | undefined, limit })),
+  ),
+);
+
+server.registerTool(
+  "mate_events",
+  {
+    title: "Read a job's events",
+    description:
+      "Read a job's event log, oldest first, one line per event; filter by level, or pass since (an ISO timestamp) to read only what is new. Cheaper than raw output.",
+    inputSchema: {
+      id: jobId,
+      since: z.string().optional().describe("Only events after this ISO timestamp"),
+      levels: eventLevels,
+      limit: z.number().int().positive().max(500).optional().describe("Newest N events"),
+    },
+  },
+  guard(({ id, since, levels, limit }) => {
+    getJob(id);
+    return renderEvents(
+      readEvents(id, { since, levels: levels as EventLevel[] | undefined, limit }),
+    );
+  }),
 );
 
 server.registerTool(

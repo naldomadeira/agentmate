@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - Unreleased
+
+### Added
+
+- Agent adapters in `src/agents/` (Codex and Claude behind one `AgentAdapter` interface and a registry); the runtime no longer branches on agent names.
+- Job events: every job writes an append-only `events.jsonl` with `important`, `status` and `fyi` levels (started, message, file, command, finished, error). Codex events stream while the job runs; Claude, which has no stream, records one message at the end.
+- MCP tool `mate_events` and CLI `jobs events <id> [--since <iso>] [--level <a,b>] [--follow]`.
+- `mate_observe` and `jobs observe` accept `raw` / `--raw` to include the stdout/stderr tails, and `levels` / `--level` to widen the events.
+- `docs/ARCHITECTURE.md` describing the runtime, adapters, jobs and events.
+- `crossreview` role: a workflow job where `provider` implements (write mode) and the other agent reviews the uncommitted diff (read-only), as child jobs of one workflow, looping up to `maxRounds` (1 to 5, default 2). The reviewer must end with `Verdict: approve` or `Verdict: request-changes`: approve finishes, request-changes continues the implementer's session with the findings, no clear verdict stops with a `## Needs human` section, and a failed child fails the workflow. The report has the rounds table, the final review and the changes; `job.workflow` records the rounds. Only a top-level session can start it.
+- MCP tool `mate_crossreview(provider, task, acceptance?, maxRounds?, cwd?, model?, timeoutMinutes?, waitSeconds?)`, CLI `jobs start <provider> "<task>" --role crossreview [--max-rounds N]`, the `crossreview` skill (`/mate:crossreview`, `$mate:crossreview`) and the `crossreview` command templates (bare `/crossreview`, `/prompts:crossreview`).
+
+### Changed
+
+- The review prompt now requires its last line to be exactly `Verdict: approve` or `Verdict: request-changes`, so workflows can parse it.
+- `observe` shows filtered events (`important` and `status`, last 30) instead of the raw stdout/stderr tails; pass `raw` for the tails.
+- `cancel` kills the whole worker process group, so grandchildren do not outlive a canceled job.
+- `AGENTMATE_HOME=""` is treated as unset.
+- A recycled PID is no longer mistaken for a live worker (the process command line must match the job).
+
+### Deprecated
+
+- The synchronous servers (`serve codex`, `serve claude`) and `setup` print a deprecation warning to stderr and will be removed in 0.6.0. Install the plugin (`mate@agentmate`) and use the `mate_*` job tools instead. Behavior is unchanged in 0.5.0.
+
 ## [0.4.0] - 2026-10-03
 
 ### Changed / Breaking

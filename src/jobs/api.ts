@@ -1,15 +1,21 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import type { EventLevel, JobEvent } from "../agents/types.js";
+import { otherAgent } from "../agents/registry.js";
 import {
   buildAskPrompt,
+  buildCrossreviewPrompt,
   buildImplementPrompt,
   buildPlanPrompt,
   buildResearchPrompt,
   buildReviewPrompt,
   buildTeamleadPrompt,
 } from "../lib/prompt-builder.js";
+import { readEvents } from "./events.js";
 import {
+  DEFAULT_MAX_ROUNDS,
+  MAX_ROUNDS_LIMIT,
   TERMINAL,
   isAlive,
   listJobIds,
@@ -24,7 +30,10 @@ import {
   type JobMode,
   type JobRole,
   type Provider,
+  type RoleFields,
 } from "./store.js";
+
+export type { RoleFields } from "./store.js";
 
 const DEFAULT_TIMEOUT_MS = 60 * 60_000;
 const MAX_TIMEOUT_MS = 120 * 60_000;
@@ -34,23 +43,6 @@ const SPAWN_GRACE_MS = 3_000;
 
 /** A job may start further jobs until this nesting level; a top-level session is depth 0. */
 export const MAX_DELEGATION_DEPTH = 2;
-
-/** Inputs of the role prompt builders; each role reads only the fields it documents. */
-export interface RoleFields {
-  question?: string;
-  context?: string;
-  target?: string;
-  focus?: string;
-  topic?: string;
-  questions?: string[];
-  scope?: string;
-  goal?: string;
-  constraints?: string;
-  existingPlan?: string;
-  task?: string;
-  acceptance?: string;
-  objective?: string;
-}
 
 /**
  * Role jobs are described by `fields` (a flat bag instead of a discriminated union, so MCP and CLI
@@ -67,6 +59,8 @@ export interface StartOptions {
   mode?: JobMode;
   timeoutMinutes?: number;
   continueJob?: string;
+  /** crossreview only: review rounds before it stops, 1 to 5 (default 2). */
+  maxRounds?: number;
 }
 
 type PrimaryField = "question" | "target" | "topic" | "goal" | "task" | "objective";
@@ -77,6 +71,7 @@ const PRIMARY_FIELD: Record<Exclude<JobRole, "custom">, PrimaryField> = {
   plan: "goal",
   implement: "task",
   teamlead: "objective",
+  crossreview: "task",
 };
 
 export const isTerminal = (job: Job) => TERMINAL.includes(job.status);
@@ -94,9 +89,16 @@ function workerCommand(id: string): { command: string; args: string[] } {
 }
 
 /** Renders the prompt a job will send; the builder runs here, in the process that starts the job. */
-function renderPrompt(options: StartOptions, role: JobRole, provider: Provider, mode: JobMode) {
+function renderPrompt(
+  options: StartOptions,
+  role: JobRole,
+  provider: Provider,
+  mode: JobMode,
+  maxRounds: number,
+) {
   if (role === "custom") {
-    if (!options.prompt) throw new Error("A custom job needs a prompt.");
+    if (!options.prompt)
+      throw new Error("A custom job needs a prompt. Run `agentmate jobs start --help`.");
     return options.prompt;
   }
   const primary = PRIMARY_FIELD[role];
@@ -104,7 +106,9 @@ function renderPrompt(options: StartOptions, role: JobRole, provider: Provider, 
   if (!fields[primary] && options.prompt) fields[primary] = options.prompt;
   const required = fields[primary];
   if (!required)
-    throw new Error(`Role ${role} needs a ${primary} (pass fields.${primary} or prompt).`);
+    throw new Error(
+      `Role ${role} needs a ${primary} (pass fields.${primary} or prompt). Run \`agentmate jobs start --help\`.`,
+    );
   const { context, constraints } = fields;
   switch (role) {
     case "ask":
@@ -131,10 +135,18 @@ function renderPrompt(options: StartOptions, role: JobRole, provider: Provider, 
       return buildTeamleadPrompt({
         objective: required,
         provider,
-        otherProvider: provider === "codex" ? "claude" : "codex",
+        otherProvider: otherAgent(provider),
         canWrite: mode === "write",
         constraints,
         context,
+      });
+    case "crossreview":
+      return buildCrossreviewPrompt({
+        task: required,
+        acceptance: fields.acceptance,
+        implementer: provider,
+        reviewer: otherAgent(provider),
+        maxRounds,
       });
   }
 }
@@ -145,27 +157,62 @@ function currentDepth(): number {
   return Number.isFinite(depth) && depth > 0 ? depth : 0;
 }
 
+/** What the crossreview worker needs to brief its steps: the task, acceptance criteria and context. */
+function crossreviewFields(options: StartOptions): RoleFields {
+  const { acceptance, context } = options.fields ?? {};
+  return {
+    task: options.fields?.task || options.prompt || "",
+    ...(acceptance ? { acceptance } : {}),
+    ...(context ? { context } : {}),
+  };
+}
+
 export function startJob(options: StartOptions): Job {
   const role = options.role ?? "custom";
   const depth = currentDepth();
   if (depth >= MAX_DELEGATION_DEPTH)
     throw new Error(
-      `Delegation depth limit reached (${depth} >= ${MAX_DELEGATION_DEPTH}); a delegated worker cannot start more jobs.`,
+      `Delegation depth limit reached (${depth} >= ${MAX_DELEGATION_DEPTH}); a delegated worker cannot start more jobs. Report back to your parent instead.`,
     );
-  if (role === "teamlead" && depth > 0)
-    throw new Error("Only a top-level session can start a teamlead job.");
+  if ((role === "teamlead" || role === "crossreview") && depth > 0)
+    throw new Error(
+      `Only a top-level session can start a ${role} job. Start it from the host session with \`agentmate jobs start\`.`,
+    );
+  if (options.maxRounds !== undefined) {
+    if (role !== "crossreview") throw new Error("maxRounds applies only to the crossreview role.");
+    if (
+      !Number.isInteger(options.maxRounds) ||
+      options.maxRounds < 1 ||
+      options.maxRounds > MAX_ROUNDS_LIMIT
+    )
+      throw new Error(`maxRounds must be a whole number from 1 to ${MAX_ROUNDS_LIMIT}.`);
+  }
+  if (role === "crossreview" && options.continueJob)
+    throw new Error(
+      "A crossreview job cannot continue another job; it continues its own implementer sessions.",
+    );
   const parentJob = process.env["AGENTMATE_JOB_ID"] || undefined;
 
   let provider = options.provider;
   let sessionNote: string | undefined;
   if (options.continueJob) {
     const prior = readJob(options.continueJob);
-    if (!prior) throw new Error(`Cannot continue unknown job: ${options.continueJob}`);
+    if (!prior)
+      throw new Error(
+        `Cannot continue unknown job: ${options.continueJob}. Run \`agentmate jobs list\`.`,
+      );
     if (!isTerminal(prior))
-      throw new Error(`Job ${prior.id} is still ${prior.status}; wait for it before continuing.`);
-    if (!prior.sessionId) throw new Error(`Job ${prior.id} has no session to continue.`);
+      throw new Error(
+        `Job ${prior.id} is still ${prior.status}; wait for it before continuing. Run \`agentmate jobs wait ${prior.id}\`.`,
+      );
+    if (!prior.sessionId)
+      throw new Error(
+        `Job ${prior.id} has no session to continue. Run \`agentmate jobs result ${prior.id}\`.`,
+      );
     if (prior.provider !== provider)
-      throw new Error(`Job ${prior.id} ran on ${prior.provider}, not ${provider}.`);
+      throw new Error(
+        `Job ${prior.id} ran on ${prior.provider}, not ${provider}. Start the follow-up with \`agentmate jobs start ${prior.provider}\`.`,
+      );
     provider = prior.provider;
     sessionNote = prior.id;
   }
@@ -174,11 +221,16 @@ export function startJob(options: StartOptions): Job {
     (options.timeoutMinutes ?? DEFAULT_TIMEOUT_MS / 60_000) * 60_000,
     MAX_TIMEOUT_MS,
   );
-  if (role === "implement" && options.mode === "read-only")
-    throw new Error("Role implement needs mode write.");
-  const mode = options.mode ?? (role === "implement" ? "write" : "read-only");
+  const writes = role === "implement" || role === "crossreview";
+  if (writes && options.mode === "read-only")
+    throw new Error(`Role ${role} needs mode write. Drop --mode or pass --mode write.`);
+  const mode = options.mode ?? (writes ? "write" : "read-only");
   if (mode === "write" && process.env["AGENTMATE_PARENT_MODE"] === "read-only")
-    throw new Error("The parent job is read-only, so this job cannot use mode write.");
+    throw new Error(
+      "The parent job is read-only, so this job cannot use mode write. Start it read-only or from the host session.",
+    );
+  const maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS;
+  const prompt = renderPrompt(options, role, provider, mode, maxRounds);
   const job: Job = {
     id: newJobId(),
     provider,
@@ -186,13 +238,19 @@ export function startJob(options: StartOptions): Job {
     role,
     depth,
     ...(parentJob ? { parentJob } : {}),
-    prompt: renderPrompt(options, role, provider, mode),
+    prompt,
     cwd: options.cwd ?? process.cwd(),
     ...(options.model ? { model: options.model } : {}),
     timeoutMs,
     status: "queued",
     createdAt: new Date().toISOString(),
     ...(sessionNote ? { continuesJob: sessionNote } : {}),
+    ...(role === "crossreview"
+      ? {
+          fields: crossreviewFields(options),
+          workflow: { maxRounds, rounds: [] },
+        }
+      : {}),
   };
   writeJob(job);
 
@@ -222,14 +280,15 @@ export function startJob(options: StartOptions): Job {
 /** Reads a job and repairs one whose worker died without recording an outcome. */
 export function getJob(id: string): Job {
   const job = readJob(id);
-  if (!job) throw new Error(`Job not found: ${id}`);
+  if (!job) throw new Error(`Job not found: ${id}. Run \`agentmate jobs list\`.`);
   if (isTerminal(job)) return job;
   const age = Date.now() - Date.parse(job.createdAt);
   const workerGone = job.workerPid ? !isAlive(job.workerPid) : age > SPAWN_GRACE_MS * 2;
   if (workerGone && age > SPAWN_GRACE_MS) {
     return updateJob(id, {
       status: "error",
-      error: "Worker process exited without recording a result.",
+      error:
+        "Worker process exited without recording a result. Run `agentmate doctor` and retry the job.",
       finishedAt: new Date().toISOString(),
     });
   }
@@ -257,18 +316,36 @@ function tail(file: string, maxChars: number): string {
 export interface Observation {
   job: Job;
   children: Job[];
+  events: JobEvent[];
   stdoutTail: string;
   stderrTail: string;
 }
 
-/** Snapshot of recent activity; a running job is left running. */
-export function observeJob(id: string, maxChars = 3_000): Observation {
+export interface ObserveOptions {
+  /** Include the raw stdout/stderr tails (empty strings otherwise). */
+  raw?: boolean | undefined;
+  /** Event levels to show; defaults to important + status. */
+  levels?: EventLevel[] | undefined;
+  /** Newest N events, default 30. */
+  limit?: number | undefined;
+}
+
+const DEFAULT_OBSERVE_LEVELS: EventLevel[] = ["important", "status"];
+const DEFAULT_OBSERVE_EVENTS = 30;
+const RAW_TAIL_CHARS = 3_000;
+
+/** Snapshot of recent activity; a running job is left running. Raw output is opt-in. */
+export function observeJob(id: string, options: ObserveOptions = {}): Observation {
   const job = getJob(id);
   return {
     job,
     children: childJobs(id),
-    stdoutTail: tail(stdoutFile(id), maxChars),
-    stderrTail: tail(stderrFile(id), maxChars),
+    events: readEvents(id, {
+      levels: options.levels ?? DEFAULT_OBSERVE_LEVELS,
+      limit: options.limit ?? DEFAULT_OBSERVE_EVENTS,
+    }),
+    stdoutTail: options.raw ? tail(stdoutFile(id), RAW_TAIL_CHARS) : "",
+    stderrTail: options.raw ? tail(stderrFile(id), RAW_TAIL_CHARS) : "",
   };
 }
 
@@ -281,14 +358,29 @@ export function readResult(id: string): { job: Job; text: string | null } {
   }
 }
 
+/** The worker leads its own process group (spawned detached), so signalling the group reaches its agent CLI too. */
+function signalGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ESRCH" && code !== "EPERM") throw error;
+    try {
+      process.kill(pid, signal);
+    } catch (fallback) {
+      if ((fallback as NodeJS.ErrnoException).code !== "ESRCH") throw fallback;
+    }
+  }
+}
+
 export async function cancelJob(id: string): Promise<Job> {
   const job = getJob(id);
   if (isTerminal(job)) return job;
   if (job.workerPid && isAlive(job.workerPid)) {
-    process.kill(job.workerPid, "SIGTERM");
+    signalGroup(job.workerPid, "SIGTERM");
     const settled = await waitJob(id, 8_000);
     if (isTerminal(settled)) return settled;
-    process.kill(job.workerPid, "SIGKILL");
+    signalGroup(job.workerPid, "SIGKILL");
   }
   return updateJob(id, { status: "canceled", finishedAt: new Date().toISOString() });
 }

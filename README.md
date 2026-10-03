@@ -9,7 +9,7 @@
 
 **AI agents work better together.**
 
-AgentMate connects AI coding agents so they can collaborate, delegate, review, and help each other complete tasks. Give your AI agent a teammate: let [Claude Code](https://code.claude.com/) and the [Codex CLI](https://developers.openai.com/codex/cli/) ask, review, research, plan, implement and lead each other as background jobs.
+AgentMate connects AI coding agents so they can collaborate, delegate, review, and help each other complete tasks. Give your AI agent a teammate: let [Claude Code](https://code.claude.com/) and the [Codex CLI](https://developers.openai.com/codex/cli/) ask, review, research, plan, implement, cross-review and lead each other as background jobs.
 
 ![Two developer environments connected by a secure bridge.](./assets/illustrations/cli-bridge.png)
 
@@ -17,7 +17,7 @@ AgentMate connects AI coding agents so they can collaborate, delegate, review, a
 
 - **A second opinion from a different model.** Ask the other CLI a question, or have it review your diff, before you commit to an approach. It reads your repository; it does not share your session's assumptions.
 - **Work that does not block you.** Every task is a durable background job with an id. The session that started it can end, and the result is still there.
-- **Roles instead of raw prompts.** `ask`, `review`, `research`, `plan`, `implement` and `teamlead` each send a tuned prompt with a defined output format, and each runs with the narrowest permissions that role needs. Jobs are read-only unless you say otherwise.
+- **Roles instead of raw prompts.** `ask`, `review`, `research`, `plan`, `implement` and `teamlead` each send a tuned prompt with a defined output format, and each runs with the narrowest permissions that role needs. Jobs are read-only unless you say otherwise. `crossreview` chains two of them: one agent implements, the other reviews, and the loop runs without you relaying anything.
 
 ## 60-second quickstart
 
@@ -97,13 +97,14 @@ Examples use Claude Code's `/mate:...`; in Codex use `$mate:...`. The provider (
 | Research a topic        | `/mate:research claude How does auth work in this repo? Compare the options.`     |
 | Implement a scoped fix  | `/mate:implement codex Fix the flaky retry test in test/queue.test.ts`            |
 | Run a team lead         | `/mate:teamlead claude Audit error handling and propose fixes; delegate to codex` |
+| Implement, then cross-review | `/mate:crossreview codex Add a --dry-run flag to the export command`        |
 | Job ops                 | `/mate:jobs list`, `/mate:jobs result <id>`, `/mate:jobs cancel <id>`         |
 
-`implement` edits files, so use it only when you authorize that. The others are read-only.
+`implement` and `crossreview` edit files, so use them only when you authorize that. The others are read-only.
 
 ## What you can do
 
-Six roles, each reachable as a skill, an MCP tool and a CLI command. `<provider>` is `codex` or `claude`; pick the one that is not the host you are in.
+Seven roles, each reachable as a skill, an MCP tool and a CLI command. `<provider>` is `codex` or `claude`; pick the one that is not the host you are in.
 
 | Role        | Skill       | MCP tool           | CLI                                                 | Mode                               |
 | ----------- | ----------- | ------------------ | --------------------------------------------------- | ---------------------------------- |
@@ -113,6 +114,7 @@ Six roles, each reachable as a skill, an MCP tool and a CLI command. `<provider>
 | `plan`      | `plan`      | `mate_plan`      | `jobs start <provider> "<prompt>" --role plan`      | read-only                          |
 | `implement` | `implement` | `mate_implement` | `jobs start <provider> "<prompt>" --role implement` | write (always)                     |
 | `teamlead`  | `teamlead`  | `mate_teamlead`  | `jobs start <provider> "<prompt>" --role teamlead`  | read-only by default, write opt-in |
+| `crossreview` | `crossreview` | `mate_crossreview` | `jobs start <provider> "<task>" --role crossreview [--max-rounds N]` | write on the implementer, read-only review |
 
 `mate_ask` waits for the answer (up to 120 seconds by default) and returns it in the same call. The other role tools return a job id immediately unless you pass `waitSeconds`.
 
@@ -130,7 +132,7 @@ Every command in the table works without MCP. Prefix CLI commands with `npx -y a
 
 ## Slash commands
 
-Seven roles (`ask`, `review`, `research`, `plan`, `implement`, `teamlead` and `jobs`) can be started as a command in either host. Both hosts take the provider first, then the request.
+Eight commands (`ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `crossreview` and `jobs`) can be started as a command in either host. Both hosts take the provider first, then the request.
 
 | Host and style     | How to invoke                    | How to get it                                                             |
 | ------------------ | -------------------------------- | ------------------------------------------------------------------------- |
@@ -169,6 +171,36 @@ The team lead calls the CLI pinned to the installed version (`npx -y agentmate@<
 
 Use a team lead only when the work has several independent parts. One question or one review is cheaper as `ask` or `review`.
 
+## Cross-review
+
+Cross-review lets one agent implement and the other review, so you do not copy a diff between sessions. It is a workflow job: the worker does not call a CLI itself, it runs the steps as child jobs. `provider` implements; the other agent reviews. Start it with `mate_crossreview` or the `crossreview` skill (`/mate:crossreview codex <task>`), and follow it with `mate_observe`.
+
+```text
+implement (provider, write)  ->  review (other agent, read-only)  ->  verdict
+        ^                                                              |
+        |            Verdict: request-changes, rounds left             |
+        `---- implement --continue with the findings  <---------------'
+                                                      |
+                              Verdict: approve  ->  done
+```
+
+Each round has two child jobs on the same working directory (`depth` 1, `parentJob` = the workflow id). The implementer runs in write mode; from round 2 it continues its own session with the reviewer's findings. The reviewer reads the uncommitted `git diff` (and `git status` for new files) read-only, with the implementer's report as context, and must end its review with the line `Verdict: approve` or `Verdict: request-changes`.
+
+Stop rules:
+
+- `Verdict: approve` ends the workflow as `done`.
+- `Verdict: request-changes` starts another round while rounds remain (`maxRounds`, 1 to 5, default 2). When the budget is used up the workflow is `done` and the report says so; the latest edits stay in the working tree.
+- No clear verdict ends the workflow at once as `done` with a `## Needs human` section; it never loops blindly.
+- A child that ends `error`, `timeout` or `canceled` ends the workflow as `error`, naming that child's id and error. The workflow's own `--timeout` is the overall deadline, and `jobs cancel <id>` on the workflow also cancels its running child.
+
+The report (`jobs result <id>`) has `## Task`, `## Rounds` (round, implement job, review job, verdict), `## Final review`, `## Changes`, `## Needs human` when it applies, and `## Next steps` with the `jobs result <child-id>` commands. `jobs events <id>` lists one `important` event per step, such as `round 1: review verdict approve`.
+
+```bash
+npx -y agentmate jobs start codex "Add a --dry-run flag to the export command" --role crossreview --max-rounds 3
+```
+
+It edits files, so start it only when you authorize that, and keep one write job per working tree. Only a top-level session can start it, like a team lead. `--model` applies to the implementer only.
+
 ## How it works
 
 AgentMate treats delegated work as a durable background job:
@@ -181,11 +213,14 @@ AgentMate treats delegated work as a durable background job:
 
 The jobs MCP server (`npx -y agentmate serve jobs`, registered by the plugin) and the `jobs` CLI share one runtime. State lives under `~/.agentmate`. A detached worker runs the provider CLI and records the output, so an expired wait never stops a job.
 
+Every job also writes an append-only event log (`events.jsonl`). Events carry one of three levels: `important` (the agent's messages, errors, start and finish), `status` (files changed) and `fyi` (commands run). `mate_observe` and `jobs observe` show only `important` and `status` events, so progress checks stay small; ask for `fyi` with `levels` / `--level`, read the full log with `mate_events` / `jobs events <id>`, and pull the raw stdout/stderr tails only when needed with `raw` / `--raw`. See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the runtime, adapters and event model.
+
 | Capability           | MCP                                                                                                                    | CLI                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| Start work           | `mate_start`, `mate_ask`, `mate_review`, `mate_research`, `mate_plan`, `mate_implement`, `mate_teamlead` | `jobs start`, `jobs ask`             |
+| Start work           | `mate_start`, `mate_ask`, `mate_review`, `mate_research`, `mate_plan`, `mate_implement`, `mate_teamlead`, `mate_crossreview` | `jobs start`, `jobs ask`             |
 | Wait or fetch output | `mate_wait`, `mate_result`                                                                                         | `jobs wait <id>`, `jobs result <id>` |
-| Request progress     | `mate_observe`                                                                                                       | `jobs observe <id>`                  |
+| Request progress     | `mate_observe`                                                                                                       | `jobs observe <id> [--raw]`          |
+| Read job events      | `mate_events`                                                                                                        | `jobs events <id> [--follow]`        |
 | Cancel work          | `mate_cancel`                                                                                                        | `jobs cancel <id>`                   |
 | Find jobs            | `mate_list`                                                                                                          | `jobs list [--cwd] [--parent <id>]`  |
 
@@ -230,6 +265,16 @@ npx -y agentmate jobs observe <job-id>
 npx -y agentmate jobs wait <job-id> --timeout 10m
 ```
 
+### Cross-review a change
+
+```bash
+npx -y agentmate jobs start codex "Add a --dry-run flag to the export command" --role crossreview --max-rounds 3
+npx -y agentmate jobs wait <job-id> --timeout 10m
+npx -y agentmate jobs result <job-id>
+```
+
+Codex implements, Claude reviews the uncommitted diff, and the report lists the rounds. Use `jobs events <job-id>` for the step-by-step log.
+
 ### Continue, inspect, or cancel a job
 
 An expired wait does not stop work. Repeat `wait` for the same ID, inspect output when progress is requested, or collect a stored result after an interrupted terminal session.
@@ -272,7 +317,8 @@ npx -y agentmate jobs start codex "Address the highest-priority finding." --cont
   The read-only allowlist is `Read`, `Grep`, `Glob`, `git diff`, `git log`, `git show` and `git status`. The write-mode allowlist adds `pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add` and `git commit` so a worker can run verification commands. Extend it with the environment variable `AGENTMATE_CLAUDE_WRITE_TOOLS`, a comma-separated list of Claude permission patterns. A Claude team lead cannot run `setup` or `install`, only `agentmate jobs *`.
 
 - **A Codex team lead is not sandboxed.** It runs with `--sandbox danger-full-access` in either mode, because it must spawn worker processes and write job state. "Read-only" for a Codex lead means that the runtime refuses any `write` child job (a read-only parent cannot start write children) and that the prompt forbids edits; it does not restrict the lead's own process. Lead with `claude` when this matters.
-- **Delegation depth limit of 2.** A session starts a team lead (depth 0), the lead starts child jobs (depth 1), and children cannot start jobs. The runtime refuses a third level and refuses a team lead started by a worker.
+- **Delegation depth limit of 2.** A session starts a team lead (depth 0), the lead starts child jobs (depth 1), and children cannot start jobs. The runtime refuses a third level and refuses a team lead or a cross-review started by a worker.
+- **Cross-review writes only through its implementer.** The `implement` step gets the `implement` permissions above; the `review` step is read-only. The workflow job itself calls no CLI.
 - **One `write` job per working tree at a time.** Two writers in one tree collide. The skills and the team lead prompt follow this rule; use separate git worktrees for parallel edits.
 - **The delegator owns acceptance.** Job output is an input to your judgment. Verify claims and run the tests before you merge anything a worker produced.
 - **No hidden configuration changes.** The plugin registers its own MCP server. The fallback path runs the CLI and never edits host configuration. Do not put secrets in briefings: prompts and results are stored in plain text under `~/.agentmate`, in files created with owner-only permissions (`0600` for files, `0700` for directories).
@@ -288,7 +334,7 @@ Start with `npx -y agentmate doctor`. It prints `ok`, `warn` or `fail` for each 
 | `wait` or `ask` exits `2`                           | The job is still running. Repeat `jobs wait <id>`; do not start a duplicate.                                                           |
 | A job shows `running` but nothing happens           | The worker process died. `doctor` lists the ids of these jobs; `jobs cancel <id>` clears them.                                         |
 | `Delegation depth limit reached`                    | A job started by a worker tried to start another job (a third level). Return the findings to the session that started the job instead. |
-| `Only a top-level session can start a teamlead job` | A worker tried to start a team lead. Start it from your own session.                                                                   |
+| `Only a top-level session can start a teamlead job` | A worker tried to start a team lead (or a cross-review: `... a crossreview job`). Start it from your own session.                      |
 | Duplicated or conflicting tools                     | A legacy `setup` install is still registered. `doctor` flags it; see the migration section of the guide.                               |
 
 ## Requirements
@@ -298,6 +344,8 @@ Start with `npx -y agentmate doctor`. It prints `ok`, `warn` or `fail` for each 
 - The destination CLI available on the initiating host's `PATH`
 
 ## Legacy setup
+
+> **Deprecated, removed in 0.6.0.** `npx -y agentmate setup` and the synchronous servers `serve codex` and `serve claude` still work in 0.5.0 but print a deprecation warning to stderr, and 0.6.0 removes them. Install the plugin (`mate@agentmate`) and use the `mate_*` job tools instead.
 
 `npx -y agentmate setup` remains available for existing installations that use the synchronous bridge servers or the legacy `/codex` and `/claude` shortcuts. New installations should use the plugin. The [installation guide](./docs/INSTALL_FOR_AGENTS.md#move-from-a-legacy-setup-install) explains how to remove only the legacy entries that belong to AgentMate.
 

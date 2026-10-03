@@ -1,14 +1,15 @@
 ---
 description: List, observe, collect or cancel background jobs started through AgentMate.
-argument-hint: "[list|observe|result|cancel] [id]"
+argument-hint: "[list|observe|events|result|cancel] [id]"
 ---
 
 Request: $ARGUMENTS
 
-`$1` is the verb (`list`, `observe`, `result` or `cancel`); the rest is the job id. With no verb, list recent jobs.
+`$1` is the verb (`list`, `observe`, `events`, `result` or `cancel`); the rest is the job id. With no verb, list recent jobs.
 
 - `list`: call `mate_list` (optional `cwd`, `limit`, `parent`).
-- `observe <id>`: call `mate_observe` for a non-blocking progress snapshot.
+- `observe <id>`: call `mate_observe` for a non-blocking progress snapshot of filtered events; pass `raw: true` only when the raw stdout/stderr tails are needed.
+- `events <id>`: call `mate_events` for the job's event log (optional `since`, `levels`).
 - `result <id>`: call `mate_result` for the stored output, without waiting.
 - `cancel <id>`: call `mate_cancel`, only when the user asked or the job is clearly stuck.
 

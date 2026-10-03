@@ -2,12 +2,21 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { AgentId } from "../agents/types.js";
 
-export type Provider = "codex" | "claude";
+export type Provider = AgentId;
 export type JobMode = "read-only" | "write";
 export type JobStatus = "queued" | "running" | "done" | "error" | "canceled" | "timeout";
 
-export type JobRole = "custom" | "ask" | "review" | "research" | "plan" | "implement" | "teamlead";
+export type JobRole =
+  | "custom"
+  | "ask"
+  | "review"
+  | "research"
+  | "plan"
+  | "implement"
+  | "teamlead"
+  | "crossreview";
 
 export const JOB_ROLES = [
   "custom",
@@ -17,9 +26,45 @@ export const JOB_ROLES = [
   "plan",
   "implement",
   "teamlead",
+  "crossreview",
 ] as const satisfies readonly JobRole[];
 
 export const TERMINAL: readonly JobStatus[] = ["done", "error", "canceled", "timeout"];
+
+/** Inputs of the role prompt builders; each role reads only the fields it documents. */
+export interface RoleFields {
+  question?: string;
+  context?: string;
+  target?: string;
+  focus?: string;
+  topic?: string;
+  questions?: string[];
+  scope?: string;
+  goal?: string;
+  constraints?: string;
+  existingPlan?: string;
+  task?: string;
+  acceptance?: string;
+  objective?: string;
+}
+
+/** The reviewer's last word on a round; `none` when it gave no clear verdict or the review failed. */
+export type Verdict = "approve" | "request-changes" | "none";
+
+export interface WorkflowRound {
+  implementJob: string;
+  reviewJob: string;
+  verdict: Verdict;
+}
+
+/** Progress of a `crossreview` job: a workflow whose steps are child jobs. */
+export interface Workflow {
+  maxRounds: number;
+  rounds: WorkflowRound[];
+}
+
+export const DEFAULT_MAX_ROUNDS = 2;
+export const MAX_ROUNDS_LIMIT = 5;
 
 export interface Job {
   id: string;
@@ -45,11 +90,16 @@ export interface Job {
   sessionId?: string;
   continuesJob?: string;
   error?: string;
+  /** What a workflow job (crossreview) needs after it is started; other roles leave it unset. */
+  fields?: RoleFields;
+  /** Settings and per-round progress of a crossreview job. */
+  workflow?: Workflow;
 }
 
 /** Jobs live outside any repo so ids resolve from any session or cwd. */
 export function homeDir(): string {
-  return process.env["AGENTMATE_HOME"] ?? path.join(os.homedir(), ".agentmate");
+  const env = process.env["AGENTMATE_HOME"];
+  return env && env.trim() ? env : path.join(os.homedir(), ".agentmate");
 }
 
 export function jobDir(id: string): string {
@@ -80,7 +130,7 @@ function ensureDirs(id: string): void {
 /** Atomic replace: readers never observe a half-written job.json. */
 export function writeJob(job: Job): void {
   ensureDirs(job.id);
-  const tmp = `${jobFile(job.id)}.${process.pid}.tmp`;
+  const tmp = `${jobFile(job.id)}.${process.pid}.${randomBytes(3).toString("hex")}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(job, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, jobFile(job.id));
 }
@@ -112,12 +162,23 @@ export function listJobIds(): string[] {
   }
 }
 
+/** Command line of a process (NUL separators turned into spaces); null where it cannot be read. */
+export function workerCommandLine(pid: number): string | null {
+  try {
+    return fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").join(" ").trim();
+  } catch {
+    return null;
+  }
+}
+
+/** A live pid counts only when, where readable, it is still a worker and not a recycled pid. */
 export function isAlive(pid: number | undefined): boolean {
   if (!pid) return false;
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
+  const cmdline = workerCommandLine(pid);
+  return cmdline === null || cmdline.includes("worker");
 }

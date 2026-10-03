@@ -33,10 +33,10 @@ afterEach(() => {
 });
 
 describe("installClaudeCommands", () => {
-  it("copies the seven templates to ~/.claude/commands for global scope", async () => {
+  it("copies the eight templates to ~/.claude/commands for global scope", async () => {
     const names = await installClaudeCommands("global");
 
-    expect(COMMAND_NAMES).toHaveLength(7);
+    expect(COMMAND_NAMES).toHaveLength(8);
     expect(names).toEqual(COMMAND_NAMES.map((name) => `/${name}`));
     for (const name of COMMAND_NAMES) {
       const installed = readFileSync(join(tmp, ".claude", "commands", `${name}.md`), "utf8");
@@ -73,7 +73,7 @@ describe("installClaudeCommands", () => {
 });
 
 describe("installCodexPrompts", () => {
-  it("copies the seven prompts to $CODEX_HOME/prompts", async () => {
+  it("copies the eight prompts to $CODEX_HOME/prompts", async () => {
     const names = await installCodexPrompts("global");
 
     expect(names).toEqual(COMMAND_NAMES.map((name) => `/prompts:${name}`));

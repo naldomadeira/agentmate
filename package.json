@@ -1,6 +1,6 @@
 {
   "name": "agentmate",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "AI agents work better together. AgentMate connects AI coding agents so they can collaborate, delegate, review, and help each other complete tasks.",
   "keywords": [
     "agents",

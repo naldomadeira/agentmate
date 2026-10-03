@@ -123,7 +123,7 @@ npx -y agentmate doctor
 
 ## Move from a legacy `setup` install
 
-`npx -y agentmate setup` remains supported for existing users, but plugins are the supported installation path. Legacy setup may have registered synchronous servers and installed `/codex` and `/claude` shortcuts. `doctor` reports these registrations as warnings.
+`npx -y agentmate setup` and the synchronous servers (`serve codex`, `serve claude`) are deprecated: they still work in 0.5.0, print a deprecation warning to stderr, and are removed in 0.6.0. Plugins are the supported installation path. Legacy setup may have registered synchronous servers and installed `/codex` and `/claude` shortcuts. `doctor` reports these registrations as warnings.
 
 Before removing anything, inspect `claude mcp list`, `claude plugin list`, `codex plugin list`, and the candidate files. Remove only entries that point exactly to `agents-bridge-mcp serve codex` or `agents-bridge-mcp serve claude` (or `agentmate serve ...`):
 

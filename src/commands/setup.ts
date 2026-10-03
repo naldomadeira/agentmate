@@ -1,4 +1,5 @@
 import { defineCommand } from "citty";
+import { warnLegacyDeprecated } from "../lib/deprecation.js";
 import {
   installClaudeAgent,
   installClaudeSkill,
@@ -25,6 +26,7 @@ export default defineCommand({
     "skip-extras": { type: "boolean", description: "Skip installing skill and agent" },
   },
   async run({ args }) {
+    warnLegacyDeprecated();
     const target = args.target ?? "both";
 
     if (target !== "claude" && target !== "codex" && target !== "both") {

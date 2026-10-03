@@ -1,0 +1,299 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { cancelJob, childJobs, getJob, readResult, startJob, waitJob } from "../src/jobs/api.js";
+import { parseVerdict } from "../src/jobs/crossreview.js";
+import { readEvents } from "../src/jobs/events.js";
+import { renderList } from "../src/jobs/render.js";
+import { readJob, type Job } from "../src/jobs/store.js";
+
+// A stand-in for the codex CLI (the implementer). It echoes its whole prompt and arguments into the
+// agent message, so the task text travels to the reviewer through the review `context`.
+const FAKE_CODEX = `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const prompt = args[args.length - 1];
+const emit = (e) => console.log(JSON.stringify(e));
+if (prompt.includes("FAIL-IMPLEMENT")) { console.error("implementer boom"); process.exit(1); }
+emit({ type: "thread.started", thread_id: "t-impl" });
+if (prompt.includes("SLEEP-IMPLEMENT")) setInterval(() => {}, 1000);
+else {
+  const env = " depth=" + process.env.AGENTMATE_DEPTH + " parentMode=" + process.env.AGENTMATE_PARENT_MODE;
+  emit({ type: "item.completed", item: { id: "i", type: "agent_message", text: "IMPL args=" + args.slice(0, -1).join(" ") + env + "\\n" + prompt } });
+}
+`;
+
+// A stand-in for the claude CLI (the reviewer). The whole prompt selects the verdict.
+const FAKE_CLAUDE = `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const prompt = args[args.length - 1];
+if (prompt.includes("FAIL-REVIEW")) { console.error("reviewer boom"); process.exit(1); }
+let verdict = null;
+if (prompt.includes("NO-VERDICT")) verdict = null;
+else if (prompt.includes("ALWAYS-REQUEST")) verdict = "request-changes";
+else if (prompt.includes("FIXED-NOW")) verdict = "approve";
+else if (prompt.includes("REQUEST-ONCE")) verdict = "request-changes";
+else if (prompt.includes("ROUND1-APPROVE")) verdict = "approve";
+let text = "Findings: src/a.ts:1 needs work.\\n";
+if (verdict === "request-changes") text += "Please fix src/a.ts and say FIXED-NOW.\\n";
+text += verdict ? "Verdict: " + verdict : "I could not decide.";
+console.log(JSON.stringify({ type: "result", result: text, session_id: "s-1" }));
+`;
+
+let home: string;
+const saved = { ...process.env };
+
+beforeAll(() => {
+  home = fs.mkdtempSync(path.join(os.tmpdir(), "abm-crossreview-"));
+  const codex = path.join(home, "fake-codex");
+  const claude = path.join(home, "fake-claude");
+  fs.writeFileSync(codex, FAKE_CODEX, { mode: 0o755 });
+  fs.writeFileSync(claude, FAKE_CLAUDE, { mode: 0o755 });
+  process.env["AGENTMATE_HOME"] = path.join(home, "state");
+  process.env["AGENTMATE_CODEX_BIN"] = codex;
+  process.env["AGENTMATE_CLAUDE_BIN"] = claude;
+  process.env["AGENTMATE_CLI"] = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+  delete process.env["AGENTMATE_DEPTH"];
+  delete process.env["AGENTMATE_JOB_ID"];
+  delete process.env["AGENTMATE_PARENT_MODE"];
+});
+
+afterAll(() => {
+  process.env = saved;
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
+function withEnv(vars: Record<string, string>, fn: () => void): void {
+  const before = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, vars);
+  try {
+    fn();
+  } finally {
+    for (const [k, v] of Object.entries(before)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+const startCrossreview = (task: string, extra: Partial<Parameters<typeof startJob>[0]> = {}) =>
+  startJob({ provider: "codex", role: "crossreview", prompt: task, cwd: home, ...extra });
+
+async function runCrossreview(
+  task: string,
+  extra: Partial<Parameters<typeof startJob>[0]> = {},
+): Promise<{ job: Job; report: string; children: Job[] }> {
+  const started = startCrossreview(task, extra);
+  const job = await waitJob(started.id, 80_000);
+  return { job, report: readResult(started.id).text ?? "", children: childJobs(started.id) };
+}
+
+const eventTexts = (id: string) => readEvents(id).map((event) => event.text);
+
+describe("parseVerdict", () => {
+  it("reads the last verdict line in its accepted spellings", () => {
+    expect(parseVerdict("ok\nVerdict: approve")).toBe("approve");
+    expect(parseVerdict("**Verdict:** request-changes\n")).toBe("request-changes");
+    expect(parseVerdict("  verdict: APPROVE.")).toBe("approve");
+    expect(parseVerdict("**Verdict: approve**")).toBe("approve");
+    expect(parseVerdict("Verdict: request-changes\nmore\nVerdict: approve")).toBe("approve");
+  });
+
+  it("reports none when there is no clear verdict line", () => {
+    expect(parseVerdict("")).toBe("none");
+    expect(parseVerdict("I would approve this")).toBe("none");
+    expect(parseVerdict("3. **Verdict** - approve")).toBe("none");
+    expect(parseVerdict("Verdict: maybe")).toBe("none");
+    expect(parseVerdict("Verdict: approve-with-nits")).toBe("none");
+  });
+});
+
+describe("crossreview start rules", () => {
+  it("is a write workflow job that records its settings and the rendered task", () => {
+    const job = startCrossreview("add a flag", { maxRounds: 3 });
+    expect(job.role).toBe("crossreview");
+    expect(job.mode).toBe("write");
+    expect(job.depth).toBe(0);
+    expect(job.workflow).toEqual({ maxRounds: 3, rounds: [] });
+    expect(job.fields).toMatchObject({ task: "add a flag" });
+    expect(job.prompt).toContain("add a flag");
+    expect(startCrossreview("x").workflow?.maxRounds).toBe(2);
+  });
+
+  it("refuses a crossreview below the top level, like a team lead", () => {
+    withEnv({ AGENTMATE_DEPTH: "1", AGENTMATE_JOB_ID: "x" }, () => {
+      expect(() => startCrossreview("x")).toThrow(
+        "Only a top-level session can start a crossreview job.",
+      );
+    });
+  });
+
+  it("refuses read-only mode, a missing task, bad round counts and rounds on other roles", () => {
+    expect(() => startCrossreview("x", { mode: "read-only" })).toThrow(
+      "Role crossreview needs mode write.",
+    );
+    expect(() => startJob({ provider: "codex", role: "crossreview", cwd: home })).toThrow(/task/);
+    for (const maxRounds of [0, 6, 1.5, Number.NaN])
+      expect(() => startCrossreview("x", { maxRounds })).toThrow(/maxRounds/);
+    expect(() => startJob({ provider: "codex", role: "ask", prompt: "q", maxRounds: 2 })).toThrow(
+      /only to the crossreview role/,
+    );
+    expect(() => startCrossreview("x", { continueJob: "nope" })).toThrow(/cannot continue/i);
+  });
+});
+
+describe("crossreview workflow", () => {
+  it("ends in one round when the reviewer approves", async () => {
+    const { job, report, children } = await runCrossreview("ship it ROUND1-APPROVE", {
+      fields: { acceptance: "tests pass" },
+    });
+    expect(job.status).toBe("done");
+    expect(job.workflow?.rounds).toHaveLength(1);
+    expect(job.workflow?.rounds[0]).toMatchObject({ verdict: "approve" });
+
+    expect(children.map((c) => c.role)).toEqual(["implement", "review"]);
+    expect(children.map((c) => c.provider)).toEqual(["codex", "claude"]);
+    expect(children.map((c) => c.mode)).toEqual(["write", "read-only"]);
+    expect(children.every((c) => c.parentJob === job.id && c.depth === 1)).toBe(true);
+    expect(children.every((c) => c.cwd === home && c.status === "done")).toBe(true);
+    expect(job.workflow?.rounds[0]).toMatchObject({
+      implementJob: children[0]!.id,
+      reviewJob: children[1]!.id,
+    });
+    // acceptance reaches the implementer; the review sees the diff target, the task and the report
+    expect(children[0]!.prompt).toContain("tests pass");
+    expect(children[1]!.prompt).toContain("git diff");
+    expect(children[1]!.prompt).toContain("git status");
+    expect(children[1]!.prompt).toContain("ship it ROUND1-APPROVE");
+    expect(children[1]!.prompt).toContain("IMPL args=");
+    expect(children[1]!.prompt).toContain("depth=2");
+
+    for (const section of [
+      "## Task",
+      "## Rounds",
+      "## Final review",
+      "## Changes",
+      "## Next steps",
+    ])
+      expect(report).toContain(section);
+    expect(report).not.toContain("## Needs human");
+    expect(report).toContain("ship it ROUND1-APPROVE");
+    expect(report).toMatch(/\| 1 \| `[a-z0-9-]+` \| `[a-z0-9-]+` \| approve \|/);
+    expect(report).toContain(`jobs result ${children[0]!.id}`);
+    expect(report).toContain(`jobs result ${children[1]!.id}`);
+    expect(report).toContain("Verdict: approve");
+
+    const texts = eventTexts(job.id);
+    expect(texts).toContain(`round 1: implement started ${children[0]!.id}`);
+    expect(texts).toContain(`round 1: review started ${children[1]!.id}`);
+    expect(texts).toContain("round 1: review verdict approve");
+    const events = readEvents(job.id);
+    expect(events.every((e) => e.job === job.id && e.level === "important")).toBe(true);
+    expect(events.at(-1)?.kind).toBe("finished");
+    expect(renderList([job, ...children])).toContain("crossreview");
+  }, 100_000);
+
+  it("revises after request-changes by continuing the implementer's session", async () => {
+    const { job, report, children } = await runCrossreview("tidy it REQUEST-ONCE");
+    expect(job.status).toBe("done");
+    expect(job.workflow?.rounds.map((r) => r.verdict)).toEqual(["request-changes", "approve"]);
+    expect(children.map((c) => c.role)).toEqual(["implement", "review", "implement", "review"]);
+
+    const [firstImplement, , secondImplement] = children;
+    expect(firstImplement!.continuesJob).toBeUndefined();
+    expect(secondImplement!.continuesJob).toBe(firstImplement!.id);
+    expect(secondImplement!.mode).toBe("write");
+    expect(secondImplement!.prompt).toContain(
+      "Address these review findings, then summarize what changed",
+    );
+    expect(secondImplement!.prompt).toContain("Please fix src/a.ts");
+    const secondText = readResult(secondImplement!.id).text ?? "";
+    expect(secondText).toContain("exec resume t-impl");
+
+    expect(report).toMatch(/\| 1 \|.*\| request-changes \|/);
+    expect(report).toMatch(/\| 2 \|.*\| approve \|/);
+    const texts = eventTexts(job.id);
+    expect(texts).toContain("round 1: review verdict request-changes");
+    expect(texts).toContain("round 2: review verdict approve");
+    expect(texts.some((t) => t.startsWith("round 2: implement started"))).toBe(true);
+  }, 100_000);
+
+  it("stops with the round budget exhausted when changes are still requested", async () => {
+    const { job, report, children } = await runCrossreview("never good ALWAYS-REQUEST", {
+      maxRounds: 2,
+    });
+    expect(job.status).toBe("done");
+    expect(job.workflow?.rounds.map((r) => r.verdict)).toEqual([
+      "request-changes",
+      "request-changes",
+    ]);
+    expect(children).toHaveLength(4);
+    expect(report).toMatch(/round budget exhausted/i);
+    expect(report).toContain("## Final review");
+  }, 100_000);
+
+  it("stops at once for a human when the reviewer gives no verdict", async () => {
+    const { job, report, children } = await runCrossreview("vague NO-VERDICT");
+    expect(job.status).toBe("done");
+    expect(job.workflow?.rounds).toHaveLength(1);
+    expect(job.workflow?.rounds[0]?.verdict).toBe("none");
+    expect(children).toHaveLength(2); // no second round
+    expect(report).toContain("## Needs human");
+    expect(report).toMatch(/no (clear )?verdict/i);
+    expect(eventTexts(job.id).some((t) => t.startsWith("round 1: review verdict none"))).toBe(true);
+  }, 100_000);
+
+  it("fails the workflow with the child's id and error when the implementer fails", async () => {
+    const { job, report, children } = await runCrossreview("broken FAIL-IMPLEMENT");
+    expect(job.status).toBe("error");
+    expect(children).toHaveLength(1);
+    expect(children[0]!.status).toBe("error");
+    expect(job.error).toContain(children[0]!.id);
+    expect(job.error).toContain("implementer boom");
+    expect(report).toContain(children[0]!.id);
+    expect(report).toContain("implementer boom");
+    expect(report).toContain("## Rounds");
+    expect(eventTexts(job.id).some((t) => t.includes("implementer boom"))).toBe(true);
+  }, 100_000);
+
+  it("fails the workflow when the reviewer fails, keeping the round", async () => {
+    const { job, children } = await runCrossreview("broken FAIL-REVIEW");
+    expect(job.status).toBe("error");
+    expect(children.map((c) => c.status)).toEqual(["done", "error"]);
+    expect(job.error).toContain(children[1]!.id);
+    expect(job.error).toContain("reviewer boom");
+    expect(job.workflow?.rounds).toEqual([
+      { implementJob: children[0]!.id, reviewJob: children[1]!.id, verdict: "none" },
+    ]);
+  }, 100_000);
+
+  it("cancels its running child when the workflow is canceled", async () => {
+    const started = startCrossreview("long SLEEP-IMPLEMENT");
+    let child: Job | undefined;
+    for (let i = 0; i < 200 && !child; i++) {
+      child = childJobs(started.id)[0];
+      if (!child) await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    expect(child).toBeDefined();
+    // let the implementer's worker actually start
+    for (let i = 0; i < 100 && getJob(child!.id).status !== "running"; i++)
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const canceled = await cancelJob(started.id);
+    expect(canceled.status).toBe("canceled");
+    expect(getJob(child!.id).status).toBe("canceled");
+    expect(readResult(started.id).text).toContain("## Rounds");
+  }, 100_000);
+
+  it("ends as timeout at its own deadline and cancels the running child", async () => {
+    const { job, children } = await runCrossreview("long SLEEP-IMPLEMENT", {
+      timeoutMinutes: 0.1,
+    });
+    expect(job.status).toBe("timeout");
+    expect(job.error).toMatch(/deadline/);
+    expect(children).toHaveLength(1);
+    expect(["canceled", "timeout"]).toContain(children[0]!.status);
+    expect(readJob(job.id)?.finishedAt).toBeDefined();
+  }, 100_000);
+});
