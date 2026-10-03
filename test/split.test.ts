@@ -76,15 +76,17 @@ let home: string;
 let repo: string;
 const saved = { ...process.env };
 
+/** A fixed identity, so commits and merges work on machines (CI) without a git user configured. */
+const gitIdentity = {
+  GIT_AUTHOR_NAME: "t",
+  GIT_AUTHOR_EMAIL: "t@example.com",
+  GIT_COMMITTER_NAME: "t",
+  GIT_COMMITTER_EMAIL: "t@example.com",
+};
+
 function makeRepo(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
-  const env = {
-    ...process.env,
-    GIT_AUTHOR_NAME: "t",
-    GIT_AUTHOR_EMAIL: "t@example.com",
-    GIT_COMMITTER_NAME: "t",
-    GIT_COMMITTER_EMAIL: "t@example.com",
-  };
+  const env = { ...process.env, ...gitIdentity };
   const run = (...args: string[]) => execFileSync("git", args, { cwd: dir, env, stdio: "pipe" });
   run("init", "-q");
   fs.writeFileSync(path.join(dir, "README.md"), "hello\n");
@@ -101,7 +103,11 @@ function freshRepo(): string {
 }
 
 const git = (cwd: string, ...args: string[]) =>
-  execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, ...gitIdentity },
+  }).trim();
 
 beforeAll(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), "abm-split-"));

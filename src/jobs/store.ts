@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -228,10 +229,23 @@ export function listJobIds(): string[] {
   }
 }
 
-/** Command line of a process (NUL separators turned into spaces); null where it cannot be read. */
+/**
+ * Command line of a process (NUL separators turned into spaces): from /proc on Linux, from `ps`
+ * elsewhere (macOS has no /proc); null where neither can read it.
+ */
 export function workerCommandLine(pid: number): string | null {
   try {
     return fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").join(" ").trim();
+  } catch {
+    // fall through to ps
+  }
+  try {
+    const line = execFileSync("ps", ["-o", "command=", "-p", String(pid)], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+    }).trim();
+    return line || null;
   } catch {
     return null;
   }
