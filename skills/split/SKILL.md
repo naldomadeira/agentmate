@@ -45,6 +45,7 @@ goal -> plan (1..maxParts parts, closed interfaces, no shared files)
 
 ## Rules
 
+- When you resume a turn with jobs in progress, call `mate_inbox` before `mate_wait`: it reports what finished or failed since you last looked.
 - Only a top-level session can start it; a worker cannot. `mate_cancel` stops the workflow and its running children.
 - It costs a plan, one job per part and one review per part. For one change use `implement`; for one opinion use `review`.
 - In write mode run one split per working tree at a time and do not edit the repository meanwhile.

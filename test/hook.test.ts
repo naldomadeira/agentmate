@@ -1,6 +1,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -256,5 +257,201 @@ describe("SessionStart hook", () => {
 
     expect(text).toContain("0 running");
     expect(text).toContain("1 stale");
+  });
+});
+
+const promptHook = resolve(import.meta.dirname, "..", "hooks", "user-prompt-submit.mjs");
+
+function runPromptHook(env: Record<string, string> = {}, input: unknown = { cwd }) {
+  const result = spawnSync(process.execPath, [promptHook], {
+    input: JSON.stringify(input),
+    encoding: "utf8",
+    env: { ...process.env, AGENTMATE_HOME: home, ...env },
+  });
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+}
+
+function inboxLine(fields: Record<string, unknown>): void {
+  mkdirSync(home, { recursive: true });
+  appendFileSync(
+    join(home, "inbox.jsonl"),
+    `${JSON.stringify({
+      ts: ago(60_000),
+      job: "job-1",
+      cwd,
+      provider: "codex",
+      role: "review",
+      kind: "finished",
+      text: "done · 12s",
+      ...fields,
+    })}\n`,
+  );
+}
+
+const promptStamp = () =>
+  join(home, "hooks", `${createHash("sha1").update(cwd).digest("hex")}.prompt.stamp`);
+
+function cursorOf(dir: string): string | null {
+  try {
+    const file = join(
+      home,
+      "inbox-cursors",
+      `${createHash("sha1").update(dir).digest("hex")}.json`,
+    );
+    return (JSON.parse(readFileSync(file, "utf8")) as { lastTs: string }).lastTs;
+  } catch {
+    return null;
+  }
+}
+
+describe("UserPromptSubmit hook", () => {
+  it("prints the unread inbox entries of this cwd as additionalContext and advances the cursor", () => {
+    const t1 = ago(50_000);
+    const t2 = ago(40_000);
+    inboxLine({ ts: t1, job: "job-1", text: "done · 12s" });
+    inboxLine({
+      ts: t2,
+      job: "job-2",
+      provider: "claude",
+      role: "implement",
+      kind: "error",
+      text: "boom",
+    });
+    inboxLine({ ts: ago(30_000), job: "foreign", cwd: other });
+
+    const { status, stdout } = runPromptHook();
+
+    expect(status).toBe(0);
+    const out = JSON.parse(stdout) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+    };
+    expect(out.hookSpecificOutput.hookEventName).toBe("UserPromptSubmit");
+    const text = out.hookSpecificOutput.additionalContext;
+    expect(text.startsWith("AgentMate inbox: 2 new")).toBe(true);
+    expect(text).toContain("job-1 review/codex finished");
+    expect(text).toContain("job-2 implement/claude error: boom");
+    expect(text).not.toContain("foreign");
+    expect(text).toContain("agentmate jobs result <id>");
+    expect(cursorOf(cwd)).toBe(t2);
+    expect(existsSync(promptStamp())).toBe(true);
+  });
+
+  it("stays silent inside the 10 s cooldown, then reports what arrived once it passed", () => {
+    inboxLine({ ts: ago(50_000), job: "job-1" });
+    expect(runPromptHook().stdout).not.toBe("");
+
+    inboxLine({ ts: ago(1_000), job: "job-2" });
+    expect(runPromptHook().stdout).toBe("");
+
+    writeFileSync(promptStamp(), ago(11_000));
+    const text = (JSON.parse(runPromptHook().stdout) as any).hookSpecificOutput.additionalContext;
+    expect(text).toContain("job-2");
+    expect(text).not.toContain("job-1");
+    expect(runPromptHook()).toMatchObject({ status: 0, stdout: "" });
+  });
+
+  it("shows up to 5 entries and leaves the rest unread", () => {
+    for (let i = 1; i <= 7; i++) inboxLine({ ts: ago((20 - i) * 1000), job: `job-${i}` });
+
+    const text = (JSON.parse(runPromptHook().stdout) as any).hookSpecificOutput.additionalContext;
+
+    expect(text).toContain("5 new");
+    expect(text).toContain("job-1 ");
+    expect(text).toContain("job-5 ");
+    expect(text).not.toContain("job-6");
+    expect(text).toContain("2 more unread");
+    writeFileSync(promptStamp(), ago(11_000));
+    const next = (JSON.parse(runPromptHook().stdout) as any).hookSpecificOutput.additionalContext;
+    expect(next).toContain("job-6");
+    expect(next).toContain("job-7");
+  });
+
+  it("includes entries from subdirectories but not from sibling directories", () => {
+    const sub = join(cwd, "packages", "app");
+    const sibling = `${cwd}-extra`;
+    mkdirSync(sub, { recursive: true });
+    mkdirSync(sibling, { recursive: true });
+    inboxLine({ job: "in-sub", cwd: sub });
+    inboxLine({ job: "in-sibling", cwd: sibling });
+
+    const text = (JSON.parse(runPromptHook().stdout) as any).hookSpecificOutput.additionalContext;
+
+    expect(text).toContain("in-sub");
+    expect(text).not.toContain("in-sibling");
+  });
+
+  it("does not report entries older than the cursor", () => {
+    const old = ago(50_000);
+    inboxLine({ ts: old, job: "seen" });
+    mkdirSync(join(home, "inbox-cursors"), { recursive: true });
+    writeFileSync(
+      join(home, "inbox-cursors", `${createHash("sha1").update(cwd).digest("hex")}.json`),
+      JSON.stringify({ lastTs: old }),
+    );
+
+    expect(runPromptHook()).toMatchObject({ status: 0, stdout: "" });
+  });
+
+  it("prints nothing and leaves the cursor alone with AGENTMATE_HOOK_QUIET=1", () => {
+    inboxLine({ job: "job-1" });
+
+    expect(runPromptHook({ AGENTMATE_HOOK_QUIET: "1" })).toMatchObject({ status: 0, stdout: "" });
+    expect(cursorOf(cwd)).toBeNull();
+  });
+
+  it("fails open: no inbox, truncated lines, garbage stdin", () => {
+    expect(runPromptHook()).toMatchObject({ status: 0, stdout: "" });
+    inboxLine({ job: "ok-1" });
+    appendFileSync(join(home, "inbox.jsonl"), '{"ts":"2026-10-03T12:00:09.000Z","job":"cut');
+    expect(
+      (JSON.parse(runPromptHook().stdout) as any).hookSpecificOutput.additionalContext,
+    ).toContain("ok-1");
+    const result = spawnSync(process.execPath, [promptHook], {
+      input: "not json",
+      encoding: "utf8",
+      env: { ...process.env, AGENTMATE_HOME: join(home, "missing") },
+    });
+    expect(result.status).toBe(0);
+  });
+
+  it("keeps a long entry under its cap", () => {
+    inboxLine({ text: "x".repeat(5000) });
+    const text = (JSON.parse(runPromptHook().stdout) as any).hookSpecificOutput.additionalContext;
+    expect(text.length).toBeLessThan(700);
+  });
+});
+
+describe("SessionStart hook and the inbox", () => {
+  it("adds the unread inbox count, and speaks up even when no job is active", () => {
+    inboxLine({ ts: ago(50_000), job: "job-1" });
+    inboxLine({ ts: ago(40_000), job: "job-2" });
+    inboxLine({ ts: ago(30_000), job: "foreign", cwd: other });
+
+    const text = (JSON.parse(runHook().stdout) as any).hookSpecificOutput.additionalContext;
+
+    expect(text).toContain("2 unread inbox entries");
+    expect(text).toContain("agentmate inbox");
+  });
+
+  it("appends the count to the usual job summary", () => {
+    seed();
+    inboxLine({ job: "job-1" });
+    const text = (JSON.parse(runHook().stdout) as any).hookSpecificOutput.additionalContext;
+
+    expect(text).toContain("musn0r25 done");
+    expect(text).toContain("1 unread inbox entry");
+    expect(text.length).toBeLessThanOrEqual(400);
+  });
+
+  it("ignores entries the cursor already covers", () => {
+    const ts = ago(50_000);
+    inboxLine({ ts, job: "job-1" });
+    mkdirSync(join(home, "inbox-cursors"), { recursive: true });
+    writeFileSync(
+      join(home, "inbox-cursors", `${createHash("sha1").update(cwd).digest("hex")}.json`),
+      JSON.stringify({ lastTs: ts }),
+    );
+
+    expect(runHook()).toMatchObject({ status: 0, stdout: "" });
   });
 });

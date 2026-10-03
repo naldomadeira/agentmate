@@ -40,6 +40,7 @@ implement (A, write) -> review (B, read-only) -> Verdict: approve          -> do
 
 ## Rules
 
+- When you resume a turn with jobs in progress, call `mate_inbox` before `mate_wait`: it reports what finished or failed since you last looked.
 - It edits files: the implementer runs in **write mode**. Use it only when the user authorized edits, and keep one write job per working tree.
 - Only a top-level session can start it; a worker cannot. `model` applies to the implementer only.
 - The reviewer reads the uncommitted diff, so do not commit between rounds. `mate_cancel` stops the workflow and its running child.

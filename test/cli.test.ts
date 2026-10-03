@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
@@ -144,6 +144,41 @@ describe("cli", () => {
       expect(missing.stderr).not.toContain("    at ");
     } finally {
       rmSync(home, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("shows inbox help and lists init among the commands", async () => {
+    const help = await runCli(["inbox", "--help"]);
+    expect(help.exitCode).toBe(0);
+    for (const flag of ["--cwd", "--all", "--no-ack", "--follow"])
+      expect(help.stdout).toContain(flag);
+    const root = await runCli([]);
+    expect(root.stdout + root.stderr).toContain("init");
+  }, 30_000);
+
+  it("prints the unread inbox of a directory once, then reports it empty", async () => {
+    const base = mkdtempSync(join(tmpdir(), "abm-cli-inbox-"));
+    const home = join(base, "state");
+    const repo = join(base, "repo");
+    mkdirSync(repo, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    const line = (job: string, cwd: string) =>
+      `${JSON.stringify({ ts: "2026-10-03T12:00:05.000Z", job, cwd, provider: "codex", role: "review", kind: "finished", text: "done" })}\n`;
+    appendFileSync(join(home, "inbox.jsonl"), line("mine", repo) + line("theirs", base + "-x"));
+    const env = { AGENTMATE_HOME: home };
+    try {
+      const peek = await runCli(["inbox", "--cwd", repo, "--no-ack"], env);
+      expect(peek.stdout).toContain("12:00:05  mine  review/codex  finished  done");
+      expect(peek.stdout).not.toContain("theirs");
+      const first = await runCli(["inbox", "--cwd", repo], env);
+      expect(first.stdout).toContain("mine");
+      const second = await runCli(["inbox", "--cwd", repo], env);
+      expect(second.stdout).toContain("No new inbox entries.");
+      const all = await runCli(["inbox", "--all"], env);
+      expect(all.stdout).toContain("mine");
+      expect(all.stdout).toContain("theirs");
+    } finally {
+      rmSync(base, { recursive: true, force: true });
     }
   }, 60_000);
 

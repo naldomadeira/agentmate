@@ -37,6 +37,7 @@ your session -> teamlead job (depth 0, started by you) -> child jobs (depth 1, c
 
 ## Rules
 
+- When you resume a turn with jobs in progress, call `mate_inbox` before `mate_wait`: it reports what finished or failed since you last looked.
 - The depth limit is 2: the runtime refuses a third level and refuses a team lead started by a worker. A read-only team lead cannot start `write` children.
 - Codex team leads run with the `danger-full-access` sandbox in either mode, because they must start worker processes and write job state in `~/.agentmate`. In read-only mode the runtime refuses `write` children and the prompt forbids edits, but the lead itself is not sandboxed. Tell the user this before starting one, and prefer `claude` as lead when that is a concern.
 - The lead calls the CLI pinned to the installed version (`npx -y agentmate@<version> jobs ...`), so an unpublished local checkout must be published or linked for team lead mode to work.

@@ -1,6 +1,17 @@
 {
-  "description": "AgentMate: summarize finished background jobs when a session starts",
+  "description": "AgentMate: summarize finished background jobs when a session starts and deliver inbox entries with each prompt",
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit.mjs\""
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "*",
