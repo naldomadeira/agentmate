@@ -34,6 +34,7 @@ describe("project documentation", () => {
     expect(readme).toContain("mate_inbox");
     expect(readme).toContain("UserPromptSubmit");
     expect(readme).toContain("Gemini");
+    expect(readme).toContain("Antigravity");
     expect(readme).toContain("## Teammates");
     expect(readme).toContain("agentmate init");
     expect(readme).toContain("partner");
@@ -46,6 +47,9 @@ describe("project documentation", () => {
     expect(safety).toContain("--approval-mode yolo");
     expect(safety).toContain("--approval-mode auto_edit");
     expect(safety).toContain("--approval-mode default");
+    // And the one agy flag that skips every permission check.
+    expect(safety).toContain("--dangerously-skip-permissions");
+    expect(safety).toMatch(/\| `agy`|agy \(experimental\)/);
     expect(readme).toContain("clean working tree");
     expect(readme).not.toContain("## Legacy setup");
     expect(readme).toContain("Removed in 0.6.0");
@@ -69,6 +73,8 @@ describe("project documentation", () => {
     expect(portugueseReadme).toContain("## Caixa de entrada");
     expect(portugueseReadme).toContain("mate_inbox");
     expect(portugueseReadme).toContain("Gemini");
+    expect(portugueseReadme).toContain("Antigravity");
+    expect(portugueseReadme).toContain("--dangerously-skip-permissions");
     expect(portugueseReadme).toContain("## Colegas de equipe");
     expect(portugueseReadme).toContain("agentmate init");
     expect(portugueseReadme).toContain("partner");
@@ -148,11 +154,38 @@ describe("project documentation", () => {
     expect(read("skills/teamlead/SKILL.md")).toContain("--approval-mode yolo");
   });
 
-  it("states the real skill count and the three agents in the install guides", () => {
+  it("documents the agy limits in its skill and routes by the usual phrases", () => {
+    const agy = read("skills/agy/SKILL.md");
+    for (const text of [
+      "experimental",
+      "No shell in read-only",
+      "--dangerously-skip-permissions",
+      "--conversation",
+      "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+      "/mate:agy",
+      "ask agy",
+      "pergunte ao agy",
+      "Antigravity",
+      "mode: write",
+    ])
+      expect(agy, text).toContain(text);
+    expect(read("skills/teamlead/SKILL.md")).toContain("--dangerously-skip-permissions");
+  });
+
+  it("documents the agy teammate in the README table, the architecture and the changelog", () => {
+    const row = (content: string) => content.split("\n").find((l) => l.includes("| `agy`"));
+    expect(row(read("README.md"))).toContain("AGENTMATE_AGY_BIN");
+    expect(row(read("docs/README.pt-BR.md"))).toContain("AGENTMATE_AGY_BIN");
+    expect(read("docs/ARCHITECTURE.md")).toContain("| `agy` (experimental)");
+    expect(read("CHANGELOG.md")).toMatch(/## \[0\.7\.0\][\s\S]*Antigravity CLI/);
+    expect(read("README.md")).toContain("agy-staff");
+  });
+
+  it("states the real skill count and the four agents in the install guides", () => {
     const count = readdirSync(resolve(root, "skills"), { withFileTypes: true }).filter((entry) =>
       entry.isDirectory(),
     ).length;
-    const words: Record<string, [string, string]> = { "14": ["fourteen", "catorze"] };
+    const words: Record<string, [string, string]> = { "15": ["fifteen", "quinze"] };
     const [english, portuguese] = words[String(count)] ?? ["?", "?"];
     expect(read("docs/INSTALL_FOR_AGENTS.md")).toContain(`packages ${english} skills`);
     expect(read("docs/INSTALL_FOR_AGENTS.pt-BR.md")).toContain(`fornece ${portuguese} skills`);
@@ -160,7 +193,7 @@ describe("project documentation", () => {
       const content = read(guide);
       expect(content, guide).not.toContain("ten skills");
       expect(content, guide).not.toContain("dez skills");
-      expect(content, guide).toMatch(/`codex`, `claude` (or|ou) `gemini`/);
+      expect(content, guide).toMatch(/`codex`, `claude`, `gemini` (or|ou) `agy`/);
     }
   });
 

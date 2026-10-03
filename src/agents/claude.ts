@@ -110,6 +110,7 @@ export const claudeAdapter: AgentAdapter = {
   displayName: "Claude Code",
   binary: () => process.env["AGENTMATE_CLAUDE_BIN"] ?? "claude",
   capabilities: { write: true, web: true, resume: true, shell: true, streaming: "jsonl" },
+  teamleadNeedsWrite: false,
   versionArgs: ["--version"],
 
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {

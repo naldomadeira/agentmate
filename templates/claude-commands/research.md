@@ -1,11 +1,11 @@
 ---
 description: Have Codex or Claude investigate a topic read-only and report findings and a recommendation.
-argument-hint: "<codex|claude|gemini> <topic>"
+argument-hint: "<codex|claude|gemini|agy> <topic>"
 ---
 
 Request: $ARGUMENTS
 
-`$1` is the provider that does the work (`codex`, `claude` or `gemini`, which is experimental); the rest of the request is the topic. If `$1` is neither, use the whole request and default to `codex`, the provider that is not Claude Code.
+`$1` is the provider that does the work (`codex`, `claude`, `gemini` or `agy`; the last two are experimental); the rest of the request is the topic. If `$1` is neither, use the whole request and default to `codex`, the provider that is not Claude Code.
 
 1. Call the `mate_research` MCP tool with `provider` and `topic` (add `questions`, `scope` and `context`). It returns a job id; collect the result with `mate_wait`.
 2. If the `mate_*` tools are not loaded, run `npx -y agentmate jobs start <provider> "<briefing>" --role research` through the shell.

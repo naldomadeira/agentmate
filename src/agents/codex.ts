@@ -33,6 +33,7 @@ export const codexAdapter: AgentAdapter = {
   displayName: "Codex CLI",
   binary: () => process.env["AGENTMATE_CODEX_BIN"] ?? "codex",
   capabilities: { write: true, web: false, resume: true, shell: true, streaming: "jsonl" },
+  teamleadNeedsWrite: false,
   versionArgs: ["--version"],
 
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {

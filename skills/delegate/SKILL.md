@@ -1,7 +1,7 @@
 ---
 name: delegate
-description: Delegate a task to another agent CLI (codex, claude or gemini, experimental) as a background job, covering second opinions, reviews, research and scoped implementation. Use when the user says /mate:delegate, 'hand this to codex', 'delegue ao claude', or wants an independent opinion from a different model that fits no single role.
-argument-hint: "<codex|claude|gemini> <task>"
+description: Delegate a task to another agent CLI (codex, claude, gemini or agy; the last two experimental) as a background job, covering second opinions, reviews, research and scoped implementation. Use when the user says /mate:delegate, 'hand this to codex', 'delegue ao claude', or wants an independent opinion from a different model that fits no single role.
+argument-hint: "<codex|claude|gemini|agy> <task>"
 ---
 
 # Delegate to another agent
@@ -34,7 +34,7 @@ Use `delegate` for work that fits none of them, with `mate_start` and `role` lef
 
 - Ask for progress (`mate_observe`, CLI: `npx -y agentmate jobs observe <id>`) only when the user asks; routine updates are noise.
 - `mate_cancel` (CLI: `npx -y agentmate jobs cancel <id>`) stops a job and keeps its partial output.
-- A `timeout` job with a session can be resumed: start a new job with `continue: <id>` (CLI: `--continue <id>`). Not available for `gemini` (experimental): start a new job with the full context.
+- A `timeout` job with a session can be resumed: start a new job with `continue: <id>` (CLI: `--continue <id>`). Not available for `gemini` (experimental): start a new job with the full context. `agy` continues its conversation.
 - Parallel jobs are for independent tasks. Two `write` jobs in one working tree will collide — use separate worktrees.
 - CLI `wait` exits `0` done, `1` failed/canceled, `2` still running. Never pipe its output: a pipe loses the exit code.
 - Delegation depth limit is 2: a session starts a `teamlead` job, the team lead delegates to workers, and those workers cannot delegate further.

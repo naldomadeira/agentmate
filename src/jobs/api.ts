@@ -316,9 +316,11 @@ export function startJob(options: StartOptions): Job {
   if (writes && options.mode === "read-only")
     throw new Error(`Role ${role} needs mode write. Drop --mode or pass --mode write.`);
   const mode = options.mode ?? (writes ? "write" : "read-only");
-  if (role === "teamlead" && provider === "gemini" && mode !== "write")
+  const leadAdapter = getAgent(provider);
+  if (role === "teamlead" && leadAdapter.teamleadNeedsWrite && mode !== "write")
     throw new Error(
-      "A Gemini team lead needs mode write: delegation requires the shell, which Gemini only allows in yolo mode.",
+      leadAdapter.teamleadWriteReason ??
+        `A ${provider} team lead needs mode write: delegation requires the shell, which ${provider} only allows in write mode.`,
     );
   if (mode === "write" && process.env["AGENTMATE_PARENT_MODE"] === "read-only")
     throw new Error(

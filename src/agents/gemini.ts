@@ -78,6 +78,10 @@ export function createGeminiAdapter(): AgentAdapter {
     displayName: "Gemini CLI",
     binary: () => process.env["AGENTMATE_GEMINI_BIN"] ?? "gemini",
     capabilities: { write: true, web: false, resume: false, shell: false, streaming: "jsonl" },
+    // Headless Gemini allows the shell a team lead delegates through only in `yolo` mode.
+    teamleadNeedsWrite: true,
+    teamleadWriteReason:
+      "A Gemini team lead needs mode write: delegation requires the shell, which Gemini only allows in yolo mode.",
     versionArgs: ["--version"],
 
     resetStream(): void {

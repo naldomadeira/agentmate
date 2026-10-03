@@ -17,6 +17,7 @@ import {
   otherAgent,
   resolveBinary,
 } from "../src/agents/registry.js";
+import { createAgyAdapter } from "../src/agents/agy.js";
 import { createGeminiAdapter } from "../src/agents/gemini.js";
 import { buildInvocation, binary, parseOutcome } from "../src/jobs/providers.js";
 import { cancelJob, listJobs, readResult, startJob, waitJob } from "../src/jobs/api.js";
@@ -71,15 +72,18 @@ describe("agent registry", () => {
     expect(otherAgent("gemini")).toBe("claude");
   });
 
-  it("registers gemini as the third agent", () => {
-    expect([...AGENT_IDS]).toEqual(["codex", "claude", "gemini"]);
+  it("registers gemini as the third agent and agy as the fourth", () => {
+    expect([...AGENT_IDS]).toEqual(["codex", "claude", "gemini", "agy"]);
     expect(AGENTS.gemini.displayName).toBe("Gemini CLI");
+    expect(AGENTS.agy.displayName).toBe("Antigravity CLI (agy)");
+    expect(otherAgent("agy")).toBe("claude");
   });
 
   it("recognises agent ids", () => {
     expect(isAgentId("codex")).toBe(true);
     expect(isAgentId("claude")).toBe(true);
     expect(isAgentId("gemini")).toBe(true);
+    expect(isAgentId("agy")).toBe(true);
     expect(isAgentId("gpt")).toBe(false);
     expect(isAgentId("toString")).toBe(false);
     expect(isAgentId(undefined)).toBe(false);
@@ -109,10 +113,28 @@ describe("agent registry", () => {
       shell: false,
       streaming: "jsonl",
     });
+    // Experimental as well: agy runs shell commands only with --dangerously-skip-permissions, so a
+    // reviewer gets the diff inline (shell false), but `--conversation` continues a run (resume).
+    expect(AGENTS.agy.capabilities).toEqual({
+      write: true,
+      web: false,
+      resume: true,
+      shell: false,
+      streaming: "jsonl",
+    });
     expect(AGENTS.claude.parseStreamLine).toBeDefined();
     expect(AGENTS.gemini.parseStreamLine).toBeDefined();
+    expect(AGENTS.agy.parseStreamLine).toBeDefined();
   });
 
+  it("declares which agents need write mode to lead a team", () => {
+    expect(Object.fromEntries(AGENT_IDS.map((id) => [id, AGENTS[id].teamleadNeedsWrite]))).toEqual({
+      codex: false,
+      claude: false,
+      gemini: true,
+      agy: true,
+    });
+  });
   it("honors the binary override", () => {
     withEnv({ AGENTMATE_CODEX_BIN: "/x/codex", AGENTMATE_CLAUDE_BIN: undefined }, () => {
       expect(AGENTS.codex.binary()).toBe("/x/codex");
@@ -125,6 +147,13 @@ describe("agent registry", () => {
     });
     withEnv({ AGENTMATE_GEMINI_BIN: undefined }, () => {
       expect(AGENTS.gemini.binary()).toBe("gemini");
+    });
+    withEnv({ AGENTMATE_AGY_BIN: "/x/agy" }, () => {
+      expect(AGENTS.agy.binary()).toBe("/x/agy");
+      expect(binary("agy")).toBe("/x/agy");
+    });
+    withEnv({ AGENTMATE_AGY_BIN: undefined }, () => {
+      expect(AGENTS.agy.binary()).toBe("agy");
     });
   });
 });
@@ -199,7 +228,12 @@ describe("agent availability", () => {
     const missing = path.join(dir, "missing");
     const fake = path.join(dir, "fake-gemini");
     withEnv(
-      { AGENTMATE_CODEX_BIN: missing, AGENTMATE_CLAUDE_BIN: fake, AGENTMATE_GEMINI_BIN: fake },
+      {
+        AGENTMATE_CODEX_BIN: missing,
+        AGENTMATE_CLAUDE_BIN: fake,
+        AGENTMATE_GEMINI_BIN: fake,
+        AGENTMATE_AGY_BIN: missing,
+      },
       () => {
         expect(installedOther("claude")).toBe("gemini");
         expect(installedOther("gemini")).toBe("claude");
@@ -208,7 +242,12 @@ describe("agent availability", () => {
       },
     );
     withEnv(
-      { AGENTMATE_CODEX_BIN: missing, AGENTMATE_CLAUDE_BIN: fake, AGENTMATE_GEMINI_BIN: missing },
+      {
+        AGENTMATE_CODEX_BIN: missing,
+        AGENTMATE_CLAUDE_BIN: fake,
+        AGENTMATE_GEMINI_BIN: missing,
+        AGENTMATE_AGY_BIN: missing,
+      },
       () => {
         // Nothing else is installed: the default pairing is the fallback, and assertAgentAvailable fails on it.
         expect(installedOther("claude")).toBeUndefined();
@@ -217,12 +256,32 @@ describe("agent availability", () => {
       },
     );
     withEnv(
-      { AGENTMATE_CODEX_BIN: fake, AGENTMATE_CLAUDE_BIN: fake, AGENTMATE_GEMINI_BIN: fake },
+      {
+        AGENTMATE_CODEX_BIN: fake,
+        AGENTMATE_CLAUDE_BIN: fake,
+        AGENTMATE_GEMINI_BIN: fake,
+        AGENTMATE_AGY_BIN: missing,
+      },
       () => {
         expect(firstAvailableOther("codex")).toBe("claude");
         expect(firstAvailableOther("claude")).toBe("codex");
         expect(firstAvailableOther("gemini")).toBe("codex");
         expect(installedOther("claude", ["gemini", "claude"])).toBe("gemini");
+      },
+    );
+    // agy is the last in registry order: it pairs when it is the only other agent installed.
+    withEnv(
+      {
+        AGENTMATE_CODEX_BIN: missing,
+        AGENTMATE_CLAUDE_BIN: fake,
+        AGENTMATE_GEMINI_BIN: missing,
+        AGENTMATE_AGY_BIN: fake,
+      },
+      () => {
+        expect(installedOther("claude")).toBe("agy");
+        expect(firstAvailableOther("claude")).toBe("agy");
+        expect(firstAvailableOther("agy")).toBe("claude");
+        expect(installedOther("claude", ["codex", "claude"])).toBeUndefined();
       },
     );
   });
@@ -233,11 +292,24 @@ describe("agent availability", () => {
         AGENTMATE_CODEX_BIN: path.join(dir, "missing"),
         AGENTMATE_CLAUDE_BIN: path.join(dir, "fake-gemini"),
         AGENTMATE_GEMINI_BIN: path.join(dir, "fake-gemini"),
+        AGENTMATE_AGY_BIN: path.join(dir, "fake-gemini"),
       },
       () => {
-        expect(availableAgents()).toEqual(["claude", "gemini"]);
+        expect(availableAgents()).toEqual(["claude", "gemini", "agy"]);
       },
     );
+  });
+
+  it("finds agy through AGENTMATE_AGY_BIN", () => {
+    withEnv({ AGENTMATE_AGY_BIN: path.join(dir, "fake-gemini") }, () => {
+      expect(isAgentAvailable("agy")).toBe(true);
+    });
+    withEnv({ AGENTMATE_AGY_BIN: path.join(dir, "missing") }, () => {
+      expect(isAgentAvailable("agy")).toBe(false);
+      expect(() => assertAgentAvailable("agy")).toThrow(
+        `Agent agy is not installed (binary "${path.join(dir, "missing")}" not found on PATH). Install it or set AGENTMATE_AGY_BIN.`,
+      );
+    });
   });
 });
 
@@ -488,6 +560,373 @@ describe("gemini parseOutcome", () => {
       sessionId: null,
       errors: [],
     });
+  });
+});
+
+describe("agy buildInvocation", () => {
+  const agy = AGENTS.agy;
+  const dirFlags = ["--add-dir", "/tmp"];
+  const base = ["-p", "the prompt", "--output-format", "stream-json", ...dirFlags];
+  const skip = "--dangerously-skip-permissions";
+  it.each([
+    // Read-only jobs pass no permission flag and rely on agy's own profile.
+    [{}, [...base, "--print-timeout", "1m"]],
+    [{ role: "research" as const }, [...base, "--print-timeout", "1m"]],
+    [{ role: "review" as const }, [...base, "--print-timeout", "1m"]],
+    [{ role: "teamlead" as const }, [...base, "--print-timeout", "1m"]],
+    [{ mode: "write" as const }, [...base, "--print-timeout", "1m", skip]],
+    [
+      { role: "implement" as const, mode: "write" as const },
+      [...base, "--print-timeout", "1m", skip],
+    ],
+    [
+      { role: "teamlead" as const, mode: "write" as const },
+      [...base, "--print-timeout", "1m", skip],
+    ],
+    [{ model: "gem-x" }, [...base, "--print-timeout", "1m", "--model", "gem-x"]],
+  ])("builds flags for %j", (extra, args) => {
+    withEnv({ AGENTMATE_AGY_BIN: undefined }, () => {
+      expect(agy.buildInvocation(job({ provider: "agy", ...extra }))).toEqual({
+        command: "agy",
+        args,
+      });
+    });
+  });
+
+  it("derives --print-timeout from the job deadline, rounded up to whole minutes", () => {
+    const timeout = (timeoutMs: number) => {
+      const { args } = agy.buildInvocation(job({ provider: "agy", timeoutMs }));
+      return args[args.indexOf("--print-timeout") + 1];
+    };
+    expect(timeout(60_000)).toBe("1m");
+    expect(timeout(60_001)).toBe("2m");
+    expect(timeout(10 * 60_000)).toBe("10m");
+    expect(timeout(30 * 60_000)).toBe("30m");
+    expect(timeout(90_000)).toBe("2m");
+    // Never "0m", which agy would read as no time at all.
+    expect(timeout(1)).toBe("1m");
+  });
+
+  it("works in the job's directory and uses the binary override", () => {
+    withEnv({ AGENTMATE_AGY_BIN: "/x/agy" }, () => {
+      const invocation = agy.buildInvocation(job({ provider: "agy", cwd: "/work/repo" }));
+      expect(invocation.command).toBe("/x/agy");
+      expect(invocation.args).toContain("/work/repo");
+      expect(invocation.args[invocation.args.indexOf("--add-dir") + 1]).toBe("/work/repo");
+    });
+  });
+
+  it("continues a conversation with --conversation, keeping the model and the permission flag", () => {
+    const { args } = agy.buildInvocation(
+      job({ provider: "agy", model: "m", mode: "write" }),
+      "conv-1",
+    );
+    expect(args).toEqual([
+      ...base,
+      "--print-timeout",
+      "1m",
+      "--model",
+      "m",
+      "--conversation",
+      "conv-1",
+      skip,
+    ]);
+    expect(agy.buildInvocation(job({ provider: "agy" })).args).not.toContain("--conversation");
+  });
+
+  it("keeps a prompt that starts with a dash from being read as a flag", () => {
+    const { args } = agy.buildInvocation(job({ provider: "agy", prompt: "--version please" }));
+    expect(args.slice(0, 2)).toEqual(["-p", " --version please"]);
+    expect(agy.buildInvocation(job({ provider: "agy", prompt: "-x" })).args[1]).toBe(" -x");
+    expect(agy.buildInvocation(job({ provider: "agy", prompt: "plain" })).args[1]).toBe("plain");
+  });
+
+  it("never passes a permission flag to a read-only job", () => {
+    for (const role of ["ask", "review", "research", "plan", "teamlead", "custom"] as const) {
+      const { args } = agy.buildInvocation(job({ provider: "agy", role, mode: "read-only" }));
+      expect(args, role).not.toContain("--dangerously-skip-permissions");
+    }
+  });
+});
+
+describe("agy parseStreamLine", () => {
+  const adapter = () => createAgyAdapter();
+  const parseWith = (a: ReturnType<typeof createAgyAdapter>) => (value: unknown) =>
+    a.parseStreamLine!(typeof value === "string" ? value : JSON.stringify(value));
+  const update = (extra: Record<string, unknown>) => ({
+    event: "step_update",
+    step_update: {
+      conversation_id: "c",
+      step_index: 0,
+      step_type: "tool",
+      state: "ACTIVE",
+      ...extra,
+    },
+  });
+
+  it("maps a command tool to a fyi command event with the command line", () => {
+    const parse = parseWith(adapter());
+    const events = parse(
+      update({
+        tool_name: "run_command",
+        tool_info: { parameters: { CommandLine: "pnpm typecheck" } },
+      }),
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        level: "fyi",
+        kind: "command",
+        text: "pnpm typecheck",
+        job: "",
+        data: { command: "pnpm typecheck" },
+      }),
+    ]);
+  });
+
+  it("clips a command to 200 characters", () => {
+    const parse = parseWith(adapter());
+    const [event] = parse(
+      update({
+        tool_name: "run_command",
+        tool_info: { parameters: { CommandLine: "x".repeat(300) } },
+      }),
+    );
+    expect(event!.text).toBe("x".repeat(200));
+  });
+
+  it("maps file edits to status file events with the path", () => {
+    const parse = parseWith(adapter());
+    for (const [index, [name, key]] of [
+      ["write_to_file", "TargetFile"],
+      ["replace_file_content", "TargetFile"],
+      ["multi_replace_file_content", "AbsolutePath"],
+      ["edit_file", "FilePath"],
+    ].entries()) {
+      const events = parse(
+        update({
+          step_index: index,
+          tool_name: name,
+          tool_info: { parameters: { [key!]: `/work/src/a${index}.ts` } },
+        }),
+      );
+      expect(events, name).toEqual([
+        expect.objectContaining({
+          level: "status",
+          kind: "file",
+          text: `${name} /work/src/a${index}.ts`,
+          data: { path: `/work/src/a${index}.ts`, kind: name },
+        }),
+      ]);
+    }
+  });
+
+  it("maps reads and other tools to fyi commands with a short hint", () => {
+    const parse = parseWith(adapter());
+    expect(
+      parse(
+        update({
+          tool_name: "view_file",
+          tool_info: { parameters: { AbsolutePath: "/work/src/index.d.mts" } },
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({ level: "fyi", kind: "command", text: "view_file index.d.mts" }),
+    ]);
+    expect(parse(update({ step_index: 1, tool_name: "list_dir" }))).toEqual([
+      expect.objectContaining({ level: "fyi", kind: "command", text: "list_dir" }),
+    ]);
+    // A file tool with no path is just a command.
+    expect(parse(update({ step_index: 2, tool_name: "write_to_file" }))).toEqual([
+      expect.objectContaining({ kind: "command", text: "write_to_file" }),
+    ]);
+    // The name may sit in tool_info when the step has none.
+    expect(
+      parse(
+        update({ step_index: 3, tool_info: { name: "search_web", parameters: { Query: "q" } } }),
+      ),
+    ).toEqual([expect.objectContaining({ kind: "command", text: "search_web q" })]);
+  });
+
+  it("reports a step once: its DONE update adds nothing after the ACTIVE one", () => {
+    const parse = parseWith(adapter());
+    const active = update({
+      tool_name: "run_command",
+      tool_info: { parameters: { CommandLine: "ls" } },
+    });
+    expect(parse(active)).toHaveLength(1);
+    const done = update({
+      state: "DONE",
+      tool_name: "run_command",
+      duration_seconds: 1.2,
+      tool_info: { parameters: { CommandLine: "ls" }, output: "a" },
+    });
+    expect(parse(done)).toEqual([]);
+    // A step first seen as DONE is reported then.
+    expect(parse(update({ step_index: 5, state: "DONE", tool_name: "list_dir" }))).toEqual([
+      expect.objectContaining({ kind: "command", text: "list_dir" }),
+    ]);
+  });
+
+  it("maps a tool error to a status error event", () => {
+    const parse = parseWith(adapter());
+    parse(
+      update({ tool_name: "run_command", tool_info: { parameters: { CommandLine: "false" } } }),
+    );
+    const events = parse(
+      update({
+        state: "DONE",
+        tool_name: "run_command",
+        tool_info: { error: { message: "exit status 1" } },
+      }),
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        level: "status",
+        kind: "error",
+        text: "run_command failed: exit status 1",
+      }),
+    ]);
+  });
+
+  it("emits one important message with the first 500 characters of the result response", () => {
+    const parse = parseWith(adapter());
+    const events = parse({
+      event: "result",
+      result: { status: "SUCCESS", response: "r".repeat(600), conversation_id: "c" },
+    });
+    expect(events).toEqual([
+      expect.objectContaining({ level: "important", kind: "message", text: "r".repeat(500) }),
+    ]);
+  });
+
+  it("falls back to the streamed agent text, once, when the result has no response", () => {
+    const parse = parseWith(adapter());
+    expect(
+      parse(update({ step_index: 1, step_type: "agent_response", text_delta: "Hello, " })),
+    ).toEqual([]);
+    expect(
+      parse(update({ step_index: 1, step_type: "agent_response", text_delta: "world" })),
+    ).toEqual([]);
+    expect(parse({ event: "result", result: { status: "SUCCESS" } })).toEqual([
+      expect.objectContaining({ kind: "message", text: "Hello, world" }),
+    ]);
+    expect(parse({ event: "result", result: { status: "SUCCESS" } })).toEqual([]);
+  });
+
+  it("emits nothing for a stream that never reaches a result, and init clears the buffer", () => {
+    const parse = parseWith(adapter());
+    parse(update({ step_type: "agent_response", text_delta: "stale" }));
+    expect(parse({ event: "init", init: { conversation_id: "c" } })).toEqual([]);
+    expect(parse({ event: "result", result: { status: "SUCCESS" } })).toEqual([]);
+  });
+
+  it("keeps state per adapter instance and clears it with resetStream", () => {
+    const a = adapter();
+    const b = adapter();
+    parseWith(a)(update({ step_type: "agent_response", text_delta: "only in a" }));
+    expect(parseWith(b)({ event: "result", result: { status: "SUCCESS" } })).toEqual([]);
+    a.resetStream!();
+    expect(parseWith(a)({ event: "result", result: { status: "SUCCESS" } })).toEqual([]);
+  });
+
+  it("maps a failed result to an important error event after its message", () => {
+    const parse = parseWith(adapter());
+    const events = parse({
+      event: "result",
+      result: {
+        status: "ERROR",
+        response: "half",
+        error: "RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 4h1m13s",
+      },
+    });
+    expect(events.map((e) => [e.level, e.kind])).toEqual([
+      ["important", "message"],
+      ["important", "error"],
+    ]);
+    expect(events[1]!.text).toContain("Individual quota reached");
+    expect(
+      parse({ event: "result", result: { status: "TIMEOUT" } }).map((e) => [e.kind, e.text]),
+    ).toEqual([["error", "agy reported status TIMEOUT"]]);
+  });
+
+  it("ignores unknown events, malformed steps, junk and non-objects", () => {
+    const parse = parseWith(adapter());
+    expect(parse({ event: "mystery", mystery: {} })).toEqual([]);
+    expect(parse({ event: "step_update", step_update: "nope" })).toEqual([]);
+    expect(parse({ event: "step_update" })).toEqual([]);
+    expect(parse({ type: "message", content: "gemini shaped" })).toEqual([]);
+    expect(parse("not json")).toEqual([]);
+    expect(parse("[1,2]")).toEqual([]);
+    expect(parse("42")).toEqual([]);
+    expect(parse("")).toEqual([]);
+  });
+});
+
+describe("agy parseOutcome", () => {
+  const stream = (...events: unknown[]) => events.map((e) => JSON.stringify(e)).join("\n");
+  const result = (extra: Record<string, unknown>) => ({ event: "result", result: extra });
+
+  it("extracts the text and the conversation id as the session", () => {
+    const out = stream(
+      { event: "init", init: { conversation_id: "c-1" } },
+      result({ status: "SUCCESS", response: "hi", conversation_id: "c-1" }),
+    );
+    expect(parseOutcome("agy", out, "", 0)).toEqual({ text: "hi", sessionId: "c-1", errors: [] });
+  });
+
+  it("reads the single JSON object after a banner", () => {
+    const out = `agy 1.2.6\n${JSON.stringify({ status: "SUCCESS", response: "ok", conversation_id: "c-2" })}`;
+    expect(parseOutcome("agy", out, "", 0)).toMatchObject({ text: "ok", sessionId: "c-2" });
+  });
+
+  it("appends stderr to a failed run with no text", () => {
+    const failed = parseOutcome("agy", "", "boom", 1);
+    expect(failed.text).toBe("");
+    expect(failed.errors).toContain("boom");
+    expect(parseOutcome("agy", "", "ignored", 0).errors).not.toContain("ignored");
+  });
+
+  it("marks a result with an error and text as partial, with the error", () => {
+    const out = stream(result({ status: "ERROR", response: "edited two files", error: "boom" }));
+    expect(parseOutcome("agy", out, "", 1)).toMatchObject({
+      text: "edited two files",
+      partial: true,
+      errors: ["boom"],
+    });
+  });
+
+  it("marks a run that never reached a result as partial and names the exit code", () => {
+    const out = stream(
+      { event: "init", init: { conversation_id: "c-3" } },
+      {
+        event: "step_update",
+        step_update: {
+          conversation_id: "c-3",
+          step_index: 1,
+          step_type: "agent_response",
+          text_delta: "half",
+        },
+      },
+    );
+    const outcome = parseOutcome("agy", out, "", 3);
+    expect(outcome).toMatchObject({ text: "half", partial: true, sessionId: "c-3" });
+    expect(outcome.errors.join(" ")).toMatch(/exited 3 without a final result/);
+  });
+
+  it("reports a non-zero exit with no result as an error", () => {
+    const outcome = parseOutcome(
+      "agy",
+      stream({ event: "init", init: { conversation_id: "c" } }),
+      "",
+      1,
+    );
+    expect(outcome.text).toBe("");
+    expect(outcome.errors.join(" ")).toMatch(/exited 1 without a final result/);
+  });
+
+  it("does not mark a completed run as partial", () => {
+    const out = stream(result({ status: "SUCCESS", response: "done" }));
+    expect(parseOutcome("agy", out, "", 0)).toEqual({ text: "done", sessionId: null, errors: [] });
   });
 });
 
@@ -897,6 +1336,8 @@ describe("gemini jobs", () => {
     fs.writeFileSync(path.join(home, "fake-codex"), FAKE_CODEX_IMPLEMENTER, { mode: 0o755 });
     process.env["AGENTMATE_HOME"] = path.join(home, "state");
     process.env["AGENTMATE_GEMINI_BIN"] = geminiBin;
+    // Not installed here: a developer's real agy must not change which agent a workflow pairs with.
+    process.env["AGENTMATE_AGY_BIN"] = path.join(home, "missing-agy");
     process.env["AGENTMATE_CODEX_BIN"] = path.join(home, "fake-codex");
     process.env["AGENTMATE_CLI"] = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
     delete process.env["AGENTMATE_DEPTH"];
@@ -1141,6 +1582,183 @@ describe("gemini jobs", () => {
     const review = children.find((c) => c.role === "review")!;
     expect(review.prompt).toContain("may not run shell commands");
     expect(review.prompt).toContain("Diff");
+  }, 100_000);
+});
+
+// A stand-in for the Antigravity CLI that speaks the stream-json format of `agy -p`. The prompt (the
+// value of `-p`) selects the behavior; the default answer echoes the arguments it received and names
+// the conversation (the one passed to `--conversation`, else `agy-conv-1`).
+const FAKE_AGY = `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const prompt = args[args.indexOf("-p") + 1];
+const given = args.indexOf("--conversation") >= 0 ? args[args.indexOf("--conversation") + 1] : null;
+const conv = given ?? "agy-conv-1";
+const emit = (e) => console.log(JSON.stringify(e));
+const step = (index, type, state, extra) => ({ event: "step_update", step_update: { conversation_id: conv, step_index: index, step_type: type, state, ...extra } });
+if (prompt.includes("FAIL")) { console.error("agy boom"); process.exit(1); }
+emit({ event: "init", init: { conversation_id: conv, model: "agy-test" } });
+if (prompt.includes("QUOTA")) {
+  emit({ event: "result", result: { status: "ERROR", error: "RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 4h1m13s", conversation_id: conv } });
+  process.exit(1);
+}
+emit(step(0, "tool", "ACTIVE", { tool_name: "run_command", tool_info: { parameters: { CommandLine: "ls" } } }));
+emit(step(0, "tool", "DONE", { tool_name: "run_command", duration_seconds: 0.1, tool_info: { parameters: { CommandLine: "ls" }, output: "a" } }));
+emit(step(1, "tool", "ACTIVE", { tool_name: "write_to_file", tool_info: { parameters: { TargetFile: "a.ts" } } }));
+emit(step(1, "tool", "DONE", { tool_name: "write_to_file", tool_info: { parameters: { TargetFile: "a.ts" } } }));
+const answer = prompt.includes("VERDICT") ? "Looks fine.\\nVerdict: approve" : "pong from agy args=" + args.join(" ");
+emit(step(2, "agent_response", "ACTIVE", { text_delta: answer.slice(0, 5) }));
+emit(step(2, "agent_response", "DONE", { text_delta: answer.slice(5) }));
+emit({ event: "result", result: { status: "SUCCESS", response: answer, conversation_id: conv } });
+`;
+
+describe("agy jobs", () => {
+  let home: string;
+  let agyBin: string;
+  const saved = { ...process.env };
+
+  beforeAll(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), "abm-agy-"));
+    agyBin = path.join(home, "fake-agy");
+    fs.writeFileSync(agyBin, FAKE_AGY, { mode: 0o755 });
+    process.env["AGENTMATE_HOME"] = path.join(home, "state");
+    process.env["AGENTMATE_AGY_BIN"] = agyBin;
+    // Not installed here: a developer's real codex or gemini must not change the default partner.
+    process.env["AGENTMATE_CODEX_BIN"] = path.join(home, "missing-codex");
+    process.env["AGENTMATE_GEMINI_BIN"] = path.join(home, "missing-gemini");
+    delete process.env["AGENTMATE_DEPTH"];
+    delete process.env["AGENTMATE_JOB_ID"];
+    delete process.env["AGENTMATE_PARENT_MODE"];
+  });
+
+  afterAll(() => {
+    process.env = saved;
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it("runs an agy job to done with events, the conversation as session and the answer", async () => {
+    const started = startJob({ provider: "agy", prompt: "hello", cwd: home });
+    expect(started.provider).toBe("agy");
+    const done = await waitJob(started.id, 30_000);
+    expect(done.status).toBe("done");
+    expect(done.sessionId).toBe("agy-conv-1");
+    const { text } = readResult(started.id);
+    expect(text).toContain("pong from agy");
+    expect(text).toContain(
+      `-p hello --output-format stream-json --add-dir ${home} --print-timeout`,
+    );
+    expect(text).not.toContain("--dangerously-skip-permissions");
+
+    const events = readEvents(started.id);
+    expect(events.map((e) => e.kind)).toEqual([
+      "started",
+      "command",
+      "file",
+      "message",
+      "finished",
+    ]);
+    expect(events.find((e) => e.kind === "file")).toMatchObject({
+      level: "status",
+      data: { path: "a.ts" },
+    });
+    expect(events.filter((e) => e.kind === "message")).toHaveLength(1);
+  }, 45_000);
+
+  it("skips permissions for write jobs only", async () => {
+    const started = startJob({ provider: "agy", prompt: "edit", cwd: home, mode: "write" });
+    const done = await waitJob(started.id, 30_000);
+    expect(done.status).toBe("done");
+    expect(readResult(started.id).text).toContain("--dangerously-skip-permissions");
+  }, 45_000);
+
+  it("continues a finished job with --conversation and the stored conversation id", async () => {
+    const first = startJob({ provider: "agy", prompt: "first", cwd: home });
+    const firstDone = await waitJob(first.id, 30_000);
+    expect(firstDone.sessionId).toBe("agy-conv-1");
+    const second = startJob({
+      provider: "agy",
+      prompt: "second",
+      cwd: home,
+      continueJob: first.id,
+    });
+    const done = await waitJob(second.id, 30_000);
+    expect(done.status).toBe("done");
+    expect(done.continuesJob).toBe(first.id);
+    expect(readResult(second.id).text).toContain("--conversation agy-conv-1");
+    expect(done.sessionId).toBe("agy-conv-1");
+  }, 60_000);
+
+  it("accepts an agy team lead only in write mode", async () => {
+    const message =
+      "An agy team lead needs mode write: delegation requires the shell, which agy only allows with --dangerously-skip-permissions.";
+    // The lead needs a partner: the fake binary stands in for claude.
+    process.env["AGENTMATE_CLAUDE_BIN"] = agyBin;
+    expect(() =>
+      startJob({ provider: "agy", role: "teamlead", prompt: "lead", cwd: home }),
+    ).toThrow(message);
+    expect(() =>
+      startJob({ provider: "agy", role: "teamlead", prompt: "lead", cwd: home, mode: "read-only" }),
+    ).toThrow(message);
+    const started = startJob({
+      provider: "agy",
+      role: "teamlead",
+      prompt: "lead",
+      cwd: home,
+      mode: "write",
+    });
+    expect(started.mode).toBe("write");
+    expect(started.partner).toBe("claude");
+    const done = await waitJob(started.id, 30_000);
+    expect(done.status).toBe("done");
+    expect(readResult(started.id).text).toContain("--dangerously-skip-permissions");
+  }, 60_000);
+
+  it("ends a failing agy job as an error with its stderr", async () => {
+    const started = startJob({ provider: "agy", prompt: "FAIL", cwd: home });
+    const done = await waitJob(started.id, 30_000);
+    expect(done.status).toBe("error");
+    expect(done.error).toContain("agy boom");
+  }, 45_000);
+
+  it("ends a job whose result reports an exhausted quota as quota_exhausted", async () => {
+    const started = startJob({ provider: "agy", prompt: "QUOTA", cwd: home });
+    const done = await waitJob(started.id, 30_000);
+    expect(done.status).toBe("quota_exhausted");
+    expect(done.error).toContain("agy quota exhausted");
+    expect(done.error).toContain("Individual quota reached");
+    expect(done.sessionId).toBe("agy-conv-1");
+  }, 45_000);
+
+  it("refuses an agy job when the binary is missing, with the actionable message", () => {
+    const missing = path.join(home, "missing-agy");
+    withEnv({ AGENTMATE_AGY_BIN: missing }, () => {
+      expect(() => startJob({ provider: "agy", prompt: "x", cwd: home })).toThrow(
+        `Agent agy is not installed (binary "${missing}" not found on PATH). Install it or set AGENTMATE_AGY_BIN.`,
+      );
+    });
+  });
+
+  it("accepts agy as a partner and as a reviewer in a crossreview", async () => {
+    const codexBin = path.join(home, "fake-codex");
+    fs.writeFileSync(codexBin, FAKE_CODEX_IMPLEMENTER, { mode: 0o755 });
+    process.env["AGENTMATE_CODEX_BIN"] = codexBin;
+    const started = startJob({
+      provider: "codex",
+      role: "crossreview",
+      partner: "agy",
+      prompt: "add a flag VERDICT",
+      cwd: home,
+    });
+    const done = await waitJob(started.id, 80_000);
+    expect(done.status).toBe("done");
+    const children = listJobs({ parent: started.id, limit: 10 });
+    expect(children.map((c) => `${c.role}:${c.provider}`).sort()).toEqual([
+      "implement:codex",
+      "review:agy",
+    ]);
+    expect(readResult(started.id).text).toContain("approve");
+    // agy reviews with the diff in its briefing: it has no shell without --dangerously-skip-permissions.
+    const review = children.find((c) => c.role === "review")!;
+    expect(review.prompt).toContain("may not run shell commands");
   }, 100_000);
 });
 

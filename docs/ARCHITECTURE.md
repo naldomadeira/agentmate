@@ -16,24 +16,27 @@ AgentMate is one runtime with two faces. **Delegation** hands a task to another 
                              │
                       Agent adapters
                              │
-                ┌────────────┼────────────┐
-                │            │            │
-             Claude        Codex       Gemini (phase 3)
+      ┌──────────┬────────┴─┬──────────┬────────────┐
+      │          │          │          │
+   Claude      Codex      Gemini   Antigravity (agy)
 ```
 
 ## Agent adapters (`src/agents/`)
 
-An adapter knows how to run one agent CLI and nothing else: which binary to call, which flags each role and mode need, how to parse the output, how to turn a stream of CLI events into AgentMate events, and what it can do (`write`, `web`, `resume`, `shell` and `streaming` capabilities). The runtime never branches on the agent name outside this directory. Adding an agent means adding one file and registering it.
+An adapter knows how to run one agent CLI and nothing else: which binary to call, which flags each role and mode need, how to parse the output, how to turn a stream of CLI events into AgentMate events, and what it can do (`write`, `web`, `resume`, `shell` and `streaming` capabilities) and whether a team lead on it must run in write mode (`teamleadNeedsWrite`, with the refusal text in `teamleadWriteReason`, which `startJob` applies to any adapter that sets it). The runtime never branches on the agent name outside this directory. Adding an agent means adding one file and registering it.
 
 Availability is separate from registration: `isAgentAvailable(id, cwd)` looks for the adapter's binary (an absolute path, a relative path resolved against `cwd`, or a name on `PATH`, scanned without spawning anything; on Windows only extensionless files and `.exe` count, because the CLI is spawned without a shell) and `startJob` refuses an agent that is missing. A relative `AGENTMATE_<ID>_BIN` is resolved against the job's `cwd` both when `startJob` checks it and when the worker spawns it. For `teamlead`, `crossreview` and `split`, `startJob` resolves the partner up front as `options.partner ?? firstAvailableOther(provider)` (the first installed agent in registry order that differs from the provider, falling back to the static `otherAgent()` pairing), checks that it is installed before anything is spawned, and stores it on `job.partner`; the workflows (reviewer, delegate, split pairing and reviews, the quota hand-off hint) read `job.partner` instead of assuming a pair. The Gemini adapter is experimental: it follows the documented headless format and is tested against a fake binary, because the CLI is not installed in the development environment.
 
 **Gemini limits.** Headless Gemini denies shell and web tools outside `yolo`, so its capabilities are `shell: false`, `web: false` and `resume: false` (`--resume` is unverified, so `startJob` refuses `continue` for it). Jobs therefore cannot run shell commands or edit outside `auto_edit`: an `implement` job cannot run the repository's verification, and when the reviewer of a `crossreview` or `split` round lacks `shell` the workflow embeds the diff in the briefing (`git diff` of the working tree or of the part's worktree against its base, capped at 30 000 characters, with a note that the reviewer may not run shell commands) instead of `git diff` instructions. A `gemini` team lead needs the shell, so it is accepted only with `mode: write` and runs `--approval-mode yolo`. A prompt that starts with `-` is sent with a leading space so `-p` cannot read it as a flag. A result with `status: error` that still carries text, or a stream that ends without a `result` and a non-zero exit code, is reported as partial output with the error, never as `done`; `error` events with `severity: warning` become `status` events, not `important` ones.
+
+**agy limits.** The Antigravity CLI is driven as `agy -p <prompt> --output-format stream-json --add-dir <cwd> --print-timeout <N>m`, where `N` is the job deadline in whole minutes (at least 1); `--model` is passed when set and `--conversation <id>` continues a run (`resume: true`, with the conversation id reported by the stream as the job's `sessionId`). Headless agy denies every tool call its own profile does not allow unless it runs with `--dangerously-skip-permissions`, so read-only jobs pass no permission flag (their results depend on the user's agy profile and can be thin), and write jobs and the team lead pass the flag. A read-only `agy` team lead is refused (`teamleadNeedsWrite`). Its capabilities are `shell: false` and `web: false`, so a reviewer gets the diff inline, as for Gemini. The stream is one JSON object per line: `init`, `step_update` (tool steps `ACTIVE` then `DONE`, and `agent_response` text deltas) and a final `result` whose body is the same object `--output-format json` prints (`status`, `response`, `error`, `conversation_id`); `parseAgyOutput` accepts both, tolerating banner lines before the first `{`. Written against the format the author's agy-staff plugin reads and tested with a fake binary only.
 
 | Adapter | Invocation | Read-only | Write | Streaming |
 | --- | --- | --- | --- | --- |
 | `codex` | `codex exec --json --skip-git-repo-check` | `--sandbox read-only` | `--sandbox workspace-write` (team lead: `danger-full-access`) | JSONL items |
 | `claude` | `claude -p --output-format stream-json --verbose` | tool allowlist plus explicit deny of `Edit`, `Write`, `NotebookEdit` | `--permission-mode acceptEdits` plus a verification allowlist | JSONL (stream-json): assistant text, tool use and error results |
 | `gemini` (experimental) | `gemini -p <prompt> --output-format stream-json` | `--approval-mode default` (headless denies tools that need approval; reads stay allowed) | `--approval-mode auto_edit` (team lead, write only: `yolo`) | JSONL (stream-json): assistant chunks batched into one message at `result`, tool use, errors |
+| `agy` (experimental) | `agy -p <prompt> --output-format stream-json --add-dir <cwd> --print-timeout <N>m` | no permission flag (agy's own profile) | `--dangerously-skip-permissions` (team lead, write only) | JSONL (stream-json): `step_update` tool steps as commands and file edits, one message at `result`, errors |
 
 ## Jobs (`src/jobs/`)
 

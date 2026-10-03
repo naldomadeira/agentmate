@@ -1,6 +1,6 @@
 import type { Job } from "../jobs/store.js";
 
-export type AgentId = "codex" | "claude" | "gemini";
+export type AgentId = "codex" | "claude" | "gemini" | "agy";
 
 export interface AgentCapabilities {
   /** Supports `write` mode. */
@@ -56,6 +56,13 @@ export interface AgentAdapter {
   /** Honors `AGENTMATE_<ID>_BIN`. */
   binary(): string;
   capabilities: AgentCapabilities;
+  /**
+   * A team lead must delegate through the shell, which this agent runs headless only in write mode;
+   * `startJob` refuses a read-only team lead on it with `teamleadWriteReason`.
+   */
+  teamleadNeedsWrite: boolean;
+  /** The error for a read-only team lead on an agent with `teamleadNeedsWrite`. */
+  teamleadWriteReason?: string;
   buildInvocation(job: Job, resumeSessionId?: string): Invocation;
   parseOutcome(stdout: string, stderr: string, exitCode: number): Outcome;
   /** Turns one stdout line into filtered events; `job` is left empty for the worker to fill. */

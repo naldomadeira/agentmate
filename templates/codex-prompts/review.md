@@ -1,11 +1,11 @@
 ---
 description: Have Codex or Claude review a diff, files or a plan, read-only, and report findings by severity.
-argument-hint: "<codex|claude|gemini> <target: diff, files or plan>"
+argument-hint: "<codex|claude|gemini|agy> <target: diff, files or plan>"
 ---
 
 Request: $ARGUMENTS
 
-Take the first word of the request as the provider (`codex`, `claude` or `gemini`, which is experimental); the rest is the review target. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
+Take the first word of the request as the provider (`codex`, `claude`, `gemini` or `agy`; the last two are experimental); the rest is the review target. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
 
 1. Call the `mate_review` MCP tool with `provider` and `target` (add `focus`, for example security or concurrency, and `context`). It returns a job id; collect the result with `mate_wait`.
 2. If the `mate_*` tools are not loaded, run `npx -y agentmate jobs start <provider> "<briefing>" --role review` in the shell.

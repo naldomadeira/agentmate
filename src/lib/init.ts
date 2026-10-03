@@ -14,7 +14,7 @@ const CLAUDE_IMPORT = "@AGENTS.md\n";
 /** What `agentmate init` writes between the markers; keep it short, every agent reads it each session. */
 export const INIT_BLOCK = `## AgentMate
 
-AgentMate lets Claude Code, Codex CLI and Gemini CLI (experimental) delegate, review and help each other as background jobs.
+AgentMate lets Claude Code, Codex CLI, Gemini CLI and Antigravity CLI (the last two experimental) delegate, review and help each other as background jobs.
 
 - Claude Code: \`/mate:<skill> <provider> <request>\`, for example \`/mate:review codex HEAD~1..HEAD\`.
 - Codex: \`$mate:<skill> <provider> <request>\`, for example \`$mate:ask claude is this retry loop safe?\`.

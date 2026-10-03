@@ -61,10 +61,11 @@ const INSTALL_HINTS: Record<AgentId, string> = {
   codex: "Install the Codex CLI (npm install -g @openai/codex) to delegate to codex.",
   claude: "Install Claude Code (https://claude.com/claude-code) to delegate to claude.",
   gemini: "Install the Gemini CLI (npm install -g @google/gemini-cli) to delegate to gemini.",
+  agy: "Install the Antigravity CLI (curl -fsSL https://antigravity.google/cli/install.sh | bash) to delegate to agy.",
 };
 
 /** Agents whose absence is normal: a missing one is `ok`, not a warning. */
-const OPTIONAL_AGENTS: readonly AgentId[] = ["gemini"];
+const OPTIONAL_AGENTS: readonly AgentId[] = ["gemini", "agy"];
 
 async function checkAgent(id: AgentId): Promise<Check> {
   const agent = getAgent(id);
@@ -188,7 +189,7 @@ export default defineCommand({
   meta: {
     name: "doctor",
     description:
-      "Check the installation: Node, the agent CLIs (codex, claude, gemini), job state, legacy setups",
+      "Check the installation: Node, the agent CLIs (codex, claude, gemini, agy), job state, legacy setups",
   },
   run: userFacing(async () => {
     const checks = await collectChecks();

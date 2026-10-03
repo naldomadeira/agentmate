@@ -19,6 +19,10 @@ describe("detectQuotaExhaustion", () => {
     "rate limit hit, try again at 6pm",
     "Monthly quota exceeded",
     "weekly limit reached",
+    // agy: its 429 reports a gRPC status and its own phrasing.
+    "RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 4h1m13s",
+    "Error: RESOURCE_EXHAUSTED: please retry later",
+    "Individual quota reached for model gemini-3.8-flash-low",
   ])("matches %s", (line) => {
     expect(detectQuotaExhaustion(line, [], "")).toBe(line);
   });
@@ -32,6 +36,9 @@ describe("detectQuotaExhaustion", () => {
     "quota",
     "GitHub API rate limit exceeded for user. Try again at 6pm",
     "HTTP 429: rate limit exceeded",
+    // Too bare to be defaults: documented as AGENTMATE_QUOTA_PATTERNS suggestions instead.
+    "request failed with code 429",
+    "resource exhausted",
   ])("does not match %s", (line) => {
     expect(detectQuotaExhaustion(line, [], "")).toBeNull();
     expect(detectQuotaExhaustion("", [line], "")).toBeNull();

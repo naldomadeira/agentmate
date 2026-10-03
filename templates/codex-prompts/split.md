@@ -1,11 +1,11 @@
 ---
 description: Split a goal into independent parts that both agents work on in parallel, cross-reviewed, with integration steps.
-argument-hint: "<codex|claude|gemini> <goal>"
+argument-hint: "<codex|claude|gemini|agy> <goal>"
 ---
 
 Request: $ARGUMENTS
 
-Take the first word of the request as the provider that plans the split (`codex`, `claude` or `gemini`, which is experimental); both agents run the parts and the other one reviews each. The rest is the goal. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
+Take the first word of the request as the provider that plans the split (`codex`, `claude`, `gemini` or `agy`; the last two are experimental); both agents run the parts and the other one reviews each. The rest is the goal. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
 
 1. Call the `mate_split` MCP tool with `provider`, `goal`, and optional `partner` (the other agent), `acceptance`, `maxParts` (2 to 4, default 3) and `mode`. The default `read-only` researches the parts; `write` implements each in its own git worktree and branch, so use it only when the user authorized edits. It returns the workflow's job id; follow it with `mate_observe` and collect it with `mate_wait`.
 2. If the `mate_*` tools are not loaded, run `npx -y agentmate jobs start <provider> "<goal>" --role split [--max-parts N] [--mode write]` in the shell.

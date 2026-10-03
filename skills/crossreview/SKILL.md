@@ -1,7 +1,7 @@
 ---
 name: crossreview
 description: Have one agent implement a scoped change and the other agent review it, looping on the findings without you relaying anything by hand. Use when the user says /mate:crossreview, 'cross-review', 'cross review this', 'revisão cruzada', 'implementa e o outro revisa', 'codex implementa e o claude revisa', or wants one agent to build and the other to check the work.
-argument-hint: "<codex|claude|gemini> <task>"
+argument-hint: "<codex|claude|gemini|agy> <task>"
 ---
 
 # Cross-review
@@ -41,7 +41,7 @@ implement (A, write) -> review (B, read-only) -> Verdict: approve          -> do
 ## Rules
 
 - When you resume a turn with jobs in progress, call `mate_inbox` before `mate_wait`: it reports what finished or failed since you last looked.
-- A `gemini` reviewer (experimental) cannot run `git diff`, so the diff is embedded in its briefing (capped at 30 000 characters); a `gemini` implementer cannot be resumed, so a later round starts a fresh job with the findings.
+- A `gemini` or `agy` reviewer (experimental) cannot run `git diff`, so the diff is embedded in its briefing (capped at 30 000 characters); a `gemini` implementer cannot be resumed, so a later round starts a fresh job with the findings (an `agy` implementer continues its conversation).
 - It edits files: the implementer runs in **write mode**. Use it only when the user authorized edits, and keep one write job per working tree.
 - Only a top-level session can start it; a worker cannot. `model` applies to the implementer only.
 - The reviewer reads the uncommitted diff, so do not commit between rounds. `mate_cancel` stops the workflow and its running child.

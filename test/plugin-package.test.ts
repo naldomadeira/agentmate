@@ -214,12 +214,13 @@ const SKILLS = [
   "codex",
   "claude",
   "gemini",
+  "agy",
   "init",
 ];
 const AGENTS = ["codex-teammate", "codex-reviewer", "codex-researcher", "codex-teamlead"];
 
 describe("skills", () => {
-  it("ships the fourteen skills", () => {
+  it("ships the fifteen skills", () => {
     const names = readdirSync(resolve(root, "skills"), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
@@ -239,7 +240,7 @@ describe("skills", () => {
     expect(readFileSync(path, "utf8").split("\n").length).toBeLessThanOrEqual(80);
   });
 
-  it("names gemini in every skill and template argument-hint that lists providers", () => {
+  it("names gemini and agy in every skill and template argument-hint that lists providers", () => {
     const hints = [
       ...SKILLS.map((name) => resolve(root, "skills", name, "SKILL.md")),
       ...["templates/claude-commands", "templates/codex-prompts"].flatMap((dir) =>
@@ -250,7 +251,13 @@ describe("skills", () => {
     ].map((path) => [path, frontmatter(path)["argument-hint"] ?? ""] as const);
     const naming = hints.filter(([, hint]) => /codex|claude/.test(hint));
     expect(naming.length).toBeGreaterThan(15);
-    for (const [path, hint] of naming) expect(hint, path).toContain("gemini");
+    for (const [path, hint] of naming) {
+      expect(hint, path).toContain("gemini");
+      expect(hint, path).toContain("agy");
+    }
+    // Where one hint lists the providers, it lists them in the registry order.
+    const listed = naming.filter(([, hint]) => hint.includes("<codex|claude|gemini|agy>"));
+    expect(listed.length).toBeGreaterThan(15);
   });
 
   it("keeps the project-local codex skill identical to the shared one", () => {

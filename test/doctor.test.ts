@@ -24,6 +24,7 @@ beforeAll(() => {
   process.env["AGENTMATE_CLAUDE_BIN"] = bin;
   process.env["AGENTMATE_CODEX_BIN"] = path.join(home, "missing-codex");
   process.env["AGENTMATE_GEMINI_BIN"] = path.join(home, "missing-gemini");
+  process.env["AGENTMATE_AGY_BIN"] = path.join(home, "missing-agy");
   process.env["CODEX_HOME"] = path.join(home, "codex-home");
 });
 
@@ -62,6 +63,22 @@ describe("doctor", () => {
     fs.writeFileSync(bin, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
     expect(find(await collectChecks(), "gemini").status).toBe("warn");
     process.env["AGENTMATE_GEMINI_BIN"] = path.join(home, "missing-gemini");
+  });
+
+  it("reports a missing Antigravity CLI as optional, shows its version and warns when it does not respond", async () => {
+    const missing = find(await collectChecks(), "agy");
+    expect(missing).toMatchObject({ status: "ok", detail: "not installed (optional)" });
+    expect(renderChecks(await collectChecks())).toMatch(/ok\s+agy\s+not installed \(optional\)/);
+    const bin = path.join(home, "fake-agy");
+    fs.writeFileSync(bin, '#!/usr/bin/env node\nconsole.log("agy 1.2.6");\n', { mode: 0o755 });
+    process.env["AGENTMATE_AGY_BIN"] = bin;
+    expect(find(await collectChecks(), "agy")).toMatchObject({ status: "ok", detail: "agy 1.2.6" });
+    fs.writeFileSync(bin, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const broken = find(await collectChecks(), "agy");
+    expect(broken.status).toBe("warn");
+    expect(broken.detail).toContain("Antigravity CLI (agy)");
+    expect(broken.hint).toContain("https://antigravity.google/cli/install.sh");
+    process.env["AGENTMATE_AGY_BIN"] = path.join(home, "missing-agy");
   });
 
   it("flags legacy registrations in claude and codex", async () => {
