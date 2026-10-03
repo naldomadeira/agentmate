@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { VERSION } from "../src/lib/version.js";
 import {
   buildAskPrompt,
   buildExplainCodePrompt,
@@ -147,6 +148,14 @@ describe("buildImplementPrompt", () => {
   });
 });
 
+describe("buildImplementPrompt verification rule", () => {
+  it("tells the worker not to claim unrun verification passed", () => {
+    expect(buildImplementPrompt({ task: "t" })).toContain(
+      "If a verification command is not permitted or fails to run, say so explicitly instead of claiming it passed.",
+    );
+  });
+});
+
 describe("buildTeamleadPrompt", () => {
   const base = {
     objective: "Migrate to ESM",
@@ -158,12 +167,17 @@ describe("buildTeamleadPrompt", () => {
   it("contains the CLI commands, the other provider and the report sections", () => {
     const prompt = buildTeamleadPrompt(base);
     expect(prompt).toContain("Migrate to ESM");
-    expect(prompt).toContain(
-      'npx -y agents-bridge-mcp jobs start claude "<complete briefing>" --role <ask|review|research|plan|implement>',
-    );
-    expect(prompt).toContain("npx -y agents-bridge-mcp jobs wait <id> --timeout 10m");
-    expect(prompt).toContain("npx -y agents-bridge-mcp jobs result <id>");
-    expect(prompt).toContain("npx -y agents-bridge-mcp jobs list");
+    const cli = `npx -y agents-bridge-mcp@${VERSION}`;
+    expect(prompt).toContain(`${cli} jobs start claude "$(cat <<'EOF'`);
+    expect(prompt).toContain("<<'EOF'");
+    expect(prompt).toContain(')" --role <ask|review|research|plan|implement>');
+    expect(prompt).toContain(`${cli} jobs wait <id> --timeout 90s`);
+    expect(prompt).not.toContain("--timeout 10m");
+    expect(prompt).not.toContain('"<complete briefing>"');
+    expect(prompt).toContain("run the same wait again");
+    expect(prompt).toContain(`${cli} jobs result <id>`);
+    expect(prompt).toContain(`${cli} jobs list`);
+    expect(prompt).toContain("never interpolate repository text or worker output");
     expect(prompt).toContain("Never delegate to codex");
     for (const heading of [
       "Objective",

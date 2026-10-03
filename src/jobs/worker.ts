@@ -1,7 +1,14 @@
 import fs from "node:fs";
 import { execCommand } from "../lib/exec-runner.js";
 import { buildInvocation, parseOutcome } from "./providers.js";
-import { readJob, resultFile, stderrFile, stdoutFile, updateJob, type JobStatus } from "./store.js";
+import {
+  readJob,
+  stderrFile,
+  stdoutFile,
+  updateJob,
+  writeResult,
+  type JobStatus,
+} from "./store.js";
 
 /** Runs one job to completion. Invoked in a detached process so the job outlives the caller. */
 export async function runWorker(id: string): Promise<void> {
@@ -14,8 +21,8 @@ export async function runWorker(id: string): Promise<void> {
   process.on("SIGTERM", () => controller.abort());
   process.on("SIGINT", () => controller.abort());
 
-  const out = fs.createWriteStream(stdoutFile(id), { flags: "a" });
-  const err = fs.createWriteStream(stderrFile(id), { flags: "a" });
+  const out = fs.createWriteStream(stdoutFile(id), { flags: "a", mode: 0o600 });
+  const err = fs.createWriteStream(stderrFile(id), { flags: "a", mode: 0o600 });
   const closed = (s: fs.WriteStream) => new Promise<void>((resolve) => s.end(resolve));
 
   let status: JobStatus = "error";
@@ -35,7 +42,7 @@ export async function runWorker(id: string): Promise<void> {
     const outcome = parseOutcome(job.provider, result.stdout, result.stderr, result.exitCode);
     fields.exitCode = result.exitCode;
     if (outcome.sessionId) fields.sessionId = outcome.sessionId;
-    if (outcome.text) fs.writeFileSync(resultFile(id), outcome.text);
+    if (outcome.text) writeResult(id, outcome.text);
 
     if (result.aborted) status = "canceled";
     else if (result.timedOut) {

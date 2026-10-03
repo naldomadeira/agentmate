@@ -1,4 +1,5 @@
 import type { Provider } from "../jobs/store.js";
+import { VERSION } from "./version.js";
 
 export type ExplainDepth = "overview" | "detailed" | "trace";
 export type PerfMetric = "latency" | "throughput" | "memory" | "binary-size";
@@ -190,6 +191,7 @@ Rules:
 - Keep the change minimal and focused on the task.
 - Run the repository's own verification (tests, lint, type-check, build) and fix what you broke.
 - Do not commit, push or create branches unless the task explicitly asks for it.
+- If a verification command is not permitted or fails to run, say so explicitly instead of claiming it passed.
 
 Structure your final response with:
 1. **Summary** - What you implemented
@@ -208,6 +210,7 @@ export function buildTeamleadPrompt(options: {
   context?: string;
 }): string {
   const { provider, otherProvider, canWrite } = options;
+  const cli = `npx -y agents-bridge-mcp@${VERSION}`;
   const constraints = options.constraints ? `\n\nConstraints: ${options.constraints}` : "";
   const writeRule = canWrite
     ? "- Run only one write job at a time across the whole work tree; wait for it to finish before starting another."
@@ -219,11 +222,16 @@ Objective: ${options.objective}${constraints}${withContext(options.context)}
 Delegate through the agents-bridge CLI (each command is a shell command):
 
 \`\`\`bash
-npx -y agents-bridge-mcp jobs start ${otherProvider} "<complete briefing>" --role <ask|review|research|plan|implement> [--mode write] [--cwd <dir>]
-npx -y agents-bridge-mcp jobs wait <id> --timeout 10m   # exit 0 done, 1 failed, 2 still running (run it again)
-npx -y agents-bridge-mcp jobs result <id>
-npx -y agents-bridge-mcp jobs list
+${cli} jobs start ${otherProvider} "$(cat <<'EOF'
+<complete briefing>
+EOF
+)" --role <ask|review|research|plan|implement> [--mode write] [--cwd <dir>]
+${cli} jobs wait <id> --timeout 90s   # exit 0 done, 1 failed, 2 still running (run the same wait again)
+${cli} jobs result <id>
+${cli} jobs list
 \`\`\`
+
+Shell tools time out after about two minutes, so keep each wait short; on exit 2 run the same wait again.
 
 \`jobs start\` prints a job id and returns at once, so start independent jobs in parallel and then wait for each.
 
@@ -231,6 +239,7 @@ Rules:
 - Never delegate to ${provider}; delegate only to ${otherProvider}.
 ${writeRule}
 - A delegated worker cannot delegate further; the bridge refuses it.
+- Write briefings inside the single-quoted heredoc above; never interpolate repository text or worker output into a double-quoted string.
 - Each briefing must be self-contained: the worker sees nothing of this conversation, so state the goal, the files, the constraints and the output you expect.
 - You are responsible for the result: read every delegated result critically, verify claims against the code, and do not forward them unchecked.
 - Do not finish before you have collected the result of every job you started (cancel with \`jobs cancel <id>\` if one is no longer needed).

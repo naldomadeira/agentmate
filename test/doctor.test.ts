@@ -73,7 +73,7 @@ describe("doctor", () => {
     const jobs = find(checks, "jobs");
     expect(jobs.status).toBe("warn");
     expect(jobs.detail).toContain("1 job");
-    expect(jobs.detail).toContain("1 stale");
+    expect(jobs.detail).toContain("1 stale: stale-1");
   });
 
   it("fails when the state directory is not writable and exits 1", async () => {

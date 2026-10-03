@@ -37,7 +37,7 @@ const guard =
     }
   };
 
-const jobId = z.string().describe("Job id returned by bridge_start");
+const jobId = z.string().describe("Job id returned by any bridge_* tool that starts a job");
 
 /**
  * Starts a job; with waitSeconds > 0 also waits that long and returns the result, or a pointer to

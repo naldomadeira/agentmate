@@ -15,6 +15,7 @@ import {
   waitJob,
 } from "../src/jobs/api.js";
 import { buildInvocation } from "../src/jobs/providers.js";
+import { VERSION } from "../src/lib/version.js";
 import { updateJob, type Job } from "../src/jobs/store.js";
 
 // A stand-in for the codex CLI. The prompt (last argument) selects the behavior.
@@ -26,7 +27,7 @@ if (prompt === "sleep") { emit({ type: "thread.started", thread_id: "t-sleep" })
 else if (prompt === "fail") { console.error("boom"); process.exit(1); }
 else {
   emit({ type: "thread.started", thread_id: "t-1" });
-  const env = " depth=" + process.env.AGENTS_BRIDGE_DEPTH + " job=" + process.env.AGENTS_BRIDGE_JOB_ID;
+  const env = " depth=" + process.env.AGENTS_BRIDGE_DEPTH + " job=" + process.env.AGENTS_BRIDGE_JOB_ID + " parentMode=" + process.env.AGENTS_BRIDGE_PARENT_MODE;
   emit({ type: "item.completed", item: { id: "i", type: "agent_message", text: "args=" + args.join(" ") + env } });
 }
 `;
@@ -115,10 +116,10 @@ describe("jobs", () => {
     expect(job.prompt).not.toBe("what is X?");
   });
 
-  it("hands depth and job id to the worker environment", async () => {
+  it("hands depth, job id and mode to the worker environment", async () => {
     const job = start("env");
     await waitJob(job.id, 20_000);
-    expect(readResult(job.id).text).toContain(`depth=1 job=${job.id}`);
+    expect(readResult(job.id).text).toContain(`depth=1 job=${job.id} parentMode=read-only`);
   }, 30_000);
 
   it("links jobs started from a worker to their parent and lists children", async () => {
@@ -148,6 +149,38 @@ describe("jobs", () => {
       expect(() => start("", { role: "teamlead", fields: { objective: "o" } })).toThrow(
         /Only a top-level session can start a teamlead job/,
       );
+    });
+  });
+
+  it("defaults the implement role to write and refuses read-only", () => {
+    const job = start("do it", { role: "implement" });
+    expect(job.mode).toBe("write");
+    expect(() => start("do it", { role: "implement", mode: "read-only" })).toThrow(
+      "Role implement needs mode write.",
+    );
+    expect(start("do it", { role: "implement", mode: "write" }).mode).toBe("write");
+    expect(start("hello").mode).toBe("read-only");
+  });
+
+  it("hands the job mode to the worker and blocks write children of a read-only parent", () => {
+    const parent = start("hello", { mode: "read-only" });
+    withEnv({ AGENTS_BRIDGE_DEPTH: "1", AGENTS_BRIDGE_JOB_ID: parent.id }, () => {
+      process.env["AGENTS_BRIDGE_PARENT_MODE"] = "read-only";
+      try {
+        expect(() => start("x", { mode: "write" })).toThrow(
+          "The parent job is read-only, so this job cannot use mode write.",
+        );
+        expect(() => start("x", { role: "implement" })).toThrow(/parent job is read-only/);
+        expect(start("x").mode).toBe("read-only");
+      } finally {
+        delete process.env["AGENTS_BRIDGE_PARENT_MODE"];
+      }
+      process.env["AGENTS_BRIDGE_PARENT_MODE"] = "write";
+      try {
+        expect(start("x", { mode: "write" }).mode).toBe("write");
+      } finally {
+        delete process.env["AGENTS_BRIDGE_PARENT_MODE"];
+      }
     });
   });
 
@@ -237,7 +270,14 @@ describe("provider flags", () => {
     createdAt: "",
     ...extra,
   });
-  const tools = (args: string[]) => args.filter((_, i) => args[i - 1] === "--allowedTools");
+  const tools = (args: string[]) =>
+    args
+      .filter((a) => a.startsWith("--allowedTools="))
+      .map((a) => a.slice("--allowedTools=".length));
+  const denied = (args: string[]) =>
+    args
+      .filter((a) => a.startsWith("--disallowedTools="))
+      .map((a) => a.slice("--disallowedTools=".length));
 
   it("limits read-only claude to inspection tools, plus web for research", () => {
     const base = tools(buildInvocation(job({})).args);
@@ -247,18 +287,71 @@ describe("provider flags", () => {
     expect(research).toEqual(expect.arrayContaining(["WebSearch", "WebFetch"]));
   });
 
-  it("lets a claude team lead run the bridge CLI, in either mode", () => {
+  it("never lets a variadic tool flag swallow the prompt", () => {
+    for (const extra of [
+      {},
+      { role: "research" },
+      { role: "teamlead" },
+      { mode: "write" },
+    ] as const) {
+      const { args } = buildInvocation(job({ ...extra, prompt: "the prompt" }));
+      expect(args.at(-1)).toBe("the prompt");
+      expect(args).not.toContain("--allowedTools");
+      expect(args).not.toContain("--disallowedTools");
+      for (const arg of args.filter((a) => a.startsWith("--allowedTools")))
+        expect(arg).toMatch(/^--allowedTools=.+/);
+    }
+  });
+
+  it("denies edit tools to every read-only claude job but not to write jobs", () => {
+    for (const role of ["custom", "research", "teamlead"] as const)
+      expect(denied(buildInvocation(job({ role })).args)).toEqual([
+        "Edit",
+        "Write",
+        "NotebookEdit",
+      ]);
+    expect(denied(buildInvocation(job({ mode: "write" })).args)).toEqual([]);
+  });
+
+  it("lets a claude team lead run the pinned bridge jobs CLI, in either mode", () => {
     const patterns = [
-      "Bash(npx -y agents-bridge-mcp *)",
-      "Bash(npx agents-bridge-mcp *)",
-      "Bash(agents-bridge-mcp *)",
+      `Bash(npx -y agents-bridge-mcp@${VERSION} jobs *)`,
+      `Bash(npx agents-bridge-mcp@${VERSION} jobs *)`,
+      "Bash(agents-bridge-mcp jobs *)",
     ];
     const readOnly = buildInvocation(job({ role: "teamlead" })).args;
     expect(tools(readOnly)).toEqual(expect.arrayContaining(patterns));
     const write = buildInvocation(job({ role: "teamlead", mode: "write" })).args;
     expect(write).toContain("acceptEdits");
-    expect(tools(write)).toEqual(patterns);
-    expect(tools(buildInvocation(job({ mode: "write" })).args)).toEqual([]);
+    expect(tools(write)).toEqual(expect.arrayContaining(patterns));
+    expect(tools(write)).toContain("Bash(pnpm *)");
+  });
+
+  it("lets a claude write job run verification, extendable through the environment", () => {
+    const write = tools(buildInvocation(job({ mode: "write" })).args);
+    expect(write).toEqual([
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git status *)",
+      "Bash(pnpm *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(yarn *)",
+      "Bash(bun *)",
+      "Bash(make *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+    ]);
+    withEnv({ AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS: "Bash(cargo *), Bash(go *),," }, () => {
+      const extended = tools(buildInvocation(job({ mode: "write" })).args);
+      expect(extended).toEqual([...write, "Bash(cargo *)", "Bash(go *)"]);
+      // read-only jobs ignore it
+      expect(tools(buildInvocation(job({})).args)).not.toContain("Bash(cargo *)");
+    });
   });
 
   it("does not pass --skip-git-repo-check or --sandbox when resuming codex", () => {

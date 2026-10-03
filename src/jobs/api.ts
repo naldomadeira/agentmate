@@ -174,7 +174,11 @@ export function startJob(options: StartOptions): Job {
     (options.timeoutMinutes ?? DEFAULT_TIMEOUT_MS / 60_000) * 60_000,
     MAX_TIMEOUT_MS,
   );
-  const mode = options.mode ?? "read-only";
+  if (role === "implement" && options.mode === "read-only")
+    throw new Error("Role implement needs mode write.");
+  const mode = options.mode ?? (role === "implement" ? "write" : "read-only");
+  if (mode === "write" && process.env["AGENTS_BRIDGE_PARENT_MODE"] === "read-only")
+    throw new Error("The parent job is read-only, so this job cannot use mode write.");
   const job: Job = {
     id: newJobId(),
     provider,
@@ -195,7 +199,12 @@ export function startJob(options: StartOptions): Job {
   const { command, args } = workerCommand(job.id);
   const child = spawn(command, args, {
     cwd: job.cwd,
-    env: { ...process.env, AGENTS_BRIDGE_DEPTH: String(depth + 1), AGENTS_BRIDGE_JOB_ID: job.id },
+    env: {
+      ...process.env,
+      AGENTS_BRIDGE_DEPTH: String(depth + 1),
+      AGENTS_BRIDGE_JOB_ID: job.id,
+      AGENTS_BRIDGE_PARENT_MODE: job.mode,
+    },
     detached: true,
     stdio: "ignore",
   });

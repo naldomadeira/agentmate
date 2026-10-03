@@ -59,6 +59,12 @@ export default defineCommand({
           throw new Error("mode must be read-only or write");
         if (args.role && !JOB_ROLES.includes(args.role as JobRole))
           throw new Error(`role must be one of: ${JOB_ROLES.join(", ")}`);
+        const timeoutMinutes = args.timeout === undefined ? undefined : Number(args.timeout);
+        if (
+          timeoutMinutes !== undefined &&
+          !(Number.isFinite(timeoutMinutes) && timeoutMinutes > 0)
+        )
+          throw new Error("timeout must be a positive number of minutes");
         const job = startJob({
           provider,
           prompt: args.prompt,
@@ -66,7 +72,7 @@ export default defineCommand({
           cwd: args.cwd,
           model: args.model,
           mode: args.mode as JobMode | undefined,
-          timeoutMinutes: args.timeout ? Number(args.timeout) : undefined,
+          timeoutMinutes,
           continueJob: args.continue,
         });
         console.log(job.id);

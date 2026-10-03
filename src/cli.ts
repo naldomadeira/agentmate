@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { defineCommand, runMain } from "citty";
+import { VERSION } from "./lib/version.js";
 
 const main = defineCommand({
   meta: {
     name: "agents-bridge-mcp",
+    version: VERSION,
     description: "Bidirectional MCP bridge between Claude Code and Codex CLI",
   },
   subCommands: {

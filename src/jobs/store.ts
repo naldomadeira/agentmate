@@ -62,15 +62,26 @@ export const stdoutFile = (id: string) => path.join(jobDir(id), "stdout.log");
 export const stderrFile = (id: string) => path.join(jobDir(id), "stderr.log");
 export const resultFile = (id: string) => path.join(jobDir(id), "result.md");
 
+/** Writes a job's result text, readable only by the owner. */
+export function writeResult(id: string, text: string): void {
+  fs.writeFileSync(resultFile(id), text, { mode: 0o600 });
+}
+
 export function newJobId(): string {
   return `${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
 }
 
+/** Job state can hold briefings and repo excerpts, so its directories are owner-only. */
+function ensureDirs(id: string): void {
+  fs.mkdirSync(path.join(homeDir(), "jobs"), { recursive: true, mode: 0o700 });
+  fs.mkdirSync(jobDir(id), { recursive: true, mode: 0o700 });
+}
+
 /** Atomic replace: readers never observe a half-written job.json. */
 export function writeJob(job: Job): void {
-  fs.mkdirSync(jobDir(job.id), { recursive: true });
+  ensureDirs(job.id);
   const tmp = `${jobFile(job.id)}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(job, null, 2));
+  fs.writeFileSync(tmp, JSON.stringify(job, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, jobFile(job.id));
 }
 

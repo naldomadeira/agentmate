@@ -94,7 +94,7 @@ function checkJobs(): Check {
       Date.now() - Date.parse(job.createdAt) > STALE_GRACE_MS &&
       (job.workerPid ? !isAlive(job.workerPid) : true),
   );
-  const detail = `${jobs.length} job${jobs.length === 1 ? "" : "s"}, ${running.length} running, ${stale.length} stale`;
+  const detail = `${jobs.length} job${jobs.length === 1 ? "" : "s"}, ${running.length} running, ${stale.length} stale${stale.length > 0 ? `: ${stale.map((job) => job.id).join(", ")}` : ""}`;
   return stale.length > 0
     ? warn(
         "jobs",
