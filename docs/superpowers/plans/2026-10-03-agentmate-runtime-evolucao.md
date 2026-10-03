@@ -14,6 +14,19 @@
 | Sessions | `sessionId` por job (thread do codex / sessão do claude) e `continue`. | Nenhum agrupamento de jobs com contexto compartilhado; o team lead só vê filhos via `parentJob`. |
 | Collaboration | `teamlead` delega pelo CLI; skills guiam o host. | Cross-review e split dependem do host conduzir cada passo manualmente. |
 
+## Decisões fechadas com o usuário (grill, 2026-10-03)
+
+- Fase 1 (0.5.0) inclui adapters, eventos, lifecycle **e o papel `crossreview`**; task splitting fica na Fase 2.
+- Cross-review é coordenado pelo worker do AgentMate como job de workflow (depth 0, passos como filhos depth 1; só sessão top-level inicia, como o team lead).
+- Papéis: `provider` implementa, `otherAgent(provider)` revisa; máximo de 2 rodadas por padrão (`maxRounds`).
+- O revisor roda na mesma árvore, read-only, revisando o `git diff` não commitado do implementador. Um job write por vez continua valendo.
+- Parada: linha explícita `Verdict: approve` encerra como `done`; `Verdict: request-changes` abre nova rodada (`implement --continue` no implementador com os achados); sem veredito claro encerra com `needs-human` no relatório, sem iterar às cegas.
+- Superfície: papel `crossreview` em `JOB_ROLES`, ferramenta `mate_crossreview(provider, task, acceptance?, maxRounds?, cwd?, model?, timeoutMinutes?, waitSeconds?)`, skill `crossreview` (`/mate:crossreview codex <tarefa>`), `jobs start --role crossreview`, templates de comando.
+- Contexto entre passos por pai/filho e `result.md`; Sessions chegam na Fase 2.
+- Claude passa a `--output-format stream-json` na Fase 2.
+- Live mode (Fase 3): inbox em arquivo + hooks, sem daemon. Gemini na Fase 3, ativado só se o binário existir.
+- Servidores síncronos legados (`serve codex`, `serve claude`, `setup`): aviso de depreciação em 0.5.0, remoção em 0.6.0.
+
 ## Princípios
 
 1. Um runtime. Jobs, Events e Sessions compartilham `~/.agentmate` e o mesmo worker.
@@ -24,7 +37,7 @@
 
 ---
 
-## Fase 1 — Adapters, Events e lifecycle (este PR, 0.5.0)
+## Fase 1 — Adapters, Events, lifecycle e cross-review (este PR, 0.5.0)
 
 ### 1A. Agent adapters
 
@@ -104,7 +117,6 @@ export interface JobEvent {
 ## Fase 2 — Sessions e workflows de colaboração (0.6.0)
 
 - **Sessions**: `~/.agentmate/sessions/<id>/session.json` + `notes.md` (contexto compartilhado curto, escrito pelo host e lido pelos workers via prompt). Jobs ganham `sessionId`. `mate_session_start/add/notes/list`; `continue` entre agentes diferentes passa a ser "nova conversa com as notas da sessão".
-- **Cross-review** como papel de workflow executado pelo worker: `implement` em A → `review` em B → se `request-changes`, `implement --continue` em A → até `maxRounds` (padrão 2) → relatório. Profundidade: o job de workflow é depth 0 e os passos depth 1; passos não delegam.
 - **Split**: `plan` produz partes com interfaces fechadas → jobs paralelos (um `write` por worktree; o workflow cria worktrees `git worktree add` quando `mode: write`) → `review` cruzado → relatório de integração.
 - **Lifecycle**: status `quota_exhausted` com detecção empírica das mensagens do `codex exec` e `claude -p` (429 transitório continua sendo retry); dica de handoff para o outro agente.
 - **Hook SessionStart** (plugin Claude): "N jobs terminaram enquanto você esteve fora", fail-open, cooldown 120 s.
