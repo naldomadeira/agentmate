@@ -1,5 +1,6 @@
 import type { JobEvent } from "../agents/types.js";
 import { elapsedSeconds, summarize, type Observation } from "./api.js";
+import type { Session } from "./sessions.js";
 import { TERMINAL, type Job } from "./store.js";
 
 const MAX_RESULT_CHARS = 80_000;
@@ -49,8 +50,13 @@ export function renderObservation({
 }
 
 function listLine(job: Job): string {
-  const prompt = job.prompt.replace(/\s+/g, " ").slice(0, 60);
-  return `${job.id}  ${job.status.padEnd(8)} ${job.role.padEnd(11)} ${job.provider}/${job.mode}  ${elapsedSeconds(job)}s  ${prompt}`;
+  // Skip the shared-notes prefix that sessions put in front of the role prompt.
+  const own = job.prompt.startsWith("## Shared session notes")
+    ? job.prompt.slice(job.prompt.indexOf("\n\n---\n\n") + 7)
+    : job.prompt;
+  const prompt = own.replace(/\s+/g, " ").slice(0, 60);
+  const session = job.session ? `session ${job.session}  ` : "";
+  return `${job.id}  ${job.status.padEnd(8)} ${job.role.padEnd(11)} ${job.provider}/${job.mode}  ${elapsedSeconds(job)}s  ${session}${prompt}`;
 }
 
 /** Newest first; a job whose parent is also listed is indented beneath it, oldest child first. */
@@ -68,4 +74,29 @@ export function renderList(jobs: Job[]): string {
   };
   for (const job of jobs) if (!job.parentJob || !listed.has(job.parentJob)) add(job, "");
   return lines.join("\n");
+}
+
+/** A session, its notes (the tail the workers see) and the jobs started in it, newest first. */
+export function renderSession(session: Session, notes: string, jobs: Job[]): string {
+  const sections = [
+    `session ${session.id} · ${session.title}`,
+    `cwd: ${session.cwd}\ncreated: ${session.createdAt} · updated: ${session.updatedAt}`,
+    `jobs:\n${renderList([...jobs].reverse())
+      .split("\n")
+      .map((line) => `  ${line}`)
+      .join("\n")}`,
+    `notes:\n${notes.trim() ? notes.trim() : "(no notes)"}`,
+  ];
+  return sections.join("\n\n");
+}
+
+/** One line per session, newest first. */
+export function renderSessionList(sessions: Session[]): string {
+  if (sessions.length === 0) return "No sessions.";
+  return sessions
+    .map(
+      (session) =>
+        `${session.id}  ${session.jobs.length} job(s)  ${session.updatedAt.slice(0, 19)}Z  ${session.cwd}  ${session.title}`,
+    )
+    .join("\n");
 }

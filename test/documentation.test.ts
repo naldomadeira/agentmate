@@ -127,6 +127,7 @@ describe("project documentation", () => {
       "implement",
       "teamlead",
       "crossreview",
+      "split",
       "jobs",
       "delegate",
       "codex",
@@ -141,6 +142,7 @@ describe("project documentation", () => {
       "mate_implement",
       "mate_teamlead",
       "mate_crossreview",
+      "mate_split",
     ]) {
       expect(readme).toContain(tool);
     }
@@ -176,6 +178,34 @@ describe("project documentation", () => {
     expect(read("docs/ARCHITECTURE.md")).toContain("Cross-review shipped in phase 1");
   });
 
+  it("documents task splitting and sessions in both READMEs and the architecture notes", () => {
+    const readme = read("README.md");
+    expect(readme).toContain("mate_split");
+    expect(readme).toContain("## Task splitting");
+    expect(readme).toContain("--role split");
+    expect(readme).toContain("agentmate/<split-id>/<part-id>");
+    expect(readme).toContain("conflicts between parts are not resolved automatically");
+    for (const tool of [
+      "mate_session_start",
+      "mate_session_show",
+      "mate_session_notes",
+      "mate_session_list",
+    ])
+      expect(readme).toContain(tool);
+    expect(readme.indexOf("## Task splitting")).toBeGreaterThan(readme.indexOf("## Cross-review"));
+    expect(readme.indexOf("## Task splitting")).toBeLessThan(readme.indexOf("## How it works"));
+
+    const portuguese = read("docs/README.pt-BR.md");
+    expect(portuguese).toContain("mate_split");
+    expect(portuguese).toContain("## Divisão de tarefas");
+    expect(portuguese).toContain("mate_session_start");
+    expect(portuguese).toContain("### Sessões");
+
+    const architecture = read("docs/ARCHITECTURE.md");
+    expect(architecture).toContain("Sessions (shipped in phase 2)");
+    expect(architecture).toContain("## Split (workflow job)");
+  });
+
   it("announces the removal of the legacy servers and setup in 0.6.0", () => {
     for (const file of [
       "README.md",
@@ -197,6 +227,8 @@ describe("project documentation", () => {
     expect(changelog).toContain("## [0.5.0]");
     expect(changelog).toContain("## [0.4.0]");
     expect(changelog).toContain("crossreview");
+    expect(changelog).toContain("split");
+    expect(changelog).toContain("mate_session_start");
     expect(changelog).toContain("### Deprecated");
     expect(changelog).toContain("0.6.0");
     expect(changelog).toContain("mate@agentmate");

@@ -128,6 +128,7 @@ export const COMMAND_NAMES = [
   "implement",
   "teamlead",
   "crossreview",
+  "split",
   "jobs",
 ] as const;
 

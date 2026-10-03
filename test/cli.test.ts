@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { execCommand } from "../src/lib/exec-runner.js";
 import { VERSION } from "../src/lib/version.js";
@@ -20,6 +23,7 @@ describe("cli", () => {
     const output = result.stdout + result.stderr;
     expect(output).toContain("serve");
     expect(output).toContain("install");
+    expect(output).toContain("sessions");
     expect(output).not.toMatch(/^\s*setup\b/m);
   });
 
@@ -84,6 +88,64 @@ describe("cli", () => {
     expect(wrongRole.stderr).toContain("max-rounds applies only with --role crossreview");
     expect(wrongRole.stderr).not.toContain("    at ");
   });
+
+  it("lists max-parts and session among the jobs start options and validates them", async () => {
+    const help = await runCli(["jobs", "start", "--help"]);
+    expect(help.stdout).toContain("max-parts");
+    expect(help.stdout).toContain("session");
+    expect(help.stdout).toContain("split");
+
+    const bad = await runCli(["jobs", "start", "claude", "x", "--role", "split", "--max-parts=9"]);
+    expect(bad.exitCode).not.toBe(0);
+    expect(bad.stderr).toContain("max-parts must be a whole number from 2 to 4");
+    const wrongRole = await runCli(["jobs", "start", "claude", "x", "--max-parts=3"]);
+    expect(wrongRole.exitCode).not.toBe(0);
+    expect(wrongRole.stderr).toContain("max-parts applies only with --role split");
+    const below = await runCli(["jobs", "start", "claude", "x", "--role", "split"], {
+      AGENTMATE_DEPTH: "1",
+    });
+    expect(below.exitCode).not.toBe(0);
+    expect(below.stderr).toContain("Only a top-level session can start a split job.");
+    expect(below.stderr).not.toContain("    at ");
+  });
+
+  it("starts, annotates, shows and lists a session", async () => {
+    const home = mkdtempSync(join(tmpdir(), "abm-cli-sessions-"));
+    const env = { AGENTMATE_HOME: home };
+    try {
+      const help = await runCli(["sessions", "--help"]);
+      for (const verb of ["start", "show", "notes", "list"]) expect(help.stdout).toContain(verb);
+
+      const started = await runCli(
+        ["sessions", "start", "Auth rewrite", "--cwd", "/work/app"],
+        env,
+      );
+      expect(started.exitCode).toBe(0);
+      const id = started.stdout.trim();
+      expect(id).toMatch(/^[a-z0-9-]+$/);
+
+      const noted = await runCli(
+        ["sessions", "notes", id, "Keep the cookie.", "--author", "codex"],
+        env,
+      );
+      expect(noted.exitCode).toBe(0);
+      const shown = await runCli(["sessions", "show", id], env);
+      expect(shown.stdout).toContain("Auth rewrite");
+      expect(shown.stdout).toContain("· codex");
+      expect(shown.stdout).toContain("Keep the cookie.");
+      expect((await runCli(["sessions", "list", "--cwd", "/work/app"], env)).stdout).toContain(id);
+      expect((await runCli(["sessions", "list", "--cwd", "/elsewhere"], env)).stdout).toContain(
+        "No sessions.",
+      );
+
+      const missing = await runCli(["sessions", "show", "nope"], env);
+      expect(missing.exitCode).not.toBe(0);
+      expect(missing.stderr).toContain("Session not found: nope");
+      expect(missing.stderr).not.toContain("    at ");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("refuses crossreview below the top level without a stack trace", async () => {
     const result = await runCli(["jobs", "start", "claude", "x", "--role", "crossreview"], {

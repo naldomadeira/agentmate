@@ -5,6 +5,7 @@ import { getAgent } from "../agents/registry.js";
 import { execCommand } from "../lib/exec-runner.js";
 import { runCrossreview } from "./crossreview.js";
 import { appendEvent } from "./events.js";
+import { runSplit } from "./split.js";
 import { buildInvocation, parseOutcome } from "./providers.js";
 import {
   readJob,
@@ -23,6 +24,7 @@ export async function runWorker(id: string): Promise<void> {
   if (!job) throw new Error(`Job not found: ${id}`);
   // A workflow job runs no agent CLI itself; its steps are child jobs.
   if (job.role === "crossreview") return runCrossreview(id);
+  if (job.role === "split") return runSplit(id);
 
   const startedAt = Date.now();
   updateJob(id, {

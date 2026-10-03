@@ -8,7 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-<!-- phase 2 additions -->
+- Sessions: shared context across jobs and agents. A session is `~/.agentmate/sessions/<id>/` with `session.json` and an append-only `notes.md`. A job started with a session (`session` on every MCP job tool, `jobs start --session <id>`) is recorded in it, recorded as `job.session`, and its prompt, for every role, starts with the last 4000 characters of the notes under `## Shared session notes`. Children started by `crossreview` and `split` inherit the workflow's session.
+- MCP tools `mate_session_start`, `mate_session_show`, `mate_session_notes` and `mate_session_list`, and the CLI `agentmate sessions start|show|notes|list`.
+- `split` role: a workflow job where `provider` plans 1 to `maxParts` (2 to 4, default 3) independent parts with closed interfaces and no overlapping files, the parts run in parallel on both agents, and the other agent reviews each finished part. Read-only mode (default) runs a `research` job per part; write mode creates a git worktree and branch per part (`git worktree add -b agentmate/<split-id>/<part-id> ~/.agentmate/worktrees/<split-id>/<part-id> HEAD`) and runs an `implement` job in it. The report has the goal, a parts table with verdicts and branches, the integration steps (ordered `git merge` commands and `git worktree remove` cleanup, with a note that conflicts are not resolved automatically), what needs a human, and the `jobs result` commands. A failed part ends the workflow `error` naming the part after the others finish. `split` creates a session when none is given and writes its plan into the notes. Only a top-level session can start it.
+- MCP tool `mate_split(provider, goal, acceptance?, maxParts?, mode?, cwd?, session?, model?, timeoutMinutes?, waitSeconds?)`, CLI `jobs start <provider> "<goal>" --role split [--max-parts N] [--mode write]`, the `split` skill (`/mate:split`, `$mate:split`) and the `split` command templates (bare `/split`, `/prompts:split`).
 
 ### Changed
 

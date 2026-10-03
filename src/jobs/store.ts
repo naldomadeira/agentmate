@@ -16,7 +16,8 @@ export type JobRole =
   | "plan"
   | "implement"
   | "teamlead"
-  | "crossreview";
+  | "crossreview"
+  | "split";
 
 export const JOB_ROLES = [
   "custom",
@@ -27,6 +28,7 @@ export const JOB_ROLES = [
   "implement",
   "teamlead",
   "crossreview",
+  "split",
 ] as const satisfies readonly JobRole[];
 
 export const TERMINAL: readonly JobStatus[] = ["done", "error", "canceled", "timeout"];
@@ -46,6 +48,8 @@ export interface RoleFields {
   task?: string;
   acceptance?: string;
   objective?: string;
+  /** plan only: asks for the parts block of a split plan instead of an ordinary plan (set by the split workflow). */
+  maxParts?: number;
 }
 
 /** The reviewer's last word on a round; `none` when it gave no clear verdict or the review failed. */
@@ -65,6 +69,35 @@ export interface Workflow {
 
 export const DEFAULT_MAX_ROUNDS = 2;
 export const MAX_ROUNDS_LIMIT = 5;
+
+/** One part of a `split` job: planned by the planner, run by `agent`, reviewed by the other agent. */
+export interface SplitPart {
+  id: string;
+  title: string;
+  agent: Provider;
+  /** The plan job that produced this part. */
+  planJob?: string;
+  /** The research (read-only) or implement (write) job that ran the part. */
+  partJob?: string;
+  reviewJob?: string;
+  verdict: Verdict;
+  /** Write mode: the branch and worktree created for the part, and the commit it started from. */
+  branch?: string;
+  worktree?: string;
+  base?: string;
+  /** Why the part (or its review) failed. */
+  error?: string;
+}
+
+/** Settings and per-part progress of a `split` job. */
+export interface Split {
+  maxParts: number;
+  parts: SplitPart[];
+}
+
+export const DEFAULT_MAX_PARTS = 3;
+export const MIN_MAX_PARTS = 2;
+export const MAX_PARTS_LIMIT = 4;
 
 export interface Job {
   id: string;
@@ -87,13 +120,18 @@ export interface Job {
   finishedAt?: string;
   workerPid?: number;
   exitCode?: number;
+  /** The provider's own conversation id, used to continue the job. Not an AgentMate session. */
   sessionId?: string;
+  /** Id of the AgentMate session (shared notes) this job belongs to; see `sessions.ts`. */
+  session?: string;
   continuesJob?: string;
   error?: string;
   /** What a workflow job (crossreview) needs after it is started; other roles leave it unset. */
   fields?: RoleFields;
   /** Settings and per-round progress of a crossreview job. */
   workflow?: Workflow;
+  /** Settings and per-part progress of a split job. */
+  split?: Split;
 }
 
 /** Jobs live outside any repo so ids resolve from any session or cwd. */

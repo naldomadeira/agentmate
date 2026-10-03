@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { EventLevel, JobEvent } from "../agents/types.js";
-import { otherAgent } from "../agents/registry.js";
+import { AGENT_IDS, otherAgent } from "../agents/registry.js";
 import {
   buildAskPrompt,
   buildCrossreviewPrompt,
@@ -10,12 +10,18 @@ import {
   buildPlanPrompt,
   buildResearchPrompt,
   buildReviewPrompt,
+  buildSplitPlanPrompt,
+  buildSplitPrompt,
   buildTeamleadPrompt,
 } from "../lib/prompt-builder.js";
 import { readEvents } from "./events.js";
+import { attachJob, getSession, withSessionNotes } from "./sessions.js";
 import {
+  DEFAULT_MAX_PARTS,
   DEFAULT_MAX_ROUNDS,
+  MAX_PARTS_LIMIT,
   MAX_ROUNDS_LIMIT,
+  MIN_MAX_PARTS,
   TERMINAL,
   isAlive,
   listJobIds,
@@ -61,6 +67,10 @@ export interface StartOptions {
   continueJob?: string;
   /** crossreview only: review rounds before it stops, 1 to 5 (default 2). */
   maxRounds?: number;
+  /** split only: most parts the plan may have, 2 to 4 (default 3). */
+  maxParts?: number;
+  /** Id of an AgentMate session whose notes prefix the prompt and which records the job. */
+  sessionId?: string;
 }
 
 type PrimaryField = "question" | "target" | "topic" | "goal" | "task" | "objective";
@@ -72,6 +82,7 @@ const PRIMARY_FIELD: Record<Exclude<JobRole, "custom">, PrimaryField> = {
   implement: "task",
   teamlead: "objective",
   crossreview: "task",
+  split: "goal",
 };
 
 export const isTerminal = (job: Job) => TERMINAL.includes(job.status);
@@ -95,6 +106,7 @@ function renderPrompt(
   provider: Provider,
   mode: JobMode,
   maxRounds: number,
+  maxParts: number,
 ) {
   if (role === "custom") {
     if (!options.prompt)
@@ -123,6 +135,14 @@ function renderPrompt(
         context,
       });
     case "plan":
+      // The split workflow asks its planner for a parts block through this role.
+      if (fields.maxParts)
+        return buildSplitPlanPrompt({
+          goal: required,
+          acceptance: fields.acceptance,
+          maxParts: fields.maxParts,
+          agents: [...AGENT_IDS],
+        });
       return buildPlanPrompt({
         goal: required,
         constraints,
@@ -148,6 +168,14 @@ function renderPrompt(
         reviewer: otherAgent(provider),
         maxRounds,
       });
+    case "split":
+      return buildSplitPrompt({
+        goal: required,
+        acceptance: fields.acceptance,
+        planner: provider,
+        maxParts,
+        mode,
+      });
   }
 }
 
@@ -167,6 +195,15 @@ function crossreviewFields(options: StartOptions): RoleFields {
   };
 }
 
+/** What the split worker needs to brief its steps: the goal and acceptance criteria. */
+function splitFields(options: StartOptions): RoleFields {
+  const { acceptance } = options.fields ?? {};
+  return {
+    goal: options.fields?.goal || options.prompt || "",
+    ...(acceptance ? { acceptance } : {}),
+  };
+}
+
 export function startJob(options: StartOptions): Job {
   const role = options.role ?? "custom";
   const depth = currentDepth();
@@ -174,7 +211,7 @@ export function startJob(options: StartOptions): Job {
     throw new Error(
       `Delegation depth limit reached (${depth} >= ${MAX_DELEGATION_DEPTH}); a delegated worker cannot start more jobs. Report back to your parent instead.`,
     );
-  if ((role === "teamlead" || role === "crossreview") && depth > 0)
+  if ((role === "teamlead" || role === "crossreview" || role === "split") && depth > 0)
     throw new Error(
       `Only a top-level session can start a ${role} job. Start it from the host session with \`agentmate jobs start\`.`,
     );
@@ -191,6 +228,21 @@ export function startJob(options: StartOptions): Job {
     throw new Error(
       "A crossreview job cannot continue another job; it continues its own implementer sessions.",
     );
+  if (options.maxParts !== undefined) {
+    if (role !== "split") throw new Error("maxParts applies only to the split role.");
+    if (
+      !Number.isInteger(options.maxParts) ||
+      options.maxParts < MIN_MAX_PARTS ||
+      options.maxParts > MAX_PARTS_LIMIT
+    )
+      throw new Error(
+        `maxParts must be a whole number from ${MIN_MAX_PARTS} to ${MAX_PARTS_LIMIT}.`,
+      );
+  }
+  if (role === "split" && options.continueJob)
+    throw new Error("A split job cannot continue another job; it starts its own plan and parts.");
+  // Validated up front so an unknown session never leaves a half-started job behind.
+  if (options.sessionId) getSession(options.sessionId);
   const parentJob = process.env["AGENTMATE_JOB_ID"] || undefined;
 
   let provider = options.provider;
@@ -230,7 +282,9 @@ export function startJob(options: StartOptions): Job {
       "The parent job is read-only, so this job cannot use mode write. Start it read-only or from the host session.",
     );
   const maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS;
-  const prompt = renderPrompt(options, role, provider, mode, maxRounds);
+  const maxParts = options.maxParts ?? DEFAULT_MAX_PARTS;
+  const rendered = renderPrompt(options, role, provider, mode, maxRounds, maxParts);
+  const prompt = options.sessionId ? withSessionNotes(options.sessionId, rendered) : rendered;
   const job: Job = {
     id: newJobId(),
     provider,
@@ -245,14 +299,17 @@ export function startJob(options: StartOptions): Job {
     status: "queued",
     createdAt: new Date().toISOString(),
     ...(sessionNote ? { continuesJob: sessionNote } : {}),
+    ...(options.sessionId ? { session: options.sessionId } : {}),
     ...(role === "crossreview"
       ? {
           fields: crossreviewFields(options),
           workflow: { maxRounds, rounds: [] },
         }
       : {}),
+    ...(role === "split" ? { fields: splitFields(options), split: { maxParts, parts: [] } } : {}),
   };
   writeJob(job);
+  if (options.sessionId) attachJob(options.sessionId, job.id);
 
   const { command, args } = workerCommand(job.id);
   const child = spawn(command, args, {
@@ -427,6 +484,7 @@ export function summarize(job: Job): string {
     `${elapsedSeconds(job)}s`,
   ];
   if (job.parentJob) parts.push(`parent ${job.parentJob}`);
+  if (job.session) parts.push(`session ${job.session}`);
   if (job.error) parts.push(`error: ${job.error}`);
   return parts.join(" · ");
 }

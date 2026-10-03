@@ -17,7 +17,7 @@ AgentMate connects AI coding agents so they can collaborate, delegate, review, a
 
 - **A second opinion from a different model.** Ask the other CLI a question, or have it review your diff, before you commit to an approach. It reads your repository; it does not share your session's assumptions.
 - **Work that does not block you.** Every task is a durable background job with an id. The session that started it can end, and the result is still there.
-- **Roles instead of raw prompts.** `ask`, `review`, `research`, `plan`, `implement` and `teamlead` each send a tuned prompt with a defined output format, and each runs with the narrowest permissions that role needs. Jobs are read-only unless you say otherwise. `crossreview` chains two of them: one agent implements, the other reviews, and the loop runs without you relaying anything.
+- **Roles instead of raw prompts.** `ask`, `review`, `research`, `plan`, `implement` and `teamlead` each send a tuned prompt with a defined output format, and each runs with the narrowest permissions that role needs. Jobs are read-only unless you say otherwise. `crossreview` chains two of them: one agent implements, the other reviews, and the loop runs without you relaying anything. `split` divides a broad goal into independent parts that both agents work on in parallel and review each other's, sharing context through sessions.
 
 ## 60-second quickstart
 
@@ -98,13 +98,14 @@ Examples use Claude Code's `/mate:...`; in Codex use `$mate:...`. The provider (
 | Implement a scoped fix  | `/mate:implement codex Fix the flaky retry test in test/queue.test.ts`            |
 | Run a team lead         | `/mate:teamlead claude Audit error handling and propose fixes; delegate to codex` |
 | Implement, then cross-review | `/mate:crossreview codex Add a --dry-run flag to the export command`        |
+| Split a goal across both agents | `/mate:split codex Add CSV and JSON export to the report command`        |
 | Job ops                 | `/mate:jobs list`, `/mate:jobs result <id>`, `/mate:jobs cancel <id>`         |
 
-`implement` and `crossreview` edit files, so use them only when you authorize that. The others are read-only.
+`implement` and `crossreview` edit files, and `split` does when you pass `--mode write`, so use them only when you authorize that. The others are read-only.
 
 ## What you can do
 
-Seven roles, each reachable as a skill, an MCP tool and a CLI command. `<provider>` is `codex` or `claude`; pick the one that is not the host you are in.
+Eight roles, each reachable as a skill, an MCP tool and a CLI command. `<provider>` is `codex` or `claude`; pick the one that is not the host you are in.
 
 | Role        | Skill       | MCP tool           | CLI                                                 | Mode                               |
 | ----------- | ----------- | ------------------ | --------------------------------------------------- | ---------------------------------- |
@@ -115,6 +116,7 @@ Seven roles, each reachable as a skill, an MCP tool and a CLI command. `<provide
 | `implement` | `implement` | `mate_implement` | `jobs start <provider> "<prompt>" --role implement` | write (always)                     |
 | `teamlead`  | `teamlead`  | `mate_teamlead`  | `jobs start <provider> "<prompt>" --role teamlead`  | read-only by default, write opt-in |
 | `crossreview` | `crossreview` | `mate_crossreview` | `jobs start <provider> "<task>" --role crossreview [--max-rounds N]` | write on the implementer, read-only review |
+| `split` | `split` | `mate_split` | `jobs start <provider> "<goal>" --role split [--max-parts N] [--mode write]` | read-only by default, write opt-in (one git worktree per part) |
 
 `mate_ask` waits for the answer (up to 120 seconds by default) and returns it in the same call. The other role tools return a job id immediately unless you pass `waitSeconds`.
 
@@ -132,7 +134,7 @@ Every command in the table works without MCP. Prefix CLI commands with `npx -y a
 
 ## Slash commands
 
-Eight commands (`ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `crossreview` and `jobs`) can be started as a command in either host. Both hosts take the provider first, then the request.
+Nine commands (`ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `crossreview`, `split` and `jobs`) can be started as a command in either host. Both hosts take the provider first, then the request.
 
 | Host and style     | How to invoke                    | How to get it                                                             |
 | ------------------ | -------------------------------- | ------------------------------------------------------------------------- |
@@ -201,6 +203,39 @@ npx -y agentmate jobs start codex "Add a --dry-run flag to the export command" -
 
 It edits files, so start it only when you authorize that, and keep one write job per working tree. Only a top-level session can start it, like a team lead. `--model` applies to the implementer only.
 
+## Task splitting
+
+Task splitting divides a broad goal into independent parts, runs the parts in parallel on both agents and has the other agent review each one, so you do not relay results between sessions. Like cross-review it is a workflow job: the worker calls no CLI itself, it runs the steps as child jobs (`depth` 1, `parentJob` = the workflow id) that share one [session](#sessions). `provider` plans; each part goes to `codex` or `claude`. Start it with `mate_split` or the `split` skill (`/mate:split codex <goal>`), and follow it with `mate_observe`.
+
+```text
+goal -> plan (provider, read-only)
+          |  1..maxParts parts: closed interfaces, no overlapping files, one agent each
+          v
+        parts in parallel ---- read-only: a research job per part, on the working directory
+          |                    write:     a git worktree + branch per part, an implement job in each
+          v
+        cross-review (the other agent of each part, read-only, Verdict: approve | request-changes)
+          |
+          v
+        integration report (parts table, merge order, what needs a human)
+```
+
+1. **Plan.** A `plan` job on `provider` returns a fenced `json` block, `{ "parts": [{ "id", "title", "briefing", "files", "agent" }] }`, with 1 to `maxParts` parts (2 to 4, default 3). The worker takes the last such block and checks it: unique ids (`a-z`, `0-9`, `-`), known agents (a missing or unknown agent alternates, starting with the other agent). If the block is invalid the workflow ends `error` with a pointer to `jobs result <plan-job>`. The plan goes into the session notes, so every part sees it.
+2. **Parts, in parallel.** Read-only (default): one `research` job per part on the part's agent, in the working directory. Write (`--mode write`, needs a git repository with a commit): for each part the worker runs `git worktree add -b agentmate/<split-id>/<part-id> ~/.agentmate/worktrees/<split-id>/<part-id> HEAD`, then an `implement` job works in that worktree, so your working tree is untouched. When the implementer finishes, AgentMate commits what it left on the part's branch.
+3. **Cross-review.** Each finished part is reviewed read-only by the other agent: in write mode in the part's worktree, against the commit the branch started from (`git diff <base-commit>`); in read-only mode over the research result. The review ends with `Verdict: approve` or `Verdict: request-changes`.
+4. **Report.** `jobs result <id>` has `## Goal`, `## Parts` (part, title, agent, part job, review job, verdict, branch), `## Integration`, `## Needs human` when it applies and `## Next steps` with the `jobs result <child-id>` commands. In write mode `## Integration` lists the `git merge agentmate/<split-id>/<part-id>` commands in order and the `git worktree remove <path>` cleanup; in read-only mode it merges the research results. `jobs events <id>` lists one `important` event per step.
+
+A part that fails does not stop the others: they run to completion (and are reviewed), then the workflow ends `error` naming the failed part. `request-changes` or a missing verdict lands in `## Needs human`. The workflow's own `--timeout` is the overall deadline, and `jobs cancel <id>` on it also cancels the running children.
+
+What is **not** automated: AgentMate never merges, pushes, rebases or deletes branches for you, and merge conflicts between parts are not resolved automatically. Run the merges from the report yourself, resolve any conflict, run the tests, then remove the worktrees. There is no second round: a part with `request-changes` is for you (or a follow-up job) to fix.
+
+```bash
+npx -y agentmate jobs start codex "Add CSV and JSON export to the report command" --role split --max-parts 3
+npx -y agentmate jobs start codex "Add CSV and JSON export to the report command" --role split --mode write
+```
+
+Write mode edits files (in the worktrees), so start it only when you authorize that. Only a top-level session can start it, like a team lead. `--model` applies to the planner and to parts run by the same agent.
+
 ## How it works
 
 AgentMate treats delegated work as a durable background job:
@@ -217,12 +252,17 @@ Every job also writes an append-only event log (`events.jsonl`). Events carry on
 
 | Capability           | MCP                                                                                                                    | CLI                                  |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| Start work           | `mate_start`, `mate_ask`, `mate_review`, `mate_research`, `mate_plan`, `mate_implement`, `mate_teamlead`, `mate_crossreview` | `jobs start`, `jobs ask`             |
+| Start work           | `mate_start`, `mate_ask`, `mate_review`, `mate_research`, `mate_plan`, `mate_implement`, `mate_teamlead`, `mate_crossreview`, `mate_split` | `jobs start`, `jobs ask`             |
 | Wait or fetch output | `mate_wait`, `mate_result`                                                                                         | `jobs wait <id>`, `jobs result <id>` |
 | Request progress     | `mate_observe`                                                                                                       | `jobs observe <id> [--raw]`          |
 | Read job events      | `mate_events`                                                                                                        | `jobs events <id> [--follow]`        |
 | Cancel work          | `mate_cancel`                                                                                                        | `jobs cancel <id>`                   |
 | Find jobs            | `mate_list`                                                                                                          | `jobs list [--cwd] [--parent <id>]`  |
+| Sessions             | `mate_session_start`, `mate_session_show`, `mate_session_notes`, `mate_session_list`                                 | `sessions start/show/notes/list`, `jobs start --session <id>` |
+
+<a id="sessions"></a>
+
+**Sessions.** A session is shared context across jobs and agents. `mate_session_start(title, cwd?)` creates one under `~/.agentmate/sessions/<id>/` (`session.json` plus `notes.md`); pass its id as `session` to any role tool or `mate_start` (CLI: `jobs start ... --session <id>`) and the job is recorded in it. `mate_session_notes(id, text, author?)` appends a note, `mate_session_show(id)` shows the notes (tail) and the session's jobs, and `mate_session_list(cwd?, limit?)` lists sessions. When a session has notes, every worker started in it receives the last 4000 characters in front of its briefing, under `## Shared session notes`, whatever its role, so keep notes short and factual: decisions, constraints, file locations. Jobs that a workflow starts (`crossreview`, `split`) inherit the workflow's session, and `split` creates a session for itself when you pass none and writes its plan into the notes. The notes are plain text under `~/.agentmate`, so keep secrets out of them.
 
 Skills prefer the `mate_*` tools. If the host did not load MCP, they run the same job contract through `npx -y agentmate`; they never change a user's host configuration as a fallback.
 
@@ -275,6 +315,19 @@ npx -y agentmate jobs result <job-id>
 
 Codex implements, Claude reviews the uncommitted diff, and the report lists the rounds. Use `jobs events <job-id>` for the step-by-step log.
 
+### Split a goal across both agents
+
+```bash
+sid=$(npx -y agentmate sessions start "CSV and JSON export")
+npx -y agentmate sessions notes "$sid" "Keep the CLI flags stable; formatters live in src/export/."
+npx -y agentmate jobs start codex "Add CSV and JSON export to the report command" --role split --session "$sid"
+npx -y agentmate jobs wait <job-id> --timeout 10m
+npx -y agentmate jobs result <job-id>
+npx -y agentmate sessions show "$sid"
+```
+
+Codex plans the parts, both agents research them in parallel, and the report merges the findings. Add `--mode write` to implement each part in its own worktree and branch.
+
 ### Continue, inspect, or cancel a job
 
 An expired wait does not stop work. Repeat `wait` for the same ID, inspect output when progress is requested, or collect a stored result after an interrupted terminal session.
@@ -317,9 +370,10 @@ npx -y agentmate jobs start codex "Address the highest-priority finding." --cont
   The read-only allowlist is `Read`, `Grep`, `Glob`, `git diff`, `git log`, `git show` and `git status`. The write-mode allowlist adds `pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add` and `git commit` so a worker can run verification commands. Extend it with the environment variable `AGENTMATE_CLAUDE_WRITE_TOOLS`, a comma-separated list of Claude permission patterns. A Claude team lead cannot run `install`, only `agentmate jobs *`.
 
 - **A Codex team lead is not sandboxed.** It runs with `--sandbox danger-full-access` in either mode, because it must spawn worker processes and write job state. "Read-only" for a Codex lead means that the runtime refuses any `write` child job (a read-only parent cannot start write children) and that the prompt forbids edits; it does not restrict the lead's own process. Lead with `claude` when this matters.
-- **Delegation depth limit of 2.** A session starts a team lead (depth 0), the lead starts child jobs (depth 1), and children cannot start jobs. The runtime refuses a third level and refuses a team lead or a cross-review started by a worker.
+- **Delegation depth limit of 2.** A session starts a team lead (depth 0), the lead starts child jobs (depth 1), and children cannot start jobs. The runtime refuses a third level and refuses a team lead, a cross-review or a split started by a worker.
 - **Cross-review writes only through its implementer.** The `implement` step gets the `implement` permissions above; the `review` step is read-only. The workflow job itself calls no CLI.
-- **One `write` job per working tree at a time.** Two writers in one tree collide. The skills and the team lead prompt follow this rule; use separate git worktrees for parallel edits.
+- **Split writes only inside its worktrees.** In write mode each part's `implement` job runs in its own git worktree on its own branch (`agentmate/<split-id>/<part-id>`), the planner and reviewers are read-only, and nothing is merged into your branch for you.
+- **One `write` job per working tree at a time.** Two writers in one tree collide. The skills and the team lead prompt follow this rule; use separate git worktrees for parallel edits (`split` does this for its parts).
 - **The delegator owns acceptance.** Job output is an input to your judgment. Verify claims and run the tests before you merge anything a worker produced.
 - **No hidden configuration changes.** The plugin registers its own MCP server. The fallback path runs the CLI and never edits host configuration. Do not put secrets in briefings: prompts and results are stored in plain text under `~/.agentmate`, in files created with owner-only permissions (`0600` for files, `0700` for directories).
 
@@ -334,7 +388,7 @@ Start with `npx -y agentmate doctor`. It prints `ok`, `warn` or `fail` for each 
 | `wait` or `ask` exits `2`                           | The job is still running. Repeat `jobs wait <id>`; do not start a duplicate.                                                           |
 | A job shows `running` but nothing happens           | The worker process died. `doctor` lists the ids of these jobs; `jobs cancel <id>` clears them.                                         |
 | `Delegation depth limit reached`                    | A job started by a worker tried to start another job (a third level). Return the findings to the session that started the job instead. |
-| `Only a top-level session can start a teamlead job` | A worker tried to start a team lead (or a cross-review: `... a crossreview job`). Start it from your own session.                      |
+| `Only a top-level session can start a teamlead job` | A worker tried to start a team lead (or a cross-review or a split: `... a crossreview job`, `... a split job`). Start it from your own session.                      |
 | Duplicated or conflicting tools                     | A legacy registration (`serve codex` / `serve claude`) is still present. `doctor` flags it; see "Removed in 0.6.0".                    |
 
 ## Requirements

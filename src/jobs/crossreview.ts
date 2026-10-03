@@ -116,6 +116,7 @@ export async function runCrossreview(id: string): Promise<void> {
   });
 
   const implementer = job.provider;
+  const sessionId = job.session;
   const reviewer = otherAgent(implementer);
   const maxRounds = job.workflow?.maxRounds ?? DEFAULT_MAX_ROUNDS;
   const task = job.fields?.task ?? job.prompt;
@@ -165,7 +166,11 @@ export async function runCrossreview(id: string): Promise<void> {
 
     let child: Job;
     try {
-      child = startJob({ ...options, timeoutMinutes: Math.max(remaining / 60_000, 1 / 60) });
+      child = startJob({
+        ...options,
+        ...(sessionId ? { sessionId } : {}),
+        timeoutMinutes: Math.max(remaining / 60_000, 1 / 60),
+      });
     } catch (cause) {
       throw new Stop(
         "error",
