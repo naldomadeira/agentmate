@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const REQUIRED_DIRS = ["dist/", "skills/", "agents/", "templates/", "hooks/", "assets/"];
+const REQUIRED_DIRS = ["dist/", "skills/", "agents/", "templates/", "hooks/"];
 const FORBIDDEN_DIRS = ["src/", "test/"];
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));

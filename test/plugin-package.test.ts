@@ -83,7 +83,7 @@ describe("plugin package", () => {
     const pkg = json<{ files: string[] }>("package.json");
 
     expect(pkg.files).toEqual(
-      expect.arrayContaining(["dist", "skills", "agents", "assets", "templates", "hooks"]),
+      expect.arrayContaining(["dist", "skills", "agents", "templates", "hooks"]),
     );
   });
 

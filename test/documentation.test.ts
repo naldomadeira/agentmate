@@ -18,7 +18,7 @@ describe("project documentation", () => {
 
     expect(readme).toContain("[Português (Brasil)](./docs/README.pt-BR.md)");
     expect(readme).not.toContain("Instalação por plugin");
-    expect(readme).toContain("./assets/illustrations/cli-bridge.png");
+    expect(readme).toContain("./assets/hero.svg");
     expect(readme).toContain("./assets/illustrations/background-jobs.png");
     expect(readme).toContain("## Usage examples");
     expect(readme).toContain("--mode write");
