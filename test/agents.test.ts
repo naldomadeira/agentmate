@@ -997,6 +997,27 @@ describe("claude buildInvocation", () => {
     expect(flag(args, "--disallowedTools")).toEqual(["Edit", "Write", "NotebookEdit"]);
   });
 
+  it("isolates every role from the user's MCP servers", () => {
+    for (const extra of [
+      {},
+      { mode: "write" as const },
+      { role: "research" as const },
+      { role: "teamlead" as const },
+    ]) {
+      expect(build(extra)).toContain("--strict-mcp-config");
+    }
+    expect(build({}, "sess-1")).toContain("--strict-mcp-config");
+  });
+
+  it("keeps the user's MCP servers when AGENTMATE_CLAUDE_INHERIT_MCP=1", () => {
+    withEnv({ AGENTMATE_CLAUDE_INHERIT_MCP: "1" }, () => {
+      expect(build()).not.toContain("--strict-mcp-config");
+    });
+    withEnv({ AGENTMATE_CLAUDE_INHERIT_MCP: "0" }, () => {
+      expect(build()).toContain("--strict-mcp-config");
+    });
+  });
+
   it("write mode accepts edits and adds build tools", () => {
     const args = build({ mode: "write" });
     expect(args).toContain("acceptEdits");
@@ -1018,11 +1039,12 @@ describe("claude buildInvocation", () => {
 
   it("resumes and passes the model", () => {
     const args = build({ model: "m" }, "s-1");
-    expect(args.slice(0, 8)).toEqual([
+    expect(args.slice(0, 9)).toEqual([
       "-p",
       "--output-format",
       "stream-json",
       "--verbose",
+      "--strict-mcp-config",
       "--resume",
       "s-1",
       "--model",
