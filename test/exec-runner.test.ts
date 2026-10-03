@@ -61,15 +61,15 @@ describe("execCommand", () => {
     const result = await execCommand({
       command: "sh",
       args: ["-c", "echo $TEST_VAR"],
-      env: { TEST_VAR: "bridge_test" },
+      env: { TEST_VAR: "mate_test" },
     });
-    expect(result.stdout.trim()).toBe("bridge_test");
+    expect(result.stdout.trim()).toBe("mate_test");
   });
 
-  it("increments BRIDGE_DEPTH in child env", async () => {
+  it("increments AGENTMATE_SYNC_DEPTH in child env", async () => {
     const result = await execCommand({
       command: "sh",
-      args: ["-c", "echo $BRIDGE_DEPTH"],
+      args: ["-c", "echo $AGENTMATE_SYNC_DEPTH"],
     });
     // Current depth is 0 (or whatever test env has), child should be +1
     const depth = parseInt(result.stdout.trim(), 10);

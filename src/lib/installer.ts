@@ -189,7 +189,7 @@ const CLAUDE_MCP_ARGS = [
   "user",
   "--",
   "npx",
-  "agents-bridge-mcp",
+  "agentmate",
   "serve",
   "codex",
 ];
@@ -220,7 +220,7 @@ export async function setupClaude(): Promise<void> {
     } else {
       console.error(`  Failed: ${msg}`);
       console.error(
-        "  You can register manually: claude mcp add codex -s user -- npx agents-bridge-mcp serve codex",
+        "  You can register manually: claude mcp add codex -s user -- npx agentmate serve codex",
       );
     }
   }
@@ -228,7 +228,7 @@ export async function setupClaude(): Promise<void> {
 
 const CODEX_TOML_SECTION = `[mcp_servers.claude]
 command = "npx"
-args = ["agents-bridge-mcp", "serve", "claude"]
+args = ["agentmate", "serve", "claude"]
 tool_timeout_sec = 600
 `;
 

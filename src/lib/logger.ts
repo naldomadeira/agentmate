@@ -1,6 +1,6 @@
 // All logging goes to stderr — stdout is the MCP JSON-RPC channel.
 
-const isDebug = !!process.env["BRIDGE_DEBUG"];
+const isDebug = !!process.env["AGENTMATE_DEBUG"];
 
 type LogLevel = "info" | "warning" | "error" | "debug";
 

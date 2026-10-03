@@ -12,7 +12,7 @@ import type { CodexResult } from "./lib/types.js";
 
 let lastThreadId: string | null = null;
 
-const server = new McpServer({ name: "agents-bridge-mcp", version: VERSION });
+const server = new McpServer({ name: "agentmate", version: VERSION });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -116,7 +116,7 @@ async function runCodex(
       fileChanges: [],
       commandsExecuted: [],
       usage: null,
-      errors: ["Codex timed out. Increase BRIDGE_TIMEOUT_MS if needed."],
+      errors: ["Codex timed out. Increase AGENTMATE_TIMEOUT_MS if needed."],
     };
   }
 
@@ -384,10 +384,10 @@ server.registerTool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  logger.info("agents-bridge-mcp MCP server started on stdio");
+  logger.info("agentmate MCP server started on stdio");
 }
 
 main().catch((err) => {
-  logger.error("Failed to start agents-bridge-mcp:", err);
+  logger.error("Failed to start agentmate:", err);
   process.exit(1);
 });

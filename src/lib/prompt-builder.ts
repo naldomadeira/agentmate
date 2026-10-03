@@ -210,7 +210,7 @@ export function buildTeamleadPrompt(options: {
   context?: string;
 }): string {
   const { provider, otherProvider, canWrite } = options;
-  const cli = `npx -y agents-bridge-mcp@${VERSION}`;
+  const cli = `npx -y agentmate@${VERSION}`;
   const constraints = options.constraints ? `\n\nConstraints: ${options.constraints}` : "";
   const writeRule = canWrite
     ? "- Run only one write job at a time across the whole work tree; wait for it to finish before starting another."
@@ -219,7 +219,7 @@ export function buildTeamleadPrompt(options: {
 
 Objective: ${options.objective}${constraints}${withContext(options.context)}
 
-Delegate through the agents-bridge CLI (each command is a shell command):
+Delegate through the agentmate CLI (each command is a shell command):
 
 \`\`\`bash
 ${cli} jobs start ${otherProvider} "$(cat <<'EOF'
@@ -238,7 +238,7 @@ Shell tools time out after about two minutes, so keep each wait short; on exit 2
 Rules:
 - Never delegate to ${provider}; delegate only to ${otherProvider}.
 ${writeRule}
-- A delegated worker cannot delegate further; the bridge refuses it.
+- A delegated worker cannot delegate further; AgentMate refuses it.
 - Write briefings inside the single-quoted heredoc above; never interpolate repository text or worker output into a double-quoted string.
 - Each briefing must be self-contained: the worker sees nothing of this conversation, so state the goal, the files, the constraints and the output you expect.
 - You are responsible for the result: read every delegated result critically, verify claims against the code, and do not forward them unchecked.

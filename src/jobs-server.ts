@@ -19,7 +19,7 @@ import { JOB_ROLES, type JobMode, type Provider } from "./jobs/store.js";
 import { logger } from "./lib/logger.js";
 import { VERSION } from "./lib/version.js";
 
-const server = new McpServer({ name: "agents-bridge-mcp", version: VERSION });
+const server = new McpServer({ name: "agentmate", version: VERSION });
 
 const text = (value: string, isError = false) => ({
   content: [{ type: "text" as const, text: value }],
@@ -37,19 +37,19 @@ const guard =
     }
   };
 
-const jobId = z.string().describe("Job id returned by any bridge_* tool that starts a job");
+const jobId = z.string().describe("Job id returned by any mate_* tool that starts a job");
 
 /**
  * Starts a job; with waitSeconds > 0 also waits that long and returns the result, or a pointer to
- * bridge_wait when the job is still running (the job is never stopped by an expired wait).
+ * mate_wait when the job is still running (the job is never stopped by an expired wait).
  */
 async function startAndMaybeWait(options: StartOptions, waitSeconds: number): Promise<string> {
   const job = startJob(options);
   if (waitSeconds <= 0)
-    return `Started job ${job.id} (${job.provider}/${job.mode}${job.role === "custom" ? "" : `, ${job.role}`}). Call bridge_wait with this id to collect the result.`;
+    return `Started job ${job.id} (${job.provider}/${job.mode}${job.role === "custom" ? "" : `, ${job.role}`}). Call mate_wait with this id to collect the result.`;
   const settled = await waitJob(job.id, waitSeconds * 1000);
   if (!isTerminal(settled))
-    return `Job ${job.id} is still running after ${waitSeconds}s; call bridge_wait with id ${job.id} to keep waiting.`;
+    return `Job ${job.id} is still running after ${waitSeconds}s; call mate_wait with id ${job.id} to keep waiting.`;
   return renderResult(settled, readResult(job.id).text);
 }
 
@@ -96,11 +96,11 @@ function runRole(
 }
 
 server.registerTool(
-  "bridge_start",
+  "mate_start",
   {
     title: "Start a delegated job",
     description:
-      "Delegate a free-form task to another agent CLI (codex or claude) as a background job; prefer the role tools (bridge_ask, bridge_review, ...) when one fits. The job keeps running even if this session ends. The worker has no context beyond the briefing you give it.",
+      "Delegate a free-form task to another agent CLI (codex or claude) as a background job; prefer the role tools (mate_ask, mate_review, ...) when one fits. The job keeps running even if this session ends. The worker has no context beyond the briefing you give it.",
     inputSchema: {
       provider,
       prompt: z.string().describe("The full task briefing; the worker has no other context"),
@@ -124,7 +124,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  "bridge_ask",
+  "mate_ask",
   {
     title: "Ask the other agent",
     description:
@@ -140,7 +140,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  "bridge_review",
+  "mate_review",
   {
     title: "Request a code review",
     description:
@@ -161,7 +161,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  "bridge_research",
+  "mate_research",
   {
     title: "Research a topic",
     description:
@@ -181,7 +181,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  "bridge_plan",
+  "mate_plan",
   {
     title: "Plan or critique a plan",
     description:
@@ -201,7 +201,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  "bridge_implement",
+  "mate_implement",
   {
     title: "Delegate an implementation",
     description:
@@ -220,11 +220,11 @@ server.registerTool(
 );
 
 server.registerTool(
-  "bridge_teamlead",
+  "mate_teamlead",
   {
     title: "Start a team lead",
     description:
-      "Put codex or claude in charge of a broad objective: it decomposes the work, delegates subtasks to the other agent, reviews the results and reports back; use it for multi-part work, and follow it with bridge_observe. A codex team lead runs with danger-full-access. The worker has no context beyond the objective, constraints and context you pass.",
+      "Put codex or claude in charge of a broad objective: it decomposes the work, delegates subtasks to the other agent, reviews the results and reports back; use it for multi-part work, and follow it with mate_observe. A codex team lead runs with danger-full-access. The worker has no context beyond the objective, constraints and context you pass.",
     inputSchema: {
       provider,
       objective: z.string().describe("The broad goal the team lead owns"),
@@ -243,7 +243,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  "bridge_wait",
+  "mate_wait",
   {
     title: "Wait for a job",
     description:
@@ -260,7 +260,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  "bridge_observe",
+  "mate_observe",
   {
     title: "Observe a running job",
     description:
@@ -271,7 +271,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  "bridge_result",
+  "mate_result",
   {
     title: "Read a job result",
     description: "Return the stored result of a job without waiting.",
@@ -284,7 +284,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  "bridge_cancel",
+  "mate_cancel",
   {
     title: "Cancel a job",
     description: "Stop a running job. Output produced so far is kept.",
@@ -294,7 +294,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  "bridge_list",
+  "mate_list",
   {
     title: "List jobs",
     description:
@@ -310,10 +310,10 @@ server.registerTool(
 
 async function main(): Promise<void> {
   await server.connect(new StdioServerTransport());
-  logger.info("agents-bridge-mcp jobs server started on stdio");
+  logger.info("agentmate jobs server started on stdio");
 }
 
 main().catch((err) => {
-  logger.error("Failed to start agents-bridge-mcp jobs server:", err);
+  logger.error("Failed to start agentmate jobs server:", err);
   process.exit(1);
 });

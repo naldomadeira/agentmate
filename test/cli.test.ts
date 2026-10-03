@@ -33,12 +33,12 @@ describe("cli", () => {
     const result = await runCli(["serve", "codex"]);
     // The server starts on stdio and blocks waiting for input,
     // so it will be killed by timeout. Check that it started successfully.
-    expect(result.stderr).toContain("agents-bridge-mcp MCP server started");
+    expect(result.stderr).toContain("agentmate MCP server started");
   });
 
   it("starts claude server on 'serve claude'", async () => {
     const result = await runCli(["serve", "claude"]);
-    expect(result.stderr).toContain("claude-bridge MCP server started");
+    expect(result.stderr).toContain("agentmate-claude MCP server started");
   });
 
   it("shows serve help with codex and claude subcommands", async () => {
@@ -84,7 +84,7 @@ describe("cli", () => {
   });
 
   it("reports the delegation depth limit without a stack trace", async () => {
-    const result = await runCli(["jobs", "start", "claude", "x"], { AGENTS_BRIDGE_DEPTH: "2" });
+    const result = await runCli(["jobs", "start", "claude", "x"], { AGENTMATE_DEPTH: "2" });
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Delegation depth limit reached");
     expect(result.stderr).not.toContain("    at ");

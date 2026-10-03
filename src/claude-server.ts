@@ -12,7 +12,7 @@ import type { ClaudeResult } from "./lib/types.js";
 
 let lastSessionId: string | null = null;
 
-const server = new McpServer({ name: "claude-bridge", version: VERSION });
+const server = new McpServer({ name: "agentmate-claude", version: VERSION });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -81,7 +81,7 @@ async function runClaude(
       resultText: "",
       sessionId: null,
       costUsd: null,
-      errors: ["Claude timed out. Increase BRIDGE_TIMEOUT_MS if needed."],
+      errors: ["Claude timed out. Increase AGENTMATE_TIMEOUT_MS if needed."],
     };
   }
 
@@ -348,10 +348,10 @@ server.registerTool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  logger.info("claude-bridge MCP server started on stdio");
+  logger.info("agentmate-claude MCP server started on stdio");
 }
 
 main().catch((err) => {
-  logger.error("Failed to start claude-bridge:", err);
+  logger.error("Failed to start agentmate-claude:", err);
   process.exit(1);
 });

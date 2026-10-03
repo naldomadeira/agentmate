@@ -26,7 +26,7 @@ const READ_ONLY_CLAUDE_TOOLS = [
 const RESEARCH_CLAUDE_TOOLS = ["WebSearch", "WebFetch"];
 /**
  * Claude write jobs run in `acceptEdits`, where Bash is denied in `-p`; these let an implementer run
- * verification and stage or commit its work. Extend the list with `AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS`,
+ * verification and stage or commit its work. Extend the list with `AGENTMATE_CLAUDE_WRITE_TOOLS`,
  * a comma-separated list of extra permission patterns (for example `Bash(cargo *),Bash(go *)`) that
  * is appended to these defaults for every claude write job.
  */
@@ -43,20 +43,20 @@ const WRITE_CLAUDE_TOOLS = [
 ];
 /** Never reachable by a read-only job, whatever the user's own settings allow. */
 const READ_ONLY_DENIED_CLAUDE_TOOLS = ["Edit", "Write", "NotebookEdit"];
-/** Lets a claude team lead run the bridge CLI's `jobs` subcommand, pinned to this version, to delegate to codex. */
+/** Lets a claude team lead run the AgentMate CLI's `jobs` subcommand, pinned to this version, to delegate to codex. */
 const TEAMLEAD_CLAUDE_TOOLS = [
-  `Bash(npx -y agents-bridge-mcp@${VERSION} jobs *)`,
-  `Bash(npx agents-bridge-mcp@${VERSION} jobs *)`,
-  "Bash(agents-bridge-mcp jobs *)",
+  `Bash(npx -y agentmate@${VERSION} jobs *)`,
+  `Bash(npx agentmate@${VERSION} jobs *)`,
+  "Bash(agentmate jobs *)",
 ];
 
-/** `AGENTS_BRIDGE_CODEX_BIN` / `AGENTS_BRIDGE_CLAUDE_BIN` point at an alternative executable. */
+/** `AGENTMATE_CODEX_BIN` / `AGENTMATE_CLAUDE_BIN` point at an alternative executable. */
 export function binary(provider: Provider): string {
-  return process.env[`AGENTS_BRIDGE_${provider.toUpperCase()}_BIN`] ?? provider;
+  return process.env[`AGENTMATE_${provider.toUpperCase()}_BIN`] ?? provider;
 }
 
 function extraWriteTools(): string[] {
-  return (process.env["AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS"] ?? "")
+  return (process.env["AGENTMATE_CLAUDE_WRITE_TOOLS"] ?? "")
     .split(",")
     .map((tool) => tool.trim())
     .filter(Boolean);

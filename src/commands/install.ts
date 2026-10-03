@@ -16,7 +16,7 @@ export default defineCommand({
   },
   subCommands: {
     skill: defineCommand({
-      meta: { name: "skill", description: "Install a bridge skill" },
+      meta: { name: "skill", description: "Install an AgentMate skill" },
       args: {
         target: {
           type: "positional",

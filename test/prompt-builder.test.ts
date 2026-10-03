@@ -167,7 +167,7 @@ describe("buildTeamleadPrompt", () => {
   it("contains the CLI commands, the other provider and the report sections", () => {
     const prompt = buildTeamleadPrompt(base);
     expect(prompt).toContain("Migrate to ESM");
-    const cli = `npx -y agents-bridge-mcp@${VERSION}`;
+    const cli = `npx -y agentmate@${VERSION}`;
     expect(prompt).toContain(`${cli} jobs start claude "$(cat <<'EOF'`);
     expect(prompt).toContain("<<'EOF'");
     expect(prompt).toContain(')" --role <ask|review|research|plan|implement>');

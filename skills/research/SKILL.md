@@ -1,6 +1,6 @@
 ---
 name: research
-description: Investigate a technical topic with Codex or Claude and get findings, compared options and a recommendation with evidence. Use when the user says /bridge:research, 'research this with codex', 'pesquise com o claude', or needs a library choice, root-cause hunt or design trade-off surveyed.
+description: Investigate a technical topic with Codex or Claude and get findings, compared options and a recommendation with evidence. Use when the user says /mate:research, 'research this with codex', 'pesquise com o claude', or needs a library choice, root-cause hunt or design trade-off surveyed.
 argument-hint: "<codex|claude> <topic>"
 ---
 
@@ -10,12 +10,12 @@ Delegate an investigation and receive a structured report: findings with evidenc
 
 ## How to run it
 
-1. **MCP (preferred)** — call `bridge_research` with `provider`, `topic`, and optionally `questions` (the specific things you need answered), `scope` (where to look: directories, docs, the web) and `context`. It returns a job id; collect it with `bridge_wait`. Research can take minutes, so do other work in between.
+1. **MCP (preferred)** — call `mate_research` with `provider`, `topic`, and optionally `questions` (the specific things you need answered), `scope` (where to look: directories, docs, the web) and `context`. It returns a job id; collect it with `mate_wait`. Research can take minutes, so do other work in between.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agents-bridge-mcp jobs start <provider> "<research briefing>" --role research
-   npx -y agents-bridge-mcp jobs wait <id> --timeout 10m
+   npx -y agentmate jobs start <provider> "<research briefing>" --role research
+   npx -y agentmate jobs wait <id> --timeout 10m
    ```
 
    `wait` exits `0` done, `1` failed or canceled, `2` still running (repeat it). Read the output with `jobs result <id>`.
@@ -36,5 +36,5 @@ Delegate an investigation and receive a structured report: findings with evidenc
 ## Rules
 
 - Research is read-only. It does not install packages or modify the working tree.
-- If the report leaves a question open, continue the same session with a follow-up job (`continue` on `bridge_start`, CLI `--continue <id>`) rather than starting from zero.
+- If the report leaves a question open, continue the same session with a follow-up job (`continue` on `mate_start`, CLI `--continue <id>`) rather than starting from zero.
 - Several independent topics are several jobs, started in parallel.

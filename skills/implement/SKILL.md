@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Delegate a scoped code change to Codex or Claude with write access, with acceptance criteria and verification. Use only when the user says /bridge:implement, 'have codex implement this', 'peça ao claude para implementar', or otherwise explicitly authorizes the other agent to edit files.
+description: Delegate a scoped code change to Codex or Claude with write access, with acceptance criteria and verification. Use only when the user says /mate:implement, 'have codex implement this', 'peça ao claude para implementar', or otherwise explicitly authorizes the other agent to edit files.
 argument-hint: "<codex|claude> <task>"
 ---
 
@@ -10,12 +10,12 @@ This is the one skill that lets the worker **edit files**. Use it only when the 
 
 ## How to run it
 
-1. **MCP (preferred)** — call `bridge_implement` with `provider`, `task`, optional `acceptance` (how to tell it is done) and `context`. It always runs in write mode (read-only is rejected) and returns a job id; collect it with `bridge_wait`.
+1. **MCP (preferred)** — call `mate_implement` with `provider`, `task`, optional `acceptance` (how to tell it is done) and `context`. It always runs in write mode (read-only is rejected) and returns a job id; collect it with `mate_wait`.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agents-bridge-mcp jobs start <provider> "<implementation briefing>" --role implement --mode write --cwd <dir>
-   npx -y agents-bridge-mcp jobs wait <id> --timeout 10m
+   npx -y agentmate jobs start <provider> "<implementation briefing>" --role implement --mode write --cwd <dir>
+   npx -y agentmate jobs wait <id> --timeout 10m
    ```
 
    `wait` exits `0` done, `1` failed or canceled, `2` still running (repeat it, do not start a duplicate). Read the output with `jobs result <id>`.
@@ -37,4 +37,4 @@ This is the one skill that lets the worker **edit files**. Use it only when the 
 
 - One `write` job per working tree at a time. Two writers in the same tree will collide; use separate worktrees for parallel edits.
 - Do not edit the same files while the job runs.
-- The codex sandbox for this role is `workspace-write`; Claude runs with `acceptEdits` plus an allowlist for verification commands (`pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add`, `git commit`, extendable with `AGENTS_BRIDGE_CLAUDE_WRITE_TOOLS`). Neither commits or pushes unless the briefing says so, and you should rarely say so.
+- The codex sandbox for this role is `workspace-write`; Claude runs with `acceptEdits` plus an allowlist for verification commands (`pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add`, `git commit`, extendable with `AGENTMATE_CLAUDE_WRITE_TOOLS`). Neither commits or pushes unless the briefing says so, and you should rarely say so.

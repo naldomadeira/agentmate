@@ -9,7 +9,7 @@ const DEFAULT_MAX_RETRIES = 2;
 const MAX_RETRY_DELAY_MS = 10_000;
 
 function getTimeoutMs(): number {
-  const env = process.env["BRIDGE_TIMEOUT_MS"];
+  const env = process.env["AGENTMATE_TIMEOUT_MS"];
   if (env) {
     const parsed = parseInt(env, 10);
     if (!Number.isNaN(parsed) && parsed > 0) return parsed;
@@ -18,7 +18,7 @@ function getTimeoutMs(): number {
 }
 
 function getMaxRetries(): number {
-  const env = process.env["BRIDGE_MAX_RETRIES"];
+  const env = process.env["AGENTMATE_MAX_RETRIES"];
   if (env) {
     const parsed = parseInt(env, 10);
     if (!Number.isNaN(parsed) && parsed >= 0) return parsed;
@@ -27,7 +27,7 @@ function getMaxRetries(): number {
 }
 
 function checkRecursionDepth(): void {
-  const depth = parseInt(process.env["BRIDGE_DEPTH"] ?? "0", 10);
+  const depth = parseInt(process.env["AGENTMATE_SYNC_DEPTH"] ?? "0", 10);
   if (depth >= MAX_BRIDGE_DEPTH) {
     throw new BridgeError(
       `Maximum bridge nesting depth reached (${depth} >= ${MAX_BRIDGE_DEPTH}). This prevents infinite recursion between Claude and Codex.`,
@@ -83,12 +83,12 @@ function sleep(ms: number): Promise<void> {
 
 function execOnce(options: ExecOptions): Promise<ExecResult> {
   const timeoutMs = options.timeoutMs ?? getTimeoutMs();
-  const currentDepth = parseInt(process.env["BRIDGE_DEPTH"] ?? "0", 10);
+  const currentDepth = parseInt(process.env["AGENTMATE_SYNC_DEPTH"] ?? "0", 10);
 
   const env: Record<string, string | undefined> = {
     ...process.env,
     ...options.env,
-    BRIDGE_DEPTH: String(currentDepth + 1),
+    AGENTMATE_SYNC_DEPTH: String(currentDepth + 1),
   };
 
   return new Promise((resolve, reject) => {

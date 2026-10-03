@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-03
+
+### Changed / Breaking
+
+- The project is renamed from Agents Bridge to **AgentMate** — *AI agents work better together.* AgentMate connects AI coding agents so they can collaborate, delegate, review, and help each other complete tasks.
+- npm package `agents-bridge-mcp` → `agentmate` (`npx -y agentmate doctor`); the legacy synchronous-server bins `abm-claude` / `abm-codex` → `agentmate-claude` / `agentmate-codex`.
+- Marketplace `agents-bridge` → `agentmate`, plugin `bridge` → `mate`: the install id is `mate@agentmate` and the commands are `/mate:<skill>` in Claude Code and `$mate:<skill>` in Codex. Agents are `mate:codex-reviewer` and so on.
+- MCP server key `agents-bridge` → `agentmate`, tools `bridge_*` → `mate_*`.
+- State directory `~/.agents-bridge` → `~/.agentmate` (`AGENTMATE_HOME`); environment variables `AGENTS_BRIDGE_*` and `BRIDGE_*` → `AGENTMATE_*` (`AGENTMATE_SYNC_DEPTH`, `AGENTMATE_TIMEOUT_MS`, `AGENTMATE_MAX_RETRIES`, `AGENTMATE_DEBUG`, `AGENTMATE_CLAUDE_WRITE_TOOLS`, `AGENTMATE_<PROVIDER>_BIN`). Existing jobs are not migrated.
+- The repository moves to `naldomadeira/agentmate`.
+- Migrating from 0.3.0 or earlier: remove the old plugin (`bridge@agents-bridge`, or `agents-bridge@agents-bridge` from 0.2.0) and the `agents-bridge` marketplace, install `mate@agentmate` and restart the host. `doctor` still detects legacy `agents-bridge-mcp serve` registrations.
+
 ## [0.3.0] - 2026-10-03
 
 ### Changed / Breaking
