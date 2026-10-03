@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Claude workers start with `--strict-mcp-config`: none of the user's MCP servers (claude.ai connectors and plugins, AgentMate's own included) load into a job. A probe went from 18 servers and 563 tools to 0 servers and 26 tools, with no sign-in noise in answers. `AGENTMATE_CLAUDE_INHERIT_MCP=1` restores the old behaviour.
+- The `ask` prompt follows a form the question asks for ("reply only with OK") instead of forcing the Answer / Evidence / Caveats structure.
+- The npm package no longer ships `assets/` (3.4 MB → about 100 KB); the README has a new hero image.
+
 ## [0.7.0] - 2026-10-03
 
 ### Added

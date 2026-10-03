@@ -19,6 +19,12 @@ describe("buildAskPrompt", () => {
     expect(prompt).toContain("Answer");
     expect(prompt).toContain("Evidence");
   });
+
+  it("lets a form the question asks for override the default structure", () => {
+    const prompt = buildAskPrompt({ question: "Reply only with OK" });
+    expect(prompt).toMatch(/If the question asks for a specific form.*follow it exactly/s);
+    expect(prompt.indexOf("specific form")).toBeLessThan(prompt.indexOf("1. **Answer**"));
+  });
 });
 
 describe("buildReviewPrompt", () => {

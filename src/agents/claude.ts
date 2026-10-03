@@ -115,6 +115,9 @@ export const claudeAdapter: AgentAdapter = {
 
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {
     const args = ["-p", "--output-format", "stream-json", "--verbose"];
+    // Without this the worker starts every MCP server of the user (claude.ai connectors and plugins
+    // included, this one too): slower starts, sign-in noise in answers and tools no role needs.
+    if (process.env["AGENTMATE_CLAUDE_INHERIT_MCP"] !== "1") args.push("--strict-mcp-config");
     if (resumeSessionId) args.push("--resume", resumeSessionId);
     if (job.model) args.push("--model", job.model);
     if (job.mode === "write") args.push("--permission-mode", "acceptEdits");

@@ -16,7 +16,7 @@ export function buildAskPrompt(options: { question: string; context?: string }):
 
 Question: ${options.question}${withContext(options.context)}
 
-Structure your response with:
+If the question asks for a specific form (for example "reply only with OK", a single word, a number or a list), follow it exactly and skip the structure below. Otherwise, structure your response with:
 1. **Answer** - The direct answer first, in a few sentences
 2. **Evidence** - Supporting code references as file:line, when the question concerns code
 3. **Caveats** - Anything you could not verify or that could change the answer (omit if none)`;
