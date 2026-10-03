@@ -50,16 +50,50 @@ Agents Bridge treats delegated work as a durable background job:
 
 The skill prefers `bridge_*` tools when they are available. If the host did not load MCP, it uses the same job contract through `npx -y agents-bridge-mcp`; it never changes a user's host configuration as a fallback.
 
-## A safe first task
+## Usage examples
 
-Start with a read-only request. For example, ask the other CLI to review the current diff or explain a module. Jobs default to `read-only`; select `write` only when the task explicitly authorizes edits.
+### Review a change
+
+Start with a read-only request. Give the receiving CLI enough context to produce an actionable result: name the goal, relevant files or diff, and the expected answer.
 
 ```bash
 npx -y agents-bridge-mcp jobs start codex "Review the current diff. Report only actionable findings."
-npx -y agents-bridge-mcp jobs wait <id>
+# retain the job ID printed by start
+npx -y agents-bridge-mcp jobs wait <job-id>
 ```
 
-`wait` exits with `0` for a completed job, `1` for a failed or canceled job, and `2` when the wait expires while work is still running. A timed-out wait does not cancel the job.
+After a plugin restart, the same workflow can be requested through the installed `delegate` skill. The skill selects MCP when it is available and otherwise runs the CLI commands above.
+
+### Delegate an authorized edit
+
+Jobs default to `read-only`. Use `write` only when the task is explicitly allowed to change files, and send one write job per working tree at a time.
+
+```bash
+npx -y agents-bridge-mcp jobs start claude "Add a focused regression test for the parser." --mode write --cwd .
+npx -y agents-bridge-mcp jobs wait <job-id>
+```
+
+### Continue, inspect, or cancel a job
+
+An expired wait does not stop work. Repeat `wait` for the same ID, inspect output when progress is requested, or collect a stored result after an interrupted terminal session.
+
+```bash
+npx -y agents-bridge-mcp jobs observe <job-id>
+npx -y agents-bridge-mcp jobs result <job-id>
+npx -y agents-bridge-mcp jobs cancel <job-id>
+```
+
+A finished job with a saved session can continue on the same provider:
+
+```bash
+npx -y agents-bridge-mcp jobs start codex "Address the highest-priority finding." --continue <job-id>
+```
+
+| `wait` exit code | Meaning                               | Next action                                      |
+| ---------------- | ------------------------------------- | ------------------------------------------------ |
+| `0`              | Job completed                         | Read and assess the returned result.             |
+| `1`              | Job failed or was canceled            | Read `result` for the retained output and error. |
+| `2`              | Wait expired while job remains active | Repeat `wait`; do not create a duplicate job.    |
 
 ## Requirements
 

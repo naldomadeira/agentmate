@@ -13,6 +13,9 @@ describe("project documentation", () => {
     expect(readme).not.toContain("Instalação por plugin");
     expect(readme).toContain("./assets/illustrations/cli-bridge.png");
     expect(readme).toContain("./assets/illustrations/background-jobs.png");
+    expect(readme).toContain("## Usage examples");
+    expect(readme).toContain("--mode write");
+    expect(readme).toContain("--continue <job-id>");
   });
 
   it("provides installation guides in English and Portuguese", () => {
