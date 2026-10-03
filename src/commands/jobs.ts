@@ -9,6 +9,7 @@ import {
   summarize,
   waitJob,
 } from "../jobs/api.js";
+import { userFacing } from "../lib/errors.js";
 import { renderList, renderObservation, renderResult } from "../jobs/render.js";
 import { JOB_ROLES, TERMINAL, type JobMode, type JobRole, type Provider } from "../jobs/store.js";
 
@@ -52,7 +53,7 @@ export default defineCommand({
         timeout: { type: "string", description: "Job deadline in minutes (max 120)" },
         continue: { type: "string", description: "Finished job id whose session to resume" },
       },
-      run({ args }) {
+      run: userFacing(({ args }) => {
         const provider = parseProvider(args.provider);
         if (args.mode && args.mode !== "read-only" && args.mode !== "write")
           throw new Error("mode must be read-only or write");
@@ -69,7 +70,7 @@ export default defineCommand({
           continueJob: args.continue,
         });
         console.log(job.id);
-      },
+      }),
     }),
     ask: defineCommand({
       meta: {
@@ -83,7 +84,7 @@ export default defineCommand({
         cwd: { type: "string", description: "Working directory" },
         model: { type: "string", description: "Model override" },
       },
-      async run({ args }) {
+      run: userFacing(async ({ args }) => {
         const { job, text } = await askJob(
           {
             provider: parseProvider(args.provider),
@@ -96,7 +97,7 @@ export default defineCommand({
         );
         console.log(renderResult(job, text));
         process.exitCode = exitFor(job.status);
-      },
+      }),
     }),
     wait: defineCommand({
       meta: { name: "wait", description: "Wait for a job; exit 2 if it is still running" },
@@ -104,34 +105,34 @@ export default defineCommand({
         ...idArg,
         timeout: { type: "string", description: "Max wait, e.g. 10m or 90s (default 10m)" },
       },
-      async run({ args }) {
+      run: userFacing(async ({ args }) => {
         const job = await waitJob(args.id, parseDuration(args.timeout ?? "10m"));
         console.log(renderResult(job, readResult(args.id).text));
         process.exitCode = exitFor(job.status);
-      },
+      }),
     }),
     observe: defineCommand({
       meta: { name: "observe", description: "Snapshot of a job's status and recent output" },
       args: idArg,
-      run({ args }) {
+      run: userFacing(({ args }) => {
         console.log(renderObservation(observeJob(args.id)));
-      },
+      }),
     }),
     result: defineCommand({
       meta: { name: "result", description: "Print a job's stored result" },
       args: idArg,
-      run({ args }) {
+      run: userFacing(({ args }) => {
         const { job, text } = readResult(args.id);
         console.log(renderResult(job, text));
         process.exitCode = exitFor(job.status);
-      },
+      }),
     }),
     cancel: defineCommand({
       meta: { name: "cancel", description: "Cancel a running job" },
       args: idArg,
-      async run({ args }) {
+      run: userFacing(async ({ args }) => {
         console.log(summarize(await cancelJob(args.id)));
-      },
+      }),
     }),
     list: defineCommand({
       meta: { name: "list", description: "List recent jobs" },
@@ -139,9 +140,9 @@ export default defineCommand({
         cwd: { type: "string", description: "Only jobs from this directory" },
         parent: { type: "string", description: "Only jobs started by this job's worker" },
       },
-      run({ args }) {
+      run: userFacing(({ args }) => {
         console.log(renderList(listJobs({ cwd: args.cwd, parent: args.parent })));
-      },
+      }),
     }),
   },
 });

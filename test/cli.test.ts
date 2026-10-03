@@ -3,11 +3,12 @@ import { execCommand } from "../src/lib/exec-runner.js";
 
 const CLI_PATH = new URL("../src/cli.ts", import.meta.url).pathname;
 
-function runCli(args: string[]) {
+function runCli(args: string[], env?: Record<string, string>) {
   return execCommand({
     command: "npx",
     args: ["tsx", CLI_PATH, ...args],
     timeoutMs: 5000,
+    env,
   });
 }
 
@@ -72,4 +73,18 @@ describe("cli", () => {
     expect(result.stdout).toContain("claude");
     expect(result.stderr).not.toContain("Error:");
   }, 70_000);
+
+  it("prints user errors as one line without a stack trace", async () => {
+    const result = await runCli(["jobs", "start", "bogus", "x"]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("provider must be codex or claude");
+    expect(result.stderr).not.toContain("    at ");
+  });
+
+  it("reports the delegation depth limit without a stack trace", async () => {
+    const result = await runCli(["jobs", "start", "claude", "x"], { AGENTS_BRIDGE_DEPTH: "2" });
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("Delegation depth limit reached");
+    expect(result.stderr).not.toContain("    at ");
+  });
 });

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { defineCommand } from "citty";
+import { userFacing } from "../lib/errors.js";
 import { binary } from "../jobs/providers.js";
 import { homeDir, isAlive, listJobIds, readJob, type Provider } from "../jobs/store.js";
 
@@ -172,9 +173,9 @@ export default defineCommand({
     name: "doctor",
     description: "Check the installation: Node, codex and claude CLIs, job state, legacy setups",
   },
-  async run() {
+  run: userFacing(async () => {
     const checks = await collectChecks();
     console.log(renderChecks(checks));
     process.exitCode = exitCodeFor(checks);
-  },
+  }),
 });
