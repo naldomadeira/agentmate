@@ -19,20 +19,34 @@ export function renderResult(job: Job, text: string | null): string {
   return `${head}\n\n${body.length > MAX_RESULT_CHARS ? `${body.slice(0, MAX_RESULT_CHARS)}\n\n…[truncated]` : body}`;
 }
 
-export function renderObservation({ job, stdoutTail, stderrTail }: Observation): string {
+export function renderObservation({ job, children, stdoutTail, stderrTail }: Observation): string {
   const sections = [summarize(job)];
+  if (children.length > 0)
+    sections.push(`children:\n${children.map((child) => `  ${listLine(child)}`).join("\n")}`);
   if (stdoutTail.trim()) sections.push(`stdout (tail):\n${stdoutTail.trim()}`);
   if (stderrTail.trim()) sections.push(`stderr (tail):\n${stderrTail.trim()}`);
   if (sections.length === 1) sections.push("No output yet.");
   return sections.join("\n\n");
 }
 
+function listLine(job: Job): string {
+  const prompt = job.prompt.replace(/\s+/g, " ").slice(0, 60);
+  return `${job.id}  ${job.status.padEnd(8)} ${job.role.padEnd(9)} ${job.provider}/${job.mode}  ${elapsedSeconds(job)}s  ${prompt}`;
+}
+
+/** Newest first; a job whose parent is also listed is indented beneath it, oldest child first. */
 export function renderList(jobs: Job[]): string {
   if (jobs.length === 0) return "No jobs.";
-  return jobs
-    .map(
-      (job) =>
-        `${job.id}  ${job.status.padEnd(8)} ${job.provider}/${job.mode}  ${elapsedSeconds(job)}s  ${job.prompt.replace(/\s+/g, " ").slice(0, 60)}`,
-    )
-    .join("\n");
+  const listed = new Set(jobs.map((job) => job.id));
+  const childrenOf = (id: string) =>
+    jobs
+      .filter((job) => job.parentJob === id)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const lines: string[] = [];
+  const add = (job: Job, indent: string): void => {
+    lines.push(`${indent}${listLine(job)}`);
+    for (const child of childrenOf(job.id)) add(child, `${indent}  `);
+  };
+  for (const job of jobs) if (!job.parentJob || !listed.has(job.parentJob)) add(job, "");
+  return lines.join("\n");
 }

@@ -50,4 +50,26 @@ describe("cli", () => {
     expect(result.stdout).toContain("skill");
     expect(result.stdout).toContain("agent");
   });
+
+  it("lists ask among the jobs subcommands", async () => {
+    const result = await runCli(["jobs", "--help"]);
+    expect(result.stdout).toContain("ask");
+  });
+
+  it("shows doctor help", async () => {
+    const result = await runCli(["doctor", "--help"]);
+    expect(result.stdout).toContain("doctor");
+  });
+
+  it("runs doctor without throwing even when CLIs are missing", async () => {
+    const result = await execCommand({
+      command: "npx",
+      args: ["tsx", CLI_PATH, "doctor"],
+      timeoutMs: 60_000,
+    });
+    expect([0, 1]).toContain(result.exitCode);
+    expect(result.stdout).toContain("codex");
+    expect(result.stdout).toContain("claude");
+    expect(result.stderr).not.toContain("Error:");
+  }, 70_000);
 });

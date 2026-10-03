@@ -11,6 +11,7 @@ const main = defineCommand({
     setup: () => import("./commands/setup.js").then((r) => r.default),
     install: () => import("./commands/install.js").then((r) => r.default),
     jobs: () => import("./commands/jobs.js").then((r) => r.default),
+    doctor: () => import("./commands/doctor.js").then((r) => r.default),
     worker: () => import("./commands/worker.js").then((r) => r.default),
   },
 });

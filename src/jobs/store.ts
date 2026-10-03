@@ -7,12 +7,31 @@ export type Provider = "codex" | "claude";
 export type JobMode = "read-only" | "write";
 export type JobStatus = "queued" | "running" | "done" | "error" | "canceled" | "timeout";
 
+export type JobRole = "custom" | "ask" | "review" | "research" | "plan" | "implement" | "teamlead";
+
+export const JOB_ROLES = [
+  "custom",
+  "ask",
+  "review",
+  "research",
+  "plan",
+  "implement",
+  "teamlead",
+] as const satisfies readonly JobRole[];
+
 export const TERMINAL: readonly JobStatus[] = ["done", "error", "canceled", "timeout"];
 
 export interface Job {
   id: string;
   provider: Provider;
   mode: JobMode;
+  /** "custom" is a raw prompt; other roles record which builder rendered `prompt`. */
+  role: JobRole;
+  /** 0 = started by a human/host session, 1 = started by a worker, and so on. */
+  depth: number;
+  /** Id of the job whose worker started this one. */
+  parentJob?: string;
+  /** The prompt actually sent to the provider. */
   prompt: string;
   cwd: string;
   model?: string;
@@ -58,7 +77,8 @@ export function writeJob(job: Job): void {
 export function readJob(id: string): Job | null {
   const file = jobFile(id); // validates the id; must stay outside the try so a bad id throws
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as Job;
+    // Defaults cover job.json files written before roles existed.
+    return { role: "custom", depth: 0, ...JSON.parse(fs.readFileSync(file, "utf8")) } as Job;
   } catch {
     return null;
   }

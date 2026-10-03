@@ -7,11 +7,12 @@ import { parseCodexOutput } from "./lib/codex-output-parser.js";
 import { buildExplainCodePrompt, buildPlanPerfPrompt } from "./lib/prompt-builder.js";
 import { createProgressReporter, logger, type ProgressReporter } from "./lib/logger.js";
 import { CODEX_MODELS } from "./lib/types.js";
+import { VERSION } from "./lib/version.js";
 import type { CodexResult } from "./lib/types.js";
 
 let lastThreadId: string | null = null;
 
-const server = new McpServer({ name: "agents-bridge-mcp", version: "0.1.0" });
+const server = new McpServer({ name: "agents-bridge-mcp", version: VERSION });
 
 // ---------------------------------------------------------------------------
 // Helpers

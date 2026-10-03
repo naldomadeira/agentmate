@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
 import {
+  askJob,
   cancelJob,
   listJobs,
   observeJob,
@@ -9,12 +10,24 @@ import {
   waitJob,
 } from "../jobs/api.js";
 import { renderList, renderObservation, renderResult } from "../jobs/render.js";
-import { TERMINAL, type JobMode, type Provider } from "../jobs/store.js";
+import { JOB_ROLES, TERMINAL, type JobMode, type JobRole, type Provider } from "../jobs/store.js";
 
 /** Exit codes: 0 done, 1 failed or canceled, 2 wait expired with the job still running. */
 const STILL_RUNNING = 2;
 
 const idArg = { id: { type: "positional", required: true, description: "Job id" } } as const;
+
+const parseProvider = (value: string): Provider => {
+  if (value !== "codex" && value !== "claude") throw new Error("provider must be codex or claude");
+  return value;
+};
+
+/** Parses `90s` / `10m` (bare numbers are minutes) into milliseconds. */
+function parseDuration(value: string): number {
+  const match = /^(\d+)(s|m)?$/.exec(value);
+  if (!match) throw new Error("duration must look like 90s or 10m");
+  return Number(match[1]) * (match[2] === "s" ? 1_000 : 60_000);
+}
 
 function exitFor(status: string): number {
   if (status === "done") return 0;
@@ -32,17 +45,23 @@ export default defineCommand({
         cwd: { type: "string", description: "Working directory" },
         model: { type: "string", description: "Model override" },
         mode: { type: "string", description: "read-only (default) or write" },
+        role: {
+          type: "string",
+          description: `Job role: ${JOB_ROLES.join(", ")} (default custom, the prompt is sent as is)`,
+        },
         timeout: { type: "string", description: "Job deadline in minutes (max 120)" },
         continue: { type: "string", description: "Finished job id whose session to resume" },
       },
       run({ args }) {
-        if (args.provider !== "codex" && args.provider !== "claude")
-          throw new Error("provider must be codex or claude");
+        const provider = parseProvider(args.provider);
         if (args.mode && args.mode !== "read-only" && args.mode !== "write")
           throw new Error("mode must be read-only or write");
+        if (args.role && !JOB_ROLES.includes(args.role as JobRole))
+          throw new Error(`role must be one of: ${JOB_ROLES.join(", ")}`);
         const job = startJob({
-          provider: args.provider as Provider,
+          provider,
           prompt: args.prompt,
+          role: args.role as JobRole | undefined,
           cwd: args.cwd,
           model: args.model,
           mode: args.mode as JobMode | undefined,
@@ -52,6 +71,33 @@ export default defineCommand({
         console.log(job.id);
       },
     }),
+    ask: defineCommand({
+      meta: {
+        name: "ask",
+        description: "Ask codex or claude a question and print the answer; exit 2 if still running",
+      },
+      args: {
+        provider: { type: "positional", required: true, description: "codex or claude" },
+        question: { type: "positional", required: true, description: "The question" },
+        wait: { type: "string", description: "Max wait, e.g. 90s or 2m (default 120s)" },
+        cwd: { type: "string", description: "Working directory" },
+        model: { type: "string", description: "Model override" },
+      },
+      async run({ args }) {
+        const { job, text } = await askJob(
+          {
+            provider: parseProvider(args.provider),
+            role: "ask",
+            fields: { question: args.question },
+            cwd: args.cwd,
+            model: args.model,
+          },
+          parseDuration(args.wait ?? "120s"),
+        );
+        console.log(renderResult(job, text));
+        process.exitCode = exitFor(job.status);
+      },
+    }),
     wait: defineCommand({
       meta: { name: "wait", description: "Wait for a job; exit 2 if it is still running" },
       args: {
@@ -59,10 +105,7 @@ export default defineCommand({
         timeout: { type: "string", description: "Max wait, e.g. 10m or 90s (default 10m)" },
       },
       async run({ args }) {
-        const match = /^(\d+)(s|m)?$/.exec(args.timeout ?? "10m");
-        if (!match) throw new Error("timeout must look like 90s or 10m");
-        const ms = Number(match[1]) * (match[2] === "s" ? 1_000 : 60_000);
-        const job = await waitJob(args.id, ms);
+        const job = await waitJob(args.id, parseDuration(args.timeout ?? "10m"));
         console.log(renderResult(job, readResult(args.id).text));
         process.exitCode = exitFor(job.status);
       },
@@ -92,9 +135,12 @@ export default defineCommand({
     }),
     list: defineCommand({
       meta: { name: "list", description: "List recent jobs" },
-      args: { cwd: { type: "string", description: "Only jobs from this directory" } },
+      args: {
+        cwd: { type: "string", description: "Only jobs from this directory" },
+        parent: { type: "string", description: "Only jobs started by this job's worker" },
+      },
       run({ args }) {
-        console.log(renderList(listJobs({ cwd: args.cwd })));
+        console.log(renderList(listJobs({ cwd: args.cwd, parent: args.parent })));
       },
     }),
   },
