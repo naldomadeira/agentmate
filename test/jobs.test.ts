@@ -17,6 +17,7 @@ import {
 import { buildInvocation } from "../src/jobs/providers.js";
 import { VERSION } from "../src/lib/version.js";
 import { readEvents } from "../src/jobs/events.js";
+import { readInbox } from "../src/jobs/inbox.js";
 import { renderObservation, renderResult } from "../src/jobs/render.js";
 import { stdoutFile, updateJob, type Job } from "../src/jobs/store.js";
 
@@ -81,6 +82,8 @@ beforeAll(() => {
   process.env["AGENTMATE_HOME"] = path.join(home, "state");
   process.env["AGENTMATE_CODEX_BIN"] = bin;
   process.env["AGENTMATE_CLAUDE_BIN"] = claudeBin;
+  // An agy installed on the host must not count as an available agent here.
+  process.env["AGENTMATE_AGY_BIN"] = path.join(home, "missing-agy");
   process.env["AGENTMATE_CLI"] = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 });
 
@@ -115,6 +118,16 @@ describe("jobs", () => {
     expect(done.sessionId).toBe("t-1");
     const { text } = readResult(job.id);
     expect(text).toContain("exec --json --skip-git-repo-check --sandbox read-only hello");
+  }, 30_000);
+
+  it("delivers a job's important message and finish to the inbox of its directory", async () => {
+    const job = start("hello");
+    await waitJob(job.id, 20_000);
+
+    const entries = readInbox({ cwd: home }).filter((e) => e.job === job.id);
+    expect(entries.map((e) => e.kind)).toEqual(["message", "finished"]);
+    expect(entries[0]).toMatchObject({ provider: "codex", role: "custom", cwd: home });
+    expect(entries[1]?.text).toMatch(/^done · \d+s$/);
   }, 30_000);
 
   it("records job events and filters them for observe", async () => {
@@ -314,6 +327,36 @@ describe("jobs", () => {
     );
     expect(renderResult(read, text)).toContain("quota_exhausted");
   }, 30_000);
+
+  it("names no agent in the quota hand-off when no other agent is installed", async () => {
+    const missing = path.join(home, "no-such-binary");
+    const job = start("quota");
+    // The worker judges availability in its own environment, which is the one it inherited at spawn.
+    withEnv({ AGENTMATE_CLAUDE_BIN: missing, AGENTMATE_GEMINI_BIN: missing }, () => {
+      const rendered = renderResult(
+        { ...job, status: "quota_exhausted", error: "codex quota exhausted: x" },
+        null,
+      );
+      expect(rendered).not.toContain("provider claude");
+      expect(rendered).toContain("no other agent CLI is installed");
+    });
+    withEnv({ AGENTMATE_CLAUDE_BIN: missing, AGENTMATE_GEMINI_BIN: process.execPath }, () => {
+      expect(
+        renderResult(
+          { ...job, status: "quota_exhausted", error: "codex quota exhausted: x" },
+          null,
+        ),
+      ).toContain("Hand off: start the same job with provider gemini.");
+    });
+    await waitJob(job.id, 20_000);
+  }, 30_000);
+
+  it("offers a resumable-session hint only for agents that can resume", () => {
+    const base = start("hello");
+    const timeout = { ...base, status: "timeout" as const, sessionId: "s-1" };
+    expect(renderResult(timeout, "partial")).toContain("continue=");
+    expect(renderResult({ ...timeout, provider: "gemini" }, "partial")).not.toContain("continue=");
+  });
 
   it("never retries a quota line, but still retries a plain transient 429", async () => {
     const count = path.join(home, "invocations");

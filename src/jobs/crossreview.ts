@@ -1,6 +1,7 @@
 import type { EventLevel, JobEvent } from "../agents/types.js";
-import { otherAgent } from "../agents/registry.js";
+import { firstAvailableOther, getAgent } from "../agents/registry.js";
 import { cancelJob, isTerminal, readResult, startJob, waitJob, type StartOptions } from "./api.js";
+import { canRunShell, inlineDiff } from "./diff.js";
 import { appendEvent } from "./events.js";
 import {
   DEFAULT_MAX_ROUNDS,
@@ -23,6 +24,9 @@ const SLICE_MS = 1_000;
 
 const REVIEW_TARGET =
   "the uncommitted working-tree diff (`git diff`, plus `git status` for untracked files)";
+/** For a reviewer that cannot run the shell: the diff travels in the briefing instead. */
+const REVIEW_TARGET_INLINE =
+  "the uncommitted working-tree diff, given in the context below (you cannot run `git diff` yourself)";
 
 /** Matches `Verdict: approve`, `**Verdict:** request-changes` and similar; the last match wins. */
 const VERDICT_LINE = /^\s*\**Verdict:\**\s*(approve|request-changes)(?![\w-])/gim;
@@ -120,7 +124,10 @@ export async function runCrossreview(id: string): Promise<void> {
 
   const implementer = job.provider;
   const sessionId = job.session;
-  const reviewer = otherAgent(implementer);
+  // `startJob` stores the partner; a job written by an older version falls back to the installed default.
+  const reviewer = job.partner ?? firstAvailableOther(implementer, job.cwd);
+  const inlineReviewDiff = !canRunShell(reviewer);
+  const canResume = getAgent(implementer).capabilities.resume;
   const maxRounds = job.workflow?.maxRounds ?? DEFAULT_MAX_ROUNDS;
   const task = job.fields?.task ?? job.prompt;
   const acceptance = job.fields?.acceptance;
@@ -224,6 +231,7 @@ export async function runCrossreview(id: string): Promise<void> {
     let previousImplement: Job | undefined;
     let findings = "";
     for (let round = 1; round <= maxRounds; round++) {
+      const addressFindings = `Address these review findings, then summarize what changed.\n\nReview findings:\n${briefFindings(findings)}`;
       const implementOptions: StartOptions =
         round === 1 || !previousImplement
           ? {
@@ -238,13 +246,17 @@ export async function runCrossreview(id: string): Promise<void> {
               provider: implementer,
               role: "implement",
               fields: {
-                task: `Address these review findings, then summarize what changed.\n\nReview findings:\n${briefFindings(findings)}`,
+                // An implementer that cannot resume starts fresh: the earlier changes are already in the
+                // working tree, so the task says so instead of continuing the session.
+                task: canResume
+                  ? addressFindings
+                  : `${task}\n\nA previous attempt is already in the working tree. ${addressFindings}`,
                 ...(acceptance ? { acceptance } : {}),
               },
               mode: "write",
               cwd: job.cwd,
               model: job.model,
-              continueJob: previousImplement.id,
+              ...(canResume ? { continueJob: previousImplement.id } : {}),
             };
       const implement = await step(`round ${round}: implement`, implementOptions);
       previousImplement = implement.job;
@@ -252,6 +264,8 @@ export async function runCrossreview(id: string): Promise<void> {
 
       let reviewId = "";
       let review: { job: Job; text: string };
+      const report = implement.text.slice(0, CONTEXT_CHARS);
+      const reviewContext = inlineReviewDiff ? `${report}\n\n${await inlineDiff(job.cwd)}` : report;
       try {
         review = await step(
           `round ${round}: review`,
@@ -259,9 +273,9 @@ export async function runCrossreview(id: string): Promise<void> {
             provider: reviewer,
             role: "review",
             fields: {
-              target: REVIEW_TARGET,
+              target: inlineReviewDiff ? REVIEW_TARGET_INLINE : REVIEW_TARGET,
               focus: `Whether the change fulfils this task${acceptance ? " and its acceptance criteria" : ""}: ${task}${acceptance ? `\n\nAcceptance criteria:\n${acceptance}` : ""}`,
-              context: implement.text.slice(0, CONTEXT_CHARS),
+              context: reviewContext,
             },
             mode: "read-only",
             cwd: job.cwd,

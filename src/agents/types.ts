@@ -1,15 +1,22 @@
 import type { Job } from "../jobs/store.js";
 
-/** Phase 3 adds further agents here. */
-export type AgentId = "codex" | "claude";
+export type AgentId = "codex" | "claude" | "gemini" | "agy";
 
 export interface AgentCapabilities {
   /** Supports `write` mode. */
   write: boolean;
   /** Can search the web while read-only. */
   web: boolean;
-  /** Can continue a previous session. */
+  /**
+   * Can continue a previous session. `false` also covers "not verified": `startJob` refuses
+   * `continueJob` for such an agent instead of passing an untested flag.
+   */
   resume: boolean;
+  /**
+   * Can run shell commands (such as `git diff`) headless. A reviewer without it gets the diff inline
+   * in its briefing, and an implementer without it cannot run the repository's verification.
+   */
+  shell: boolean;
   /** Emits events while it runs (`jsonl`) or only at the end (`none`). */
   streaming: "jsonl" | "none";
 }
@@ -49,10 +56,19 @@ export interface AgentAdapter {
   /** Honors `AGENTMATE_<ID>_BIN`. */
   binary(): string;
   capabilities: AgentCapabilities;
+  /**
+   * A team lead must delegate through the shell, which this agent runs headless only in write mode;
+   * `startJob` refuses a read-only team lead on it with `teamleadWriteReason`.
+   */
+  teamleadNeedsWrite: boolean;
+  /** The error for a read-only team lead on an agent with `teamleadNeedsWrite`. */
+  teamleadWriteReason?: string;
   buildInvocation(job: Job, resumeSessionId?: string): Invocation;
   parseOutcome(stdout: string, stderr: string, exitCode: number): Outcome;
   /** Turns one stdout line into filtered events; `job` is left empty for the worker to fill. */
   parseStreamLine?(line: string): JobEvent[];
+  /** Clears any state kept between `parseStreamLine` calls; the worker runs one job, so tests use it. */
+  resetStream?(): void;
   /** Arguments that make the CLI print its version, for the doctor. */
   versionArgs: string[];
 }

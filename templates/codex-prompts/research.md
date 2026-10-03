@@ -1,11 +1,11 @@
 ---
 description: Have Codex or Claude investigate a topic read-only and report findings and a recommendation.
-argument-hint: "<codex|claude> <topic>"
+argument-hint: "<codex|claude|gemini|agy> <topic>"
 ---
 
 Request: $ARGUMENTS
 
-Take the first word of the request as the provider (`codex` or `claude`); the rest is the topic. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
+Take the first word of the request as the provider (`codex`, `claude`, `gemini` or `agy`; the last two are experimental); the rest is the topic. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
 
 1. Call the `mate_research` MCP tool with `provider` and `topic` (add `questions`, `scope` and `context`). It returns a job id; collect the result with `mate_wait`.
 2. If the `mate_*` tools are not loaded, run `npx -y agentmate jobs start <provider> "<briefing>" --role research` in the shell.

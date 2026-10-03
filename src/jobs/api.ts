@@ -2,7 +2,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { EventLevel, JobEvent } from "../agents/types.js";
-import { AGENT_IDS, otherAgent } from "../agents/registry.js";
+import {
+  assertAgentAvailable,
+  availableAgents,
+  firstAvailableOther,
+  getAgent,
+} from "../agents/registry.js";
 import {
   buildAskPrompt,
   buildCrossreviewPrompt,
@@ -71,6 +76,12 @@ export interface StartOptions {
   maxParts?: number;
   /** Id of an AgentMate session whose notes prefix the prompt and which records the job. */
   sessionId?: string;
+  /**
+   * teamlead, crossreview, split: the agent that works with `provider`. Defaults to the first
+   * installed agent that differs from it (`firstAvailableOther`); `startJob` resolves it up front,
+   * checks it is installed and stores it on the job.
+   */
+  partner?: Provider;
 }
 
 type PrimaryField = "question" | "target" | "topic" | "goal" | "task" | "objective";
@@ -107,6 +118,7 @@ function renderPrompt(
   mode: JobMode,
   maxRounds: number,
   maxParts: number,
+  partner: Provider | undefined,
 ) {
   if (role === "custom") {
     if (!options.prompt)
@@ -126,7 +138,12 @@ function renderPrompt(
     case "ask":
       return buildAskPrompt({ question: required, context });
     case "review":
-      return buildReviewPrompt({ target: required, focus: fields.focus, context });
+      return buildReviewPrompt({
+        target: required,
+        focus: fields.focus,
+        context,
+        shell: getAgent(provider).capabilities.shell,
+      });
     case "research":
       return buildResearchPrompt({
         topic: required,
@@ -141,7 +158,7 @@ function renderPrompt(
           goal: required,
           acceptance: fields.acceptance,
           maxParts: fields.maxParts,
-          agents: [...AGENT_IDS],
+          agents: partner ? [provider, partner] : availableAgents(),
         });
       return buildPlanPrompt({
         goal: required,
@@ -155,7 +172,7 @@ function renderPrompt(
       return buildTeamleadPrompt({
         objective: required,
         provider,
-        otherProvider: otherAgent(provider),
+        otherProvider: partner ?? firstAvailableOther(provider),
         canWrite: mode === "write",
         constraints,
         context,
@@ -165,7 +182,7 @@ function renderPrompt(
         task: required,
         acceptance: fields.acceptance,
         implementer: provider,
-        reviewer: otherAgent(provider),
+        reviewer: partner ?? firstAvailableOther(provider),
         maxRounds,
       });
     case "split":
@@ -173,6 +190,7 @@ function renderPrompt(
         goal: required,
         acceptance: fields.acceptance,
         planner: provider,
+        partner: partner ?? firstAvailableOther(provider),
         maxParts,
         mode,
       });
@@ -241,6 +259,14 @@ export function startJob(options: StartOptions): Job {
   }
   if (role === "split" && options.continueJob)
     throw new Error("A split job cannot continue another job; it starts its own plan and parts.");
+  if (options.partner !== undefined) {
+    if (role !== "teamlead" && role !== "crossreview" && role !== "split" && role !== "plan")
+      throw new Error("partner applies only to the teamlead, crossreview, split and plan roles.");
+    if (options.partner === options.provider)
+      throw new Error(
+        `partner must differ from the provider (both are ${options.provider}). Pick another agent.`,
+      );
+  }
   // Validated up front so an unknown session never leaves a half-started job behind.
   if (options.sessionId) getSession(options.sessionId);
   const parentJob = process.env["AGENTMATE_JOB_ID"] || undefined;
@@ -248,6 +274,10 @@ export function startJob(options: StartOptions): Job {
   let provider = options.provider;
   let sessionNote: string | undefined;
   if (options.continueJob) {
+    if (!getAgent(provider).capabilities.resume)
+      throw new Error(
+        `Continuing a job is not available for ${provider} yet (its --resume is unverified). Start a new job with the full context instead.`,
+      );
     const prior = readJob(options.continueJob);
     if (!prior)
       throw new Error(
@@ -268,6 +298,15 @@ export function startJob(options: StartOptions): Job {
     provider = prior.provider;
     sessionNote = prior.id;
   }
+  const cwd = options.cwd ?? process.cwd();
+  assertAgentAvailable(provider, cwd);
+  // The partner is settled before anything is spawned: a default pointing at an agent that is not
+  // installed would otherwise fail only after the implementer had already edited files.
+  const needsPartner = role === "teamlead" || role === "crossreview" || role === "split";
+  const partner = needsPartner
+    ? (options.partner ?? firstAvailableOther(provider, cwd))
+    : options.partner;
+  if (partner) assertAgentAvailable(partner, cwd);
 
   const timeoutMs = Math.min(
     (options.timeoutMinutes ?? DEFAULT_TIMEOUT_MS / 60_000) * 60_000,
@@ -277,13 +316,19 @@ export function startJob(options: StartOptions): Job {
   if (writes && options.mode === "read-only")
     throw new Error(`Role ${role} needs mode write. Drop --mode or pass --mode write.`);
   const mode = options.mode ?? (writes ? "write" : "read-only");
+  const leadAdapter = getAgent(provider);
+  if (role === "teamlead" && leadAdapter.teamleadNeedsWrite && mode !== "write")
+    throw new Error(
+      leadAdapter.teamleadWriteReason ??
+        `A ${provider} team lead needs mode write: delegation requires the shell, which ${provider} only allows in write mode.`,
+    );
   if (mode === "write" && process.env["AGENTMATE_PARENT_MODE"] === "read-only")
     throw new Error(
       "The parent job is read-only, so this job cannot use mode write. Start it read-only or from the host session.",
     );
   const maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS;
   const maxParts = options.maxParts ?? DEFAULT_MAX_PARTS;
-  const rendered = renderPrompt(options, role, provider, mode, maxRounds, maxParts);
+  const rendered = renderPrompt(options, role, provider, mode, maxRounds, maxParts, partner);
   const prompt = options.sessionId ? withSessionNotes(options.sessionId, rendered) : rendered;
   const job: Job = {
     id: newJobId(),
@@ -293,12 +338,13 @@ export function startJob(options: StartOptions): Job {
     depth,
     ...(parentJob ? { parentJob } : {}),
     prompt,
-    cwd: options.cwd ?? process.cwd(),
+    cwd,
     ...(options.model ? { model: options.model } : {}),
     timeoutMs,
     status: "queued",
     createdAt: new Date().toISOString(),
     ...(sessionNote ? { continuesJob: sessionNote } : {}),
+    ...(partner ? { partner } : {}),
     ...(options.sessionId ? { session: options.sessionId } : {}),
     ...(role === "crossreview"
       ? {

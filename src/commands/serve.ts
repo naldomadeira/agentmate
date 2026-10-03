@@ -9,7 +9,8 @@ export default defineCommand({
     jobs: defineCommand({
       meta: {
         name: "jobs",
-        description: "Start the job-based MCP server (background delegation to codex or claude)",
+        description:
+          "Start the job-based MCP server (background delegation to codex, claude, gemini or agy)",
       },
       async run() {
         await import("../jobs-server.js");

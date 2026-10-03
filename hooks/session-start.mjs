@@ -89,7 +89,13 @@ function ago(ms) {
 
 function readJobs(dir) {
   const jobs = [];
-  for (const id of readdirSync(join(dir, "jobs"))) {
+  let ids = [];
+  try {
+    ids = readdirSync(join(dir, "jobs"));
+  } catch {
+    // no jobs yet; the inbox may still have something
+  }
+  for (const id of ids) {
     try {
       const job = JSON.parse(readFileSync(join(dir, "jobs", id, "job.json"), "utf8"));
       if (job && typeof job === "object" && typeof job.id === "string") jobs.push(job);
@@ -100,13 +106,28 @@ function readJobs(dir) {
   return jobs;
 }
 
-function compose(finished, running, stale, now) {
+/** Unread inbox entries for `root`, by the same rules as the prompt hook (inbox-state.mjs). */
+async function unreadInbox(dir, root, now) {
+  try {
+    const state = await import("./inbox-state.mjs");
+    const entries = state.readEntries(dir, root);
+    if (entries === null) return 0;
+    const since = new Date(now - state.FIRST_RUN_WINDOW_MS).toISOString();
+    return state.selectUnread(entries, state.readCursor(dir, root), since).length;
+  } catch {
+    return 0;
+  }
+}
+
+function compose(finished, running, stale, now, unread = 0) {
+  const inbox = unread ? ` · ${unread} unread inbox ${unread === 1 ? "entry" : "entries"}` : "";
   const head = (n) =>
     `AgentMate: ${n} job${n === 1 ? "" : "s"} finished since your last session here: `;
   const tail = (n) =>
-    `${n ? ` … and ${n} more` : ""} · ${running} running · ${stale} stale. Run \`agentmate jobs list\`${finished.length ? " or `agentmate jobs result <id>`" : ""}.`;
+    `${n ? ` … and ${n} more` : ""} · ${running} running · ${stale} stale${inbox}. Run \`agentmate jobs list\`${finished.length ? " or `agentmate jobs result <id>`" : ""}.`;
   if (finished.length === 0) {
-    return `AgentMate: ${running} running · ${stale} stale. Run \`agentmate jobs list\`.`;
+    if (!running && !stale) return `AgentMate:${inbox.replace(" ·", "")}. Run \`agentmate inbox\`.`;
+    return `AgentMate: ${running} running · ${stale} stale${inbox}. Run \`agentmate jobs list\`.`;
   }
   const entries = finished.map(
     (j) =>
@@ -121,6 +142,8 @@ function compose(finished, running, stale, now) {
 }
 
 async function main() {
+  // A worker runs in the host's directory with this plugin installed; it must stay out of the host's state.
+  if (process.env.AGENTMATE_JOB_ID) return;
   if (process.env.AGENTMATE_HOOK_QUIET === "1") return;
 
   let cwd = process.cwd();
@@ -178,14 +201,16 @@ async function main() {
   const stale = active.filter((j) => !pidAlive(j.workerPid)).length;
   const running = active.length - stale;
 
-  if (finished.length === 0 && running === 0 && stale === 0) return;
+  const unread = await unreadInbox(dir, root, now);
+
+  if (finished.length === 0 && running === 0 && stale === 0 && unread === 0) return;
 
   writeSync(
     1,
     JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: compose(finished, running, stale, now),
+        additionalContext: compose(finished, running, stale, now, unread),
       },
     }),
   );

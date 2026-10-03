@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { AGENT_IDS } from "../src/agents/registry.js";
 import { collectChecks, exitCodeFor, renderChecks, type Check } from "../src/commands/doctor.js";
 import { writeJob, type Job } from "../src/jobs/store.js";
 
@@ -22,6 +23,8 @@ beforeAll(() => {
   process.env["AGENTMATE_HOME"] = path.join(home, "state");
   process.env["AGENTMATE_CLAUDE_BIN"] = bin;
   process.env["AGENTMATE_CODEX_BIN"] = path.join(home, "missing-codex");
+  process.env["AGENTMATE_GEMINI_BIN"] = path.join(home, "missing-gemini");
+  process.env["AGENTMATE_AGY_BIN"] = path.join(home, "missing-agy");
   process.env["CODEX_HOME"] = path.join(home, "codex-home");
 });
 
@@ -41,6 +44,41 @@ describe("doctor", () => {
     expect(find(checks, "claude").status).toBe("ok");
     expect(find(checks, "claude").detail).toContain("9.9.9");
     expect(exitCodeFor(checks)).toBe(0);
+  });
+
+  it("reports one line per agent, and a missing Gemini CLI as optional rather than a warning", async () => {
+    const checks = await collectChecks();
+    for (const id of AGENT_IDS) expect(find(checks, id)).toBeDefined();
+    const gemini = find(checks, "gemini");
+    expect(gemini.status).toBe("ok");
+    expect(gemini.detail).toBe("not installed (optional)");
+    expect(renderChecks(checks)).toMatch(/ok\s+gemini\s+not installed \(optional\)/);
+  });
+
+  it("shows the version of an installed Gemini CLI and warns when it does not respond", async () => {
+    const bin = path.join(home, "fake-gemini");
+    fs.writeFileSync(bin, '#!/usr/bin/env node\nconsole.log("0.9.1");\n', { mode: 0o755 });
+    process.env["AGENTMATE_GEMINI_BIN"] = bin;
+    expect(find(await collectChecks(), "gemini")).toMatchObject({ status: "ok", detail: "0.9.1" });
+    fs.writeFileSync(bin, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    expect(find(await collectChecks(), "gemini").status).toBe("warn");
+    process.env["AGENTMATE_GEMINI_BIN"] = path.join(home, "missing-gemini");
+  });
+
+  it("reports a missing Antigravity CLI as optional, shows its version and warns when it does not respond", async () => {
+    const missing = find(await collectChecks(), "agy");
+    expect(missing).toMatchObject({ status: "ok", detail: "not installed (optional)" });
+    expect(renderChecks(await collectChecks())).toMatch(/ok\s+agy\s+not installed \(optional\)/);
+    const bin = path.join(home, "fake-agy");
+    fs.writeFileSync(bin, '#!/usr/bin/env node\nconsole.log("agy 1.2.6");\n', { mode: 0o755 });
+    process.env["AGENTMATE_AGY_BIN"] = bin;
+    expect(find(await collectChecks(), "agy")).toMatchObject({ status: "ok", detail: "agy 1.2.6" });
+    fs.writeFileSync(bin, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const broken = find(await collectChecks(), "agy");
+    expect(broken.status).toBe("warn");
+    expect(broken.detail).toContain("Antigravity CLI (agy)");
+    expect(broken.hint).toContain("https://antigravity.google/cli/install.sh");
+    process.env["AGENTMATE_AGY_BIN"] = path.join(home, "missing-agy");
   });
 
   it("flags legacy registrations in claude and codex", async () => {

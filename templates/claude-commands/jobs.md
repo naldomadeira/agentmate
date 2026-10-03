@@ -13,6 +13,8 @@ Request: $ARGUMENTS
 - `result <id>`: call `mate_result` for the stored output, without waiting.
 - `cancel <id>`: call `mate_cancel`, only when the user asked or the job is clearly stuck.
 
+When you resume a turn with jobs in progress, call `mate_inbox` before `mate_wait`: it reports what finished or failed since you last looked.
+
 If the `mate_*` tools are not loaded, run `npx -y agentmate jobs <verb> [id]` through the shell. Match ids exactly and report id, role, provider and status briefly. Jobs outlive the session that started them, and the user owns acceptance of any result.
 
 Full rules: the `/mate:jobs` plugin skill.

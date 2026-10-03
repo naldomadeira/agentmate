@@ -31,7 +31,25 @@ describe("project documentation", () => {
     expect(readme).toContain("quota_exhausted");
     expect(readme).toContain("AGENTMATE_QUOTA_PATTERNS");
     expect(readme).toContain("AGENTMATE_HOOK_QUIET");
+    expect(readme).toContain("mate_inbox");
+    expect(readme).toContain("UserPromptSubmit");
+    expect(readme).toContain("Gemini");
+    expect(readme).toContain("Antigravity");
+    expect(readme).toContain("## Teammates");
+    expect(readme).toContain("agentmate init");
+    expect(readme).toContain("partner");
     expect(readme).toContain("Cutting a release");
+    // The Safety model names the one Gemini mode that approves everything.
+    const safety = readme.slice(
+      readme.indexOf("## Safety model"),
+      readme.indexOf("## Troubleshooting"),
+    );
+    expect(safety).toContain("--approval-mode yolo");
+    expect(safety).toContain("--approval-mode auto_edit");
+    expect(safety).toContain("--approval-mode default");
+    // And the one agy flag that skips every permission check.
+    expect(safety).toContain("--dangerously-skip-permissions");
+    expect(safety).toMatch(/\| `agy`|agy \(experimental\)/);
     expect(readme).toContain("clean working tree");
     expect(readme).not.toContain("## Legacy setup");
     expect(readme).toContain("Removed in 0.6.0");
@@ -52,8 +70,21 @@ describe("project documentation", () => {
     expect(portugueseReadme).toContain("quota_exhausted");
     expect(portugueseReadme).toContain("AGENTMATE_QUOTA_PATTERNS");
     expect(portugueseReadme).toContain("AGENTMATE_HOOK_QUIET");
+    expect(portugueseReadme).toContain("## Caixa de entrada");
+    expect(portugueseReadme).toContain("mate_inbox");
+    expect(portugueseReadme).toContain("Gemini");
+    expect(portugueseReadme).toContain("Antigravity");
+    expect(portugueseReadme).toContain("--dangerously-skip-permissions");
+    expect(portugueseReadme).toContain("## Colegas de equipe");
+    expect(portugueseReadme).toContain("agentmate init");
+    expect(portugueseReadme).toContain("partner");
     expect(portugueseReadme).toContain("Publicar uma versão");
     expect(portugueseReadme).toContain("árvore de trabalho limpa");
+    const portugueseSafety = portugueseReadme.slice(
+      portugueseReadme.indexOf("## Modelo de segurança"),
+      portugueseReadme.indexOf("## Solução de problemas"),
+    );
+    expect(portugueseSafety).toContain("--approval-mode yolo");
   });
 
   it("documents the slash commands in both READMEs and both install guides", () => {
@@ -111,6 +142,58 @@ describe("project documentation", () => {
       expect(content, file).not.toMatch(
         /\$(ask|review|research|plan|implement|teamlead|jobs|delegate)\b/,
       );
+    }
+  });
+
+  it("documents partner and the Gemini limits in the skills", () => {
+    for (const skill of ["teamlead", "crossreview", "split", "delegate"])
+      expect(read(`skills/${skill}/SKILL.md`), skill).toContain("partner");
+    const gemini = read("skills/gemini/SKILL.md");
+    for (const text of ["experimental", "No shell", "No continuation", "yolo", "mode: write"])
+      expect(gemini, text).toContain(text);
+    expect(read("skills/teamlead/SKILL.md")).toContain("--approval-mode yolo");
+  });
+
+  it("documents the agy limits in its skill and routes by the usual phrases", () => {
+    const agy = read("skills/agy/SKILL.md");
+    for (const text of [
+      "experimental",
+      "No shell in read-only",
+      "--dangerously-skip-permissions",
+      "--conversation",
+      "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+      "/mate:agy",
+      "ask agy",
+      "pergunte ao agy",
+      "Antigravity",
+      "mode: write",
+    ])
+      expect(agy, text).toContain(text);
+    expect(read("skills/teamlead/SKILL.md")).toContain("--dangerously-skip-permissions");
+  });
+
+  it("documents the agy teammate in the README table, the architecture and the changelog", () => {
+    const row = (content: string) => content.split("\n").find((l) => l.includes("| `agy`"));
+    expect(row(read("README.md"))).toContain("AGENTMATE_AGY_BIN");
+    expect(row(read("docs/README.pt-BR.md"))).toContain("AGENTMATE_AGY_BIN");
+    expect(read("docs/ARCHITECTURE.md")).toContain("| `agy` (experimental)");
+    expect(read("CHANGELOG.md")).toMatch(/## \[0\.7\.0\][\s\S]*Antigravity CLI/);
+    expect(read("README.md")).toContain("agy-staff");
+  });
+
+  it("states the real skill count and the four agents in the install guides", () => {
+    const count = readdirSync(resolve(root, "skills"), { withFileTypes: true }).filter((entry) =>
+      entry.isDirectory(),
+    ).length;
+    const words: Record<string, [string, string]> = { "15": ["fifteen", "quinze"] };
+    const [english, portuguese] = words[String(count)] ?? ["?", "?"];
+    expect(read("docs/INSTALL_FOR_AGENTS.md")).toContain(`packages ${english} skills`);
+    expect(read("docs/INSTALL_FOR_AGENTS.pt-BR.md")).toContain(`fornece ${portuguese} skills`);
+    for (const guide of ["docs/INSTALL_FOR_AGENTS.md", "docs/INSTALL_FOR_AGENTS.pt-BR.md"]) {
+      const content = read(guide);
+      expect(content, guide).not.toContain("ten skills");
+      expect(content, guide).not.toContain("dez skills");
+      expect(content, guide).toMatch(/`codex`, `claude`, `gemini` (or|ou) `agy`/);
     }
   });
 

@@ -2,12 +2,12 @@
 
 [Português (Brasil)](./INSTALL_FOR_AGENTS.pt-BR.md)
 
-AgentMate packages ten skills (`ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `jobs`, `delegate`, `codex`, `claude`) with a background-jobs MCP server, and in Claude Code four agents that wrap Codex (`codex-teammate`, `codex-reviewer`, `codex-researcher`, `codex-teamlead`). When MCP is not available in a host session, the skills use the package CLI and preserve the same start, wait, result, observe, and cancel workflow.
+AgentMate packages fifteen skills (`ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `crossreview`, `split`, `jobs`, `delegate`, `codex`, `claude`, `gemini`, `agy`, `init`) with a background-jobs MCP server, and in Claude Code four agents that wrap Codex (`codex-teammate`, `codex-reviewer`, `codex-researcher`, `codex-teamlead`). When MCP is not available in a host session, the skills use the package CLI and preserve the same start, wait, result, observe, and cancel workflow.
 
 ## Requirements
 
 - Node.js 18 or later
-- An authenticated Claude Code or Codex CLI
+- An authenticated Claude Code or Codex CLI; Gemini CLI and Antigravity CLI (`agy`; install with `curl -fsSL https://antigravity.google/cli/install.sh | bash`) are optional and experimental
 - Network access to npm for `npx -y agentmate`
 - The CLI that receives delegated work available on the initiating host's `PATH`
 
@@ -82,7 +82,7 @@ Restart the host after an upgrade. Confirm the active plugin with `claude plugin
 
 ## Smoke test
 
-After restarting, ask the other CLI a short read-only question. With MCP available, call `mate_ask` with `provider` set to `codex` or `claude` and a question such as `Reply only with OK`. It waits for the answer and returns it in the same call.
+After restarting, ask the other CLI a short read-only question. With MCP available, call `mate_ask` with `provider` set to `codex`, `claude`, `gemini` or `agy` (the last two experimental) and a question such as `Reply only with OK`. It waits for the answer and returns it in the same call.
 
 Without MCP, use the CLI fallback:
 
@@ -110,7 +110,7 @@ Jobs are read-only by default. The `implement` skill and `mate_implement` always
 npx -y agentmate doctor
 ```
 
-`doctor` checks that Node.js is 18 or later, that `codex` and `claude` are on `PATH` and respond to `--version`, that the job state directory is writable, how many jobs exist and which `running` jobs lost their worker (it lists their ids), and whether a legacy `serve codex` / `serve claude` registration is still present. Each item is reported as `ok`, `warn` or `fail` with a hint. It exits `1` if any item fails, and it works when `codex` or `claude` is not installed (reported as a warning). It does not check authentication: if a job fails right away, log in to the destination CLI yourself.
+`doctor` checks that Node.js is 18 or later, that `codex`, `claude`, `gemini` and `agy` (the last two optional and experimental) are on `PATH` and respond to `--version`, that the job state directory is writable, how many jobs exist and which `running` jobs lost their worker (it lists their ids), and whether a legacy `serve codex` / `serve claude` registration is still present. Each item is reported as `ok`, `warn` or `fail` with a hint. It exits `1` if any item fails, and it works when `codex` or `claude` is not installed (reported as a warning; a missing `gemini` is reported as ok). It does not check authentication: if a job fails right away, log in to the destination CLI yourself.
 
 ## Diagnose an installation
 

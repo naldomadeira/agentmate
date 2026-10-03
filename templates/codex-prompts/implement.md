@@ -1,11 +1,11 @@
 ---
 description: Have Codex or Claude implement a scoped change by editing files, only when you authorized edits.
-argument-hint: "<codex|claude> <task>"
+argument-hint: "<codex|claude|gemini|agy> <task>"
 ---
 
 Request: $ARGUMENTS
 
-Take the first word of the request as the provider (`codex` or `claude`); the rest is the task. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
+Take the first word of the request as the provider (`codex`, `claude`, `gemini` or `agy`; the last two are experimental); the rest is the task. If the first word is neither, use the whole request and default to `claude`, the provider that is not Codex.
 
 1. Only if the user explicitly allowed edits, call the `mate_implement` MCP tool with `provider` and `task` (add `acceptance` and `context`). It always runs in write mode and returns a job id; collect it with `mate_wait`. If edits were not clearly authorized, ask first.
 2. If the `mate_*` tools are not loaded, run `npx -y agentmate jobs start <provider> "<briefing>" --role implement` in the shell.

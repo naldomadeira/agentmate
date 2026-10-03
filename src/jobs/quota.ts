@@ -25,6 +25,10 @@ export const QUOTA_PATTERNS: readonly RegExp[] = [
   /exceeded your current quota/i,
   /out of credits/i,
   /\brate limit\b.*(\breset|\btry again at\b)/i,
+  // The Antigravity CLI (agy) reports an exhausted allowance as a gRPC status: `RESOURCE_EXHAUSTED (code
+  // 429): Individual quota reached. Resets in 4h1m13s`. The upper-case status is specific to that
+  // CLI; its `quota reached` wording is already covered above. A bare `code 429` is not added.
+  /\bRESOURCE_EXHAUSTED\b/,
 ];
 
 /** Lines that look like a quota but are not the agent's own allowance. */

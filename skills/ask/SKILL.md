@@ -1,7 +1,7 @@
 ---
 name: ask
-description: Ask Codex or Claude a direct question and get the answer in the same turn. Use when the user says /mate:ask, 'ask codex', 'ask claude', 'pergunte ao codex/claude', or wants a quick second opinion from the other model.
-argument-hint: "<codex|claude> <question>"
+description: Ask Codex, Claude, Gemini or Antigravity (the last two experimental) a direct question and get the answer in the same turn. Use when the user says /mate:ask, 'ask codex', 'ask claude', 'ask gemini', 'ask agy', 'pergunte ao codex/claude', or wants a quick second opinion from the other model.
+argument-hint: "<codex|claude|gemini|agy> <question>"
 ---
 
 # Ask another agent

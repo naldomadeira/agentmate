@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { StringDecoder } from "node:string_decoder";
 import type { EventLevel, JobEvent } from "../agents/types.js";
-import { getAgent, otherAgent } from "../agents/registry.js";
+import { AGENT_IDS, getAgent, installedOther, resolveBinary } from "../agents/registry.js";
 import { execCommand } from "../lib/exec-runner.js";
 import { runCrossreview } from "./crossreview.js";
 import { appendEvent } from "./events.js";
@@ -81,7 +81,8 @@ export async function runWorker(id: string): Promise<void> {
     const prior = job.continuesJob ? readJob(job.continuesJob) : null;
     const { command, args } = buildInvocation(job, prior?.sessionId);
     const result = await execCommand({
-      command,
+      // A relative AGENTMATE_<ID>_BIN is resolved against the job's directory, as startJob checked it.
+      command: resolveBinary(command, job.cwd),
       args,
       cwd: job.cwd,
       timeoutMs: job.timeoutMs,
@@ -113,7 +114,8 @@ export async function runWorker(id: string): Promise<void> {
       const quotaLine = detectQuotaExhaustion(result.stderr, outcome.errors, outcome.text);
       if (quotaLine) {
         status = "quota_exhausted";
-        fields.error = `${job.provider} quota exhausted: ${quotaLine.replace(/\.+$/, "")}. Retry after the reset or start the job on ${otherAgent(job.provider)}.`;
+        const other = installedOther(job.provider, AGENT_IDS, job.cwd);
+        fields.error = `${job.provider} quota exhausted: ${quotaLine.replace(/\.+$/, "")}. ${other ? `Retry after the reset or start the job on ${other}.` : "Retry after the reset."}`;
       } else {
         status = "error";
         fields.error =

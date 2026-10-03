@@ -140,6 +140,8 @@ export interface Job {
   /** Id of the AgentMate session (shared notes) this job belongs to; see `sessions.ts`. */
   session?: string;
   continuesJob?: string;
+  /** teamlead, crossreview and split: the agent that works with `provider`; defaults to `otherAgent(provider)`. */
+  partner?: Provider;
   /**
    * Set by `cancelJob` before it cancels the children, so a workflow worker that sees a child end
    * `canceled` knows whether the whole job is being canceled or the child was canceled on its own.

@@ -26,7 +26,7 @@ describe("plugin package", () => {
 
     expect(manifest).toMatchObject({
       name: "mate",
-      version: "0.6.0",
+      version: "0.7.0",
       skills: "./skills/",
       mcpServers: "./.mcp.json",
     });
@@ -113,6 +113,29 @@ describe("plugin package", () => {
     ]);
   });
 
+  it("ships the UserPromptSubmit inbox hook next to SessionStart", () => {
+    const hooks = json<{
+      hooks: Record<
+        string,
+        Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }>
+      >;
+    }>("hooks/hooks.json");
+
+    expect(existsSync(resolve(root, "hooks/user-prompt-submit.mjs"))).toBe(true);
+    expect(hooks.hooks["UserPromptSubmit"]).toEqual([
+      {
+        matcher: "*",
+        hooks: [
+          {
+            type: "command",
+            command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit.mjs"',
+          },
+        ],
+      },
+    ]);
+    expect(hooks.hooks["SessionStart"]).toBeDefined();
+  });
+
   it("keeps plugin and marketplace versions aligned with the npm package", () => {
     const pkg = json<{ version: string }>("package.json");
     const codex = json<{ version: string }>(".codex-plugin/plugin.json");
@@ -128,8 +151,8 @@ describe("plugin package", () => {
     const pkg = json<{ version: string }>("package.json");
     const source = readFileSync(resolve(root, "src/lib/version.ts"), "utf8");
 
-    expect(pkg.version).toBe("0.6.0");
-    expect(source).toMatch(/VERSION\s*=\s*"0\.6\.0"/);
+    expect(pkg.version).toBe("0.7.0");
+    expect(source).toMatch(/VERSION\s*=\s*"0\.7\.0"/);
   });
 
   it("points package metadata at the public repository", () => {
@@ -190,11 +213,14 @@ const SKILLS = [
   "delegate",
   "codex",
   "claude",
+  "gemini",
+  "agy",
+  "init",
 ];
 const AGENTS = ["codex-teammate", "codex-reviewer", "codex-researcher", "codex-teamlead"];
 
 describe("skills", () => {
-  it("ships the twelve skills", () => {
+  it("ships the fifteen skills", () => {
     const names = readdirSync(resolve(root, "skills"), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
@@ -212,6 +238,26 @@ describe("skills", () => {
     expect(fields["argument-hint"]).toBeTruthy();
     expect(fields["allowed-tools"]).toBeUndefined();
     expect(readFileSync(path, "utf8").split("\n").length).toBeLessThanOrEqual(80);
+  });
+
+  it("names gemini and agy in every skill and template argument-hint that lists providers", () => {
+    const hints = [
+      ...SKILLS.map((name) => resolve(root, "skills", name, "SKILL.md")),
+      ...["templates/claude-commands", "templates/codex-prompts"].flatMap((dir) =>
+        readdirSync(resolve(root, dir))
+          .filter((file) => file.endsWith(".md"))
+          .map((file) => resolve(root, dir, file)),
+      ),
+    ].map((path) => [path, frontmatter(path)["argument-hint"] ?? ""] as const);
+    const naming = hints.filter(([, hint]) => /codex|claude/.test(hint));
+    expect(naming.length).toBeGreaterThan(15);
+    for (const [path, hint] of naming) {
+      expect(hint, path).toContain("gemini");
+      expect(hint, path).toContain("agy");
+    }
+    // Where one hint lists the providers, it lists them in the registry order.
+    const listed = naming.filter(([, hint]) => hint.includes("<codex|claude|gemini|agy>"));
+    expect(listed.length).toBeGreaterThan(15);
   });
 
   it("keeps the project-local codex skill identical to the shared one", () => {

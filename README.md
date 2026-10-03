@@ -16,6 +16,7 @@ AgentMate connects AI coding agents so they can collaborate, delegate, review, a
 ## Why AgentMate
 
 - **A second opinion from a different model.** Ask the other CLI a question, or have it review your diff, before you commit to an approach. It reads your repository; it does not share your session's assumptions.
+- **More than two CLIs.** Besides Claude Code and Codex, AgentMate also drives the Gemini CLI and the Antigravity CLI (`agy`), the same one the author's agy-staff plugin is built on. Both are experimental teammates: tested with fake binaries, never against the real CLIs.
 - **Work that does not block you.** Every task is a durable background job with an id. The session that started it can end, and the result is still there.
 - **Roles instead of raw prompts.** `ask`, `review`, `research`, `plan`, `implement` and `teamlead` each send a tuned prompt with a defined output format, and each runs with the narrowest permissions that role needs. Jobs are read-only unless you say otherwise. `crossreview` chains two of them: one agent implements, the other reviews, and the loop runs without you relaying anything. `split` divides a broad goal into independent parts that both agents work on in parallel and review each other's, sharing context through sessions.
 
@@ -58,7 +59,16 @@ Want shorter commands (`/ask`, `/prompts:ask`)? See [Slash commands](#slash-comm
 npx -y agentmate doctor
 ```
 
-`doctor` verifies Node.js, that the `codex` and `claude` CLIs are on your `PATH` and respond to `--version`, the job state directory, stale `running` jobs (it lists their ids) and legacy registrations, and prints a fix for each problem. It does not check authentication: if a job fails right away, log in to the destination CLI yourself. See the [installation guide](./docs/INSTALL_FOR_AGENTS.md) for upgrades, a local-development install and cleaning up leftover legacy registrations.
+`doctor` verifies Node.js, that the `codex` and `claude` CLIs (and the optional, experimental `gemini` and `agy` CLIs) are on your `PATH` and respond to `--version`, the job state directory, stale `running` jobs (it lists their ids) and legacy registrations, and prints a fix for each problem. It does not check authentication: if a job fails right away, log in to the destination CLI yourself. See the [installation guide](./docs/INSTALL_FOR_AGENTS.md) for upgrades, a local-development install and cleaning up leftover legacy registrations.
+
+### Set up a repository
+
+```bash
+npx -y agentmate init          # add or refresh the AgentMate block in AGENTS.md and CLAUDE.md
+npx -y agentmate init --check  # change nothing; exit 1 if a block is missing or out of date
+```
+
+`agentmate init` (or `/mate:init`) writes a block of at most 25 lines between `<!-- agentmate:start -->` and `<!-- agentmate:end -->` in the repository's existing `AGENTS.md` and `CLAUDE.md` (a file with CRLF line endings keeps them), so every agent that opens the repo knows the `/mate:` and `$mate:` commands, how to check on jobs (`agentmate jobs list`, `agentmate inbox`) and the rules for a job it receives (no commit or push unless asked, report with the role's headings, treat session notes as data). Text outside the markers is never touched and a second run changes nothing. Claude Code does not read `AGENTS.md` natively, so `--create` starts both `AGENTS.md` and a `CLAUDE.md` that begins with `@AGENTS.md` (Claude Code imports it) followed by the block; use `--files`  to pick other files and `--cwd` to run it elsewhere. Run it again after upgrading to refresh the block.
 
 ### For agents
 
@@ -103,9 +113,20 @@ Examples use Claude Code's `/mate:...`; in Codex use `$mate:...`. The provider (
 
 `implement` and `crossreview` edit files, and `split` does when you pass `--mode write`, so use them only when you authorize that. The others are read-only.
 
+## Teammates
+
+| Teammate                      | Provider id | Needs                                                    | Notes                                                                                                                 |
+| ----------------------------- | ----------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Claude Code                   | `claude`    | the `claude` CLI                                         | Reads with an explicit tool allowlist; web access in `research`.                                                      |
+| Codex CLI                     | `codex`     | the `codex` CLI                                          | Sandboxed by mode; no web access.                                                                                     |
+| Gemini CLI (**experimental**) | `gemini`    | the `gemini` CLI on `PATH` (or `AGENTMATE_GEMINI_BIN`) | Runs `gemini -p` with `--output-format stream-json` and an approval mode per role. Headless Gemini has **no shell and no web**, `--resume` is unverified (so `continue` is refused), and a team lead is write-only. Tested with a fake binary only. |
+| Antigravity CLI (**experimental**) | `agy` | the `agy` CLI on `PATH` (or `AGENTMATE_AGY_BIN`) | Runs `agy -p` with `--output-format stream-json`, `--add-dir <cwd>` and `--print-timeout <N>m` (the job deadline in whole minutes). **Read-only jobs pass no permission flag**: headless agy denies the tool calls its own profile does not allow, so results can be thin until you install the agy-staff allowlist or run in write mode. **Write jobs and the (write-only) team lead pass `--dangerously-skip-permissions`.** No shell is counted on and no web; `continue` works through `--conversation <id>`. Tested with a fake binary only. |
+
+A job on an agent that is not installed is refused up front with an install hint, and `agentmate doctor` lists each agent (a missing Gemini or Antigravity CLI is reported as optional, for example `ok  agy  not installed (optional)`). `teamlead`, `crossreview` and `split` pair the provider with the first installed other agent (in the order codex, claude, gemini, agy), resolve and check it before anything starts, and record it as the job's `partner`. Pass `partner` (`mate_teamlead`, `mate_crossreview`, `mate_split`, or `jobs start --partner <agent>`) to pick the other agent yourself, for example `/mate:crossreview codex <task>` with `partner: gemini` to have Gemini review Codex's change. The partner must differ from the provider and be installed. Gemini limits, in short: it cannot run shell commands (reviews of its changes or by it get the diff inline, capped at 30 000 characters, and an `implement` job cannot run the tests), it cannot search the web, it cannot continue a job, and as a team lead it needs `mode: write`. agy shares the diff-inline, no-web and write-only team lead limits, but it can continue a job; its read-only results depend on the permissions of your agy profile (see the table above).
+
 ## What you can do
 
-Eight roles, each reachable as a skill, an MCP tool and a CLI command. `<provider>` is `codex` or `claude`; pick the one that is not the host you are in.
+Eight roles, each reachable as a skill, an MCP tool and a CLI command. `<provider>` is `codex`, `claude`, `gemini` or `agy` (the last two experimental); pick the one that is not the host you are in.
 
 | Role        | Skill       | MCP tool           | CLI                                                 | Mode                               |
 | ----------- | ----------- | ------------------ | --------------------------------------------------- | ---------------------------------- |
@@ -122,11 +143,12 @@ Eight roles, each reachable as a skill, an MCP tool and a CLI command. `<provide
 
 Codex limits an MCP tool call to about 60 seconds by default. When you run inside Codex, pass `waitSeconds: 45` to `mate_ask` and continue with `mate_wait` if the answer has not arrived.
 
-Four more skills cover the rest:
+Six more skills cover the rest:
 
 - `jobs` lists, observes, collects and cancels jobs.
 - `delegate` is the generic path (`mate_start`) for work that fits no role.
-- `codex` and `claude` are shortcuts that route a plain request to the right role with the provider already set.
+- `codex`, `claude`, `gemini` and `agy` (the last two experimental) are shortcuts that route a plain request to the right role with the provider already set.
+- `init` sets up a repository for AgentMate (see [Set up a repository](#set-up-a-repository)).
 
 In Claude Code the plugin also adds four agents that wrap Codex: `codex-teammate` (questions and general delegation), `codex-reviewer`, `codex-researcher` and `codex-teamlead`. They brief Codex, verify what it returns and report their own conclusion instead of forwarding raw output.
 
@@ -153,7 +175,7 @@ Each command calls the same `mate_*` tool as its skill, falls back to the `npx -
 
 ## Team lead mode
 
-A team lead is a job whose worker plans a broad objective, delegates pieces to the other provider through the CLI, reviews the results and writes a report. You start it with `mate_teamlead` or the `teamlead` skill and follow it with `mate_observe`.
+A team lead is a job whose worker plans a broad objective, delegates pieces to the other provider through the CLI, reviews the results and writes a report. You start it with `mate_teamlead` or the `teamlead` skill and follow it with `mate_observe`. The lead delegates to `partner` when you pass one (for example a `claude` lead with `partner: gemini`); the default is the first installed other agent.
 
 ```text
 your session
@@ -171,11 +193,15 @@ The final report has the sections Objective, Plan, Delegations (id, provider, ro
 
 The team lead calls the CLI pinned to the installed version (`npx -y agentmate@<version> jobs ...`), so a local checkout that is not published to npm must be published or linked before team lead mode works.
 
+> **Gemini team lead warning (experimental).** A `gemini` team lead is accepted only with `mode: write`, because delegating needs the shell and Gemini allows it only in `--approval-mode yolo`, which approves every tool call without asking. A read-only Gemini lead is refused (`A Gemini team lead needs mode write: delegation requires the shell, which Gemini only allows in yolo mode.`). Treat it like the Codex lead above, or lead with `claude`.
+
+> **agy team lead warning (experimental).** An `agy` team lead is accepted only with `mode: write`, because delegating needs the shell and headless agy allows it only with `--dangerously-skip-permissions`, which skips every permission check. A read-only agy lead is refused (`An agy team lead needs mode write: delegation requires the shell, which agy only allows with --dangerously-skip-permissions.`). Treat it like the Codex lead above, or lead with `claude`.
+
 Use a team lead only when the work has several independent parts. One question or one review is cheaper as `ask` or `review`.
 
 ## Cross-review
 
-Cross-review lets one agent implement and the other review, so you do not copy a diff between sessions. It is a workflow job: the worker does not call a CLI itself, it runs the steps as child jobs. `provider` implements; the other agent reviews. Start it with `mate_crossreview` or the `crossreview` skill (`/mate:crossreview codex <task>`), and follow it with `mate_observe`.
+Cross-review lets one agent implement and the other review, so you do not copy a diff between sessions. It is a workflow job: the worker does not call a CLI itself, it runs the steps as child jobs. `provider` implements; the other agent reviews (`partner`, when you pass one). Start it with `mate_crossreview` or the `crossreview` skill (`/mate:crossreview codex <task>`), and follow it with `mate_observe`.
 
 ```text
 implement (provider, write)  ->  review (other agent, read-only)  ->  verdict
@@ -186,7 +212,7 @@ implement (provider, write)  ->  review (other agent, read-only)  ->  verdict
                               Verdict: approve  ->  done
 ```
 
-Each round has two child jobs on the same working directory (`depth` 1, `parentJob` = the workflow id). The implementer runs in write mode; from round 2 it continues its own session with the reviewer's findings. The reviewer reads the uncommitted `git diff` (and `git status` for new files) read-only, with the implementer's report as context, and must end its review with the line `Verdict: approve` or `Verdict: request-changes`.
+Each round has two child jobs on the same working directory (`depth` 1, `parentJob` = the workflow id). The implementer runs in write mode; from round 2 it continues its own session with the reviewer's findings (an implementer that cannot continue, such as Gemini, starts a fresh implement job with the findings instead). The reviewer reads the uncommitted `git diff` (and `git status` for new files) read-only, or receives the diff in its briefing when it cannot run the shell (Gemini, agy), with the implementer's report as context, and must end its review with the line `Verdict: approve` or `Verdict: request-changes`.
 
 Stop rules:
 
@@ -205,7 +231,7 @@ It edits files, so start it only when you authorize that, and keep one write job
 
 ## Task splitting
 
-Task splitting divides a broad goal into independent parts, runs the parts in parallel on both agents and has the other agent review each one, so you do not relay results between sessions. Like cross-review it is a workflow job: the worker calls no CLI itself, it runs the steps as child jobs (`depth` 1, `parentJob` = the workflow id) that share one [session](#sessions). `provider` plans; each part goes to `codex` or `claude`. Start it with `mate_split` or the `split` skill (`/mate:split codex <goal>`), and follow it with `mate_observe`.
+Task splitting divides a broad goal into independent parts, runs the parts in parallel on both agents and has the other agent review each one, so you do not relay results between sessions. Like cross-review it is a workflow job: the worker calls no CLI itself, it runs the steps as child jobs (`depth` 1, `parentJob` = the workflow id) that share one [session](#sessions). `provider` plans; each part goes to an installed agent, or only to the provider and its `partner` when you pass one. Start it with `mate_split` or the `split` skill (`/mate:split codex <goal>`), and follow it with `mate_observe`.
 
 ```text
 goal -> plan (provider, read-only)
@@ -222,7 +248,7 @@ goal -> plan (provider, read-only)
 
 1. **Plan.** A `plan` job on `provider` returns a fenced `json` block, `{ "parts": [{ "id", "title", "briefing", "files", "agent" }] }`, with 1 to `maxParts` parts (2 to 4, default 3). The worker takes the last such block and checks it: unique ids (`a-z`, `0-9`, `-`), known agents (a missing or unknown agent alternates, starting with the other agent). If the block is invalid the workflow ends `error` with a pointer to `jobs result <plan-job>`. The plan goes into the session notes, so every part sees it.
 2. **Parts, in parallel.** Read-only (default): one `research` job per part on the part's agent, in the working directory. Write (`--mode write`): for each part the worker creates a worktree from the recorded base commit, `git worktree add -b agentmate/<split-id>/<part-id> ~/.agentmate/worktrees/<split-id>/<part-id> <base-commit>`, then an `implement` job works there, so your working tree is untouched. When the implementer finishes, AgentMate commits what it left on the part's branch automatically (`--no-verify`, gpg signing off).
-3. **Cross-review.** Each finished part is reviewed read-only by the other agent: in write mode in the part's worktree, against the commit the branch started from (`git diff <base-commit>`); in read-only mode over the research result. The review ends with `Verdict: approve` or `Verdict: request-changes`.
+3. **Cross-review.** Each finished part is reviewed read-only by the other agent of the pair (the provider or the partner): in write mode in the part's worktree, against the commit the branch started from (`git diff <base-commit>`, or that diff inline when the reviewer is Gemini or agy and cannot run the shell); in read-only mode over the research result. The review ends with `Verdict: approve` or `Verdict: request-changes`.
 4. **Report.** `jobs result <id>` has `## Goal`, `## Parts` (part, title, agent, part job, review job, verdict, branch), `## Integration`, `## Needs human` when it applies and `## Next steps` with the `jobs result <child-id>` commands. In write mode the report lists every worktree and branch with its cleanup commands (`git worktree remove <path>`, `git branch -D <branch>`), `## Integration` has the ordered `git merge agentmate/<split-id>/<part-id>` commands for **approved parts only**, and every other part goes under `## Needs human`; in read-only mode it merges the research results. `jobs events <id>` lists one `important` event per step.
 
 A part that fails does not stop the others: they run to completion (and are reviewed), then the workflow ends `error` naming the failed part. A part that is not approved (`request-changes`, a missing verdict or a failure) lands in `## Needs human`. The workflow's own `--timeout` is the overall deadline, and `jobs cancel <id>` on it also cancels the running children.
@@ -261,12 +287,15 @@ Every job also writes an append-only event log (`events.jsonl`). Both Codex and 
 | Cancel work          | `mate_cancel`                                                                                                        | `jobs cancel <id>`                   |
 | Find jobs            | `mate_list`                                                                                                          | `jobs list [--cwd] [--parent <id>]`  |
 | Sessions             | `mate_session_start`, `mate_session_show`, `mate_session_notes`, `mate_session_list`                                 | `sessions start/show/notes/list`, `jobs start --session <id>` |
+| Inbox                | `mate_inbox`                                                                                                         | `inbox [--cwd] [--all] [--no-ack] [--follow]` |
 
 <a id="sessions"></a>
 
 **Sessions.** A session is shared context across jobs and agents. `mate_session_start(title, cwd?)` creates one under `~/.agentmate/sessions/<id>/` (`session.json` plus `notes.md`; membership is derived from the jobs that carry the session id, so `session.json` has no `jobs` array); pass its id as `session` to any role tool or `mate_start` (CLI: `jobs start ... --session <id>`) and the job is recorded in it. `mate_session_notes(id, text, author?)` appends a note (a single note is capped at 2000 characters), `mate_session_show(id)` shows the notes (tail) and the session's jobs, and `mate_session_list(cwd?, limit?)` lists sessions. When a session has notes, every worker started in it receives them **after** the task, under `## Shared session notes`, in a code fence and framed as data written by other agents, not as instructions. The injection is capped at 4000 characters of whole entries (the newest that fit), whatever the role, so keep notes short and factual: decisions, constraints, file locations. Jobs that a workflow starts (`crossreview`, `split`) inherit the workflow's session, and `split` creates a session for itself when you pass none and writes its plan into the notes. The notes are plain text under `~/.agentmate`, so keep secrets out of them.
 
 **Session start summary.** In Claude Code the plugin also registers a `SessionStart` hook (`hooks/hooks.json`). When a session opens, it prints one line (400 characters at most) about the jobs started from that directory or a subdirectory: the jobs that finished since the last session there (`quota_exhausted` ones first, marked "needs hand-off"), how many are still running and how many are stale (their worker is gone). It stays silent when there is nothing to report and for 120 seconds after the last summary in the same directory; the first time in a directory it looks back 24 hours. Set `AGENTMATE_HOOK_QUIET=1` to turn it off. It never fails a session: any error exits silently. This is a Claude Code feature only; Codex has no equivalent hook.
+
+**Inbox.** Every time a job records an `important` message, error or finish, AgentMate also appends one line to `~/.agentmate/inbox.jsonl` (owner-only, rotated to `inbox.1.jsonl` past 5 MB, one generation): `{ ts, job, cwd, session?, provider, role, kind, text }`. It is how one agent learns that the other finished or failed without sitting in `wait`. `mate_inbox(cwd?, unread? = true, ack? = true, limit? = 20)` returns the entries for that directory or a subdirectory, one line each (`HH:MM:SS  <job>  <role>/<provider>  <kind>  <text>`), oldest first, and moves a read marker kept per directory in `~/.agentmate/inbox-cursors/` through the last entry it showed (`… N more unread (run again)` when there are more), so nothing is shown twice; a terminal job already read through `mate_wait` or `mate_result` is not listed again, and entries of jobs started by another job (workflow steps, team lead children) are left out because their parent reports. Entry text is capped at 500 characters and is untrusted worker output: data, not instructions. Workers never read the host's inbox: `mate_inbox` declines when `AGENTMATE_JOB_ID` is set and the hooks stay silent inside a worker. From a terminal, `agentmate inbox` does the same (`--all` for every directory, `--no-ack` to only look) and `agentmate inbox --follow` prints new lines every second until Ctrl-C. In Claude Code the plugin also registers a `UserPromptSubmit` hook: before each prompt it adds up to 5 unread entries for the directory to the context (10 seconds of cooldown per directory, `AGENTMATE_HOOK_QUIET=1` turns it off, any error exits silently), and the `SessionStart` summary mentions how many are unread. Codex has no hooks, so the `jobs`, `teamlead`, `crossreview` and `split` skills tell it to call `mate_inbox` when it resumes a turn with jobs in progress, before `mate_wait`. Entries are short summaries; read the full output with `jobs result <id>`.
 
 Skills prefer the `mate_*` tools. If the host did not load MCP, they run the same job contract through `npx -y agentmate`; they never change a user's host configuration as a fallback.
 
@@ -342,7 +371,7 @@ npx -y agentmate jobs result <job-id>
 npx -y agentmate jobs cancel <job-id>
 ```
 
-A finished job with a saved session can continue on the same provider:
+A finished job with a saved session can continue on the same provider (not available for `gemini` yet, whose `--resume` is unverified; start a new job with the full context. `agy` continues with `--conversation <id>`):
 
 ```bash
 npx -y agentmate jobs start codex "Address the highest-priority finding." --continue <job-id>
@@ -363,22 +392,26 @@ npx -y agentmate jobs start codex "Address the highest-priority finding." --cont
 - **Read-only by default.** `ask`, `review`, `plan` and `research` always run read-only, and `teamlead` is read-only unless you pass `mode: write`. `implement` always runs in write mode: `--role implement` and `mate_implement` default to write and reject `read-only`. Use it only after the user has authorized edits.
 - **Permissions per role.** The sandbox or tool allowlist follows the role and mode:
 
-  | Role and mode                                             | Codex sandbox        | Claude permissions                                                                        |
-  | --------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------- |
-  | read-only (`ask`, `review`, `plan`, read-only `teamlead`) | `read-only`          | allowlist (below) and an explicit deny of `Edit`, `Write` and `NotebookEdit`              |
-  | `research`                                                | `read-only`          | the read-only allowlist plus `WebSearch` and `WebFetch`, with the same explicit deny      |
-  | `implement`, write `teamlead`                             | `workspace-write`    | `acceptEdits` permission mode plus the verification allowlist (below)                     |
-  | `teamlead` (Codex lead, read-only or write)               | `danger-full-access` | not applicable                                                                            |
-  | `teamlead` (Claude lead)                                  | not applicable       | the rows above, plus CLI access limited to `agentmate jobs *` (installed version) |
+  | Role and mode                                             | Codex sandbox        | Claude permissions                                                                        | Gemini (experimental)            | agy (experimental)                                   |
+  | --------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------- |
+  | read-only (`ask`, `review`, `plan`, read-only `teamlead`) | `read-only`          | allowlist (below) and an explicit deny of `Edit`, `Write` and `NotebookEdit`              | `--approval-mode default`        | no permission flag (agy's own profile)               |
+  | `research`                                                | `read-only`          | the read-only allowlist plus `WebSearch` and `WebFetch`, with the same explicit deny      | `--approval-mode default`        | no permission flag (agy's own profile)               |
+  | `implement`, write `teamlead`                             | `workspace-write`    | `acceptEdits` permission mode plus the verification allowlist (below)                     | `--approval-mode auto_edit`      | `--dangerously-skip-permissions`                     |
+  | `teamlead` (Codex lead, read-only or write)               | `danger-full-access` | not applicable                                                                            | not applicable                   | not applicable                                       |
+  | `teamlead` (Claude lead)                                  | not applicable       | the rows above, plus CLI access limited to `agentmate jobs *` (installed version)         | not applicable                   | not applicable                                       |
+  | `teamlead` (Gemini lead, write only)                      | not applicable       | not applicable                                                                            | `--approval-mode yolo`           | not applicable                                       |
+  | `teamlead` (agy lead, write only)                         | not applicable       | not applicable                                                                            | not applicable                   | `--dangerously-skip-permissions`                     |
 
   The read-only allowlist is `Read`, `Grep`, `Glob`, `git diff`, `git log`, `git show` and `git status`. The write-mode allowlist adds `pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add` and `git commit` so a worker can run verification commands. Extend it with the environment variable `AGENTMATE_CLAUDE_WRITE_TOOLS`, a comma-separated list of Claude permission patterns. A Claude team lead cannot run `install`, only `agentmate jobs *`.
 
+- **Gemini runs with the least approval that fits the role (experimental).** `--approval-mode default` denies every tool that needs approval in headless mode, so read-only and research jobs can read but not run shell commands or search the web; `auto_edit` approves file edits but still denies the shell, so an `implement` job cannot run the tests. A Gemini team lead needs the shell, which only `--approval-mode yolo` allows: it is accepted with `mode: write` only, and it approves every tool call without asking, so it is as unrestricted as the Codex lead below. `--sandbox` and the legacy `--yolo` flag are never used.
+- **agy asks for nothing in read-only and for everything in write mode (experimental).** Read-only jobs pass no permission flag, so headless agy denies the tool calls its own profile does not allow; a read-only job can therefore return thin results until you install the agy-staff allowlist or run in write mode. `--dangerously-skip-permissions` is passed to every `mode: write` job, including `implement` and the team lead, and approves every tool call without asking, so it is as unrestricted as the Codex lead below. An agy team lead is accepted with `mode: write` only. agy has no `--sandbox` here either.
 - **A Codex team lead is not sandboxed.** It runs with `--sandbox danger-full-access` in either mode, because it must spawn worker processes and write job state. "Read-only" for a Codex lead means that the runtime refuses any `write` child job (a read-only parent cannot start write children) and that the prompt forbids edits; it does not restrict the lead's own process. Lead with `claude` when this matters.
 - **Delegation depth limit of 2.** A session starts a team lead (depth 0), the lead starts child jobs (depth 1), and children cannot start jobs. The runtime refuses a third level and refuses a team lead, a cross-review or a split started by a worker.
 - **Cross-review writes only through its implementer.** The `implement` step gets the `implement` permissions above; the `review` step is read-only. The workflow job itself calls no CLI.
 - **Split writes only inside its worktrees.** In write mode each part's `implement` job runs in its own git worktree on its own branch (`agentmate/<split-id>/<part-id>`), the planner and reviewers are read-only, and nothing is merged into your branch for you.
 - **One `write` job per working tree at a time.** Two writers in one tree collide. The skills and the team lead prompt follow this rule; use separate git worktrees for parallel edits (`split` does this for its parts).
-- **A spent plan is a status, not a crash.** When a provider reports that its usage limit, quota or credits are used up, the job ends `quota_exhausted` (terminal; `wait` and `ask` exit `1`). Its `error` reads `<provider> quota exhausted: <line>. Retry after the reset or start the job on <other agent>.`, and `result` adds `Hand off: start the same job with provider <other>.`. Detection reads the stderr tail and parsed errors only, so a 429 alone is not exhaustion, and the job is not retried once a quota line is seen. Extend the detection with `AGENTMATE_QUOTA_PATTERNS`, case-insensitive regular expressions separated by `|`; invalid ones are ignored.
+- **A spent plan is a status, not a crash.** When a provider reports that its usage limit, quota or credits are used up, the job ends `quota_exhausted` (terminal; `wait` and `ask` exit `1`). Its `error` reads `<provider> quota exhausted: <line>. Retry after the reset or start the job on <other agent>.`, and `result` adds `Hand off: start the same job with provider <other>.`; the other agent is the first installed one, and when none is installed both lines say to retry after the reset instead. Detection reads the stderr tail and parsed errors only, so a 429 alone is not exhaustion, and the job is not retried once a quota line is seen. Extend the detection with `AGENTMATE_QUOTA_PATTERNS`, case-insensitive regular expressions separated by `|`; invalid ones are ignored. The defaults cover agy's `RESOURCE_EXHAUSTED` status and its `Individual quota reached` and `quota exceeded` wording; its bare `code 429` is too loose to be a default, so add `AGENTMATE_QUOTA_PATTERNS='\bcode\s*429\b'` if you want it (a 429 caused by a tool the agent called then counts as exhaustion too).
 - **The delegator owns acceptance.** Job output is an input to your judgment. Verify claims and run the tests before you merge anything a worker produced.
 - **No hidden configuration changes.** The plugin registers its own MCP server. The fallback path runs the CLI and never edits host configuration. Do not put secrets in briefings: prompts and results are stored in plain text under `~/.agentmate`, in files created with owner-only permissions (`0600` for files, `0700` for directories).
 

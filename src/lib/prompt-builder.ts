@@ -27,9 +27,15 @@ export function buildReviewPrompt(options: {
   target: string;
   focus?: string;
   context?: string;
+  /** False for an agent that cannot run the shell: it is told to rely on the files and the context instead of git. */
+  shell?: boolean;
 }): string {
   const focus = options.focus ? `\n\nFocus especially on: ${options.focus}` : "";
-  return `Review the following change as a rigorous, skeptical code reviewer. ${READ_ONLY_RULE} Use read-only git commands (diff, log, show, status) to inspect it.
+  const inspect =
+    options.shell === false
+      ? "You cannot run shell commands, so inspect the change with your file-reading tools and the diff or findings given in the context."
+      : "Use read-only git commands (diff, log, show, status) to inspect it.";
+  return `Review the following change as a rigorous, skeptical code reviewer. ${READ_ONLY_RULE} ${inspect}
 
 Review target: ${options.target}${focus}${withContext(options.context)}
 
@@ -238,6 +244,8 @@ export function buildSplitPrompt(options: {
   goal: string;
   acceptance?: string;
   planner: Provider;
+  /** The agent that works with the planner: parts go to either, and each part is reviewed by the other. */
+  partner: Provider;
   maxParts: number;
   mode: "read-only" | "write";
 }): string {
@@ -246,7 +254,7 @@ export function buildSplitPrompt(options: {
     options.mode === "write"
       ? "each part is implemented in its own git worktree and branch"
       : "each part is researched read-only";
-  return `Split workflow: ${options.planner} plans up to ${options.maxParts} independent part(s), ${how}, and the other agent reviews each part.
+  return `Split workflow: ${options.planner} plans up to ${options.maxParts} independent part(s), ${how} by ${options.planner} or ${options.partner}, and the other of the two reviews each part.
 
 Goal: ${options.goal}${acceptance}`;
 }
