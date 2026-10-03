@@ -87,13 +87,17 @@ interface Common {
 /** Shared body of the role tools: map the tool arguments to a job and honor `waitSeconds`. */
 function runRole(
   role: NonNullable<StartOptions["role"]>,
-  args: Common & { provider: Provider; mode?: JobMode | undefined },
+  args: Common & {
+    provider: Provider;
+    mode?: JobMode | undefined;
+    maxRounds?: number | undefined;
+  },
   fields: RoleFields,
   defaultWaitSeconds = 0,
 ): Promise<string> {
-  const { provider, mode, cwd, model, timeoutMinutes, waitSeconds } = args;
+  const { provider, mode, maxRounds, cwd, model, timeoutMinutes, waitSeconds } = args;
   return startAndMaybeWait(
-    { provider, role, fields, mode, cwd, model, timeoutMinutes },
+    { provider, role, fields, mode, maxRounds, cwd, model, timeoutMinutes },
     waitSeconds ?? defaultWaitSeconds,
   );
 }
@@ -242,6 +246,41 @@ server.registerTool(
   },
   guard(({ objective, constraints, context, ...args }) =>
     runRole("teamlead", args, { objective, constraints, context }),
+  ),
+);
+
+server.registerTool(
+  "mate_crossreview",
+  {
+    title: "Implement and cross-review",
+    description:
+      "Have one agent implement a scoped change and the other agent review it, looping on the reviewer's findings, without relaying anything by hand; use it for one well-scoped change you want implemented by one agent and reviewed by the other. WARNING: it edits files, because the provider you name runs in write mode in the working directory (the other agent only reads and reviews the uncommitted diff); use it only when the user authorized edits, and run one write job per working tree. It stops when the reviewer approves, gives no clear verdict (then a human decides) or maxRounds is used up; the report lists the rounds, the final review and the changes. Only a top-level session can start it; follow it with mate_observe. The workers have no context beyond the task and acceptance criteria you pass.",
+    inputSchema: {
+      provider: z
+        .enum(["codex", "claude"])
+        .describe("The agent that implements; the other one reviews"),
+      task: z.string().describe("A complete, scoped description of the change"),
+      acceptance: z.string().optional().describe("Criteria that define done"),
+      maxRounds: z
+        .number()
+        .int()
+        .min(1)
+        .max(5)
+        .optional()
+        .describe("Most implement-and-review rounds, default 2"),
+      cwd: common.cwd,
+      model: z.string().optional().describe("Model override for the implementer only"),
+      timeoutMinutes: z
+        .number()
+        .positive()
+        .max(120)
+        .optional()
+        .describe("Deadline for the whole workflow, default 60, max 120"),
+      waitSeconds: common.waitSeconds,
+    },
+  },
+  guard(({ task, acceptance, maxRounds, ...args }) =>
+    runRole("crossreview", { ...args, mode: "write", maxRounds }, { task, acceptance }),
   ),
 );
 

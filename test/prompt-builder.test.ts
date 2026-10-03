@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { VERSION } from "../src/lib/version.js";
 import {
   buildAskPrompt,
+  buildCrossreviewPrompt,
   buildExplainCodePrompt,
   buildImplementPrompt,
   buildPlanPerfPrompt,
@@ -101,6 +102,31 @@ describe("buildReviewPrompt", () => {
       expect(prompt).toContain(heading);
     expect(prompt).toContain("file:line");
     expect(prompt).toContain("Do not modify any files");
+  });
+
+  it("demands the final line in the exact form a workflow can parse", () => {
+    const prompt = buildReviewPrompt({ target: "the diff" });
+    expect(prompt).toContain("Verdict: approve");
+    expect(prompt).toContain("Verdict: request-changes");
+    expect(prompt).toContain("very last line");
+    expect(prompt.trimEnd().endsWith("Verdict: request-changes")).toBe(true);
+  });
+});
+
+describe("buildCrossreviewPrompt", () => {
+  it("records who implements, who reviews and the task", () => {
+    const prompt = buildCrossreviewPrompt({
+      task: "Add a flag",
+      acceptance: "tests pass",
+      implementer: "codex",
+      reviewer: "claude",
+      maxRounds: 3,
+    });
+    expect(prompt).toContain("codex implements");
+    expect(prompt).toContain("claude reviews");
+    expect(prompt).toContain("3 round(s)");
+    expect(prompt).toContain("Add a flag");
+    expect(prompt).toContain("tests pass");
   });
 });
 

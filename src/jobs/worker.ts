@@ -3,6 +3,7 @@ import { StringDecoder } from "node:string_decoder";
 import type { EventLevel, JobEvent } from "../agents/types.js";
 import { getAgent } from "../agents/registry.js";
 import { execCommand } from "../lib/exec-runner.js";
+import { runCrossreview } from "./crossreview.js";
 import { appendEvent } from "./events.js";
 import { buildInvocation, parseOutcome } from "./providers.js";
 import {
@@ -20,6 +21,8 @@ const MAX_MESSAGE_CHARS = 500;
 export async function runWorker(id: string): Promise<void> {
   const job = readJob(id);
   if (!job) throw new Error(`Job not found: ${id}`);
+  // A workflow job runs no agent CLI itself; its steps are child jobs.
+  if (job.role === "crossreview") return runCrossreview(id);
 
   const startedAt = Date.now();
   updateJob(id, {

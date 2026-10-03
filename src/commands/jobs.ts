@@ -21,7 +21,14 @@ import {
   renderObservation,
   renderResult,
 } from "../jobs/render.js";
-import { JOB_ROLES, TERMINAL, type JobMode, type JobRole, type Provider } from "../jobs/store.js";
+import {
+  JOB_ROLES,
+  MAX_ROUNDS_LIMIT,
+  TERMINAL,
+  type JobMode,
+  type JobRole,
+  type Provider,
+} from "../jobs/store.js";
 
 /** Exit codes: 0 done, 1 failed or canceled, 2 wait expired with the job still running. */
 const STILL_RUNNING = 2;
@@ -79,6 +86,10 @@ export default defineCommand({
         },
         timeout: { type: "string", description: "Job deadline in minutes (max 120)" },
         continue: { type: "string", description: "Finished job id whose session to resume" },
+        "max-rounds": {
+          type: "string",
+          description: "crossreview only: most implement-and-review rounds, 1 to 5 (default 2)",
+        },
       },
       run: userFacing(({ args }) => {
         const provider = parseProvider(args.provider);
@@ -92,9 +103,19 @@ export default defineCommand({
           !(Number.isFinite(timeoutMinutes) && timeoutMinutes > 0)
         )
           throw new Error("timeout must be a positive number of minutes");
+        const maxRoundsArg = args["max-rounds"];
+        const maxRounds = maxRoundsArg === undefined ? undefined : Number(maxRoundsArg);
+        if (
+          maxRounds !== undefined &&
+          !(Number.isInteger(maxRounds) && maxRounds >= 1 && maxRounds <= MAX_ROUNDS_LIMIT)
+        )
+          throw new Error(`max-rounds must be a whole number from 1 to ${MAX_ROUNDS_LIMIT}`);
+        if (maxRounds !== undefined && args.role !== "crossreview")
+          throw new Error("max-rounds applies only with --role crossreview");
         const job = startJob({
           provider,
           prompt: args.prompt,
+          maxRounds,
           role: args.role as JobRole | undefined,
           cwd: args.cwd,
           model: args.model,

@@ -123,6 +123,7 @@ describe("project documentation", () => {
       "plan",
       "implement",
       "teamlead",
+      "crossreview",
       "jobs",
       "delegate",
       "codex",
@@ -136,6 +137,7 @@ describe("project documentation", () => {
       "mate_plan",
       "mate_implement",
       "mate_teamlead",
+      "mate_crossreview",
     ]) {
       expect(readme).toContain(tool);
     }
@@ -154,11 +156,44 @@ describe("project documentation", () => {
     expect(read("docs/README.pt-BR.md")).toContain("mate_teamlead");
   });
 
+  it("documents cross-review in both READMEs and the architecture notes", () => {
+    const readme = read("README.md");
+    expect(readme).toContain("mate_crossreview");
+    expect(readme).toContain("## Cross-review");
+    expect(readme).toContain("--role crossreview");
+    expect(readme).toContain("Verdict: approve");
+    expect(readme.indexOf("## Cross-review")).toBeGreaterThan(readme.indexOf("## Team lead mode"));
+    expect(readme.indexOf("## Cross-review")).toBeLessThan(readme.indexOf("## How it works"));
+
+    const portuguese = read("docs/README.pt-BR.md");
+    expect(portuguese).toContain("mate_crossreview");
+    expect(portuguese).toContain("## Revisão cruzada");
+    expect(portuguese).toContain("Verdict: approve");
+
+    expect(read("docs/ARCHITECTURE.md")).toContain("Cross-review shipped in phase 1");
+  });
+
+  it("announces the removal of the legacy servers and setup in 0.6.0", () => {
+    for (const file of [
+      "README.md",
+      "docs/README.pt-BR.md",
+      "docs/INSTALL_FOR_AGENTS.md",
+      "docs/INSTALL_FOR_AGENTS.pt-BR.md",
+    ]) {
+      const content = read(file);
+      expect(content, file).toContain("0.6.0");
+      expect(content, file).toMatch(/deprecated|obsolet|descontinu/i);
+    }
+  });
+
   it("keeps a changelog with the current release", () => {
     const changelog = read("CHANGELOG.md");
 
     expect(changelog).toContain("## [0.5.0]");
     expect(changelog).toContain("## [0.4.0]");
+    expect(changelog).toContain("crossreview");
+    expect(changelog).toContain("### Deprecated");
+    expect(changelog).toContain("0.6.0");
     expect(changelog).toContain("mate@agentmate");
     expect(changelog).toContain("## [0.2.0]");
     expect(changelog).toContain("## [0.1.0]");

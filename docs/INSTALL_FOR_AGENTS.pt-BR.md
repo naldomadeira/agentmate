@@ -128,7 +128,7 @@ O `doctor` verifica se o Node.js é 18 ou superior, se `codex` e `claude` estão
 
 ## Migrar instalações antigas de `setup`
 
-`npx agentmate setup` continua sendo suportado para instalações legadas, mas não integra o fluxo principal do plugin. Ele pode ter criado os servidores síncronos antigos e as skills `/codex` e `/claude`; o `doctor` reporta esses registros como avisos.
+`npx agentmate setup` e os servidores síncronos (`serve codex`, `serve claude`) estão obsoletos (deprecated): ainda funcionam na 0.5.0, imprimem um aviso de depreciação no stderr e serão removidos na 0.6.0. Eles não integram o fluxo principal do plugin. Ele pode ter criado os servidores síncronos antigos e as skills `/codex` e `/claude`; o `doctor` reporta esses registros como avisos.
 
 Antes de remover algo, use `claude mcp list`, `claude plugin list`, `codex plugin list` e abra os arquivos candidatos. Remova somente entradas que apontem exatamente para `agents-bridge-mcp serve codex` ou `agents-bridge-mcp serve claude` (ou `agentmate serve ...`):
 

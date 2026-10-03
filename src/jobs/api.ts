@@ -5,6 +5,7 @@ import type { EventLevel, JobEvent } from "../agents/types.js";
 import { otherAgent } from "../agents/registry.js";
 import {
   buildAskPrompt,
+  buildCrossreviewPrompt,
   buildImplementPrompt,
   buildPlanPrompt,
   buildResearchPrompt,
@@ -13,6 +14,8 @@ import {
 } from "../lib/prompt-builder.js";
 import { readEvents } from "./events.js";
 import {
+  DEFAULT_MAX_ROUNDS,
+  MAX_ROUNDS_LIMIT,
   TERMINAL,
   isAlive,
   listJobIds,
@@ -27,7 +30,10 @@ import {
   type JobMode,
   type JobRole,
   type Provider,
+  type RoleFields,
 } from "./store.js";
+
+export type { RoleFields } from "./store.js";
 
 const DEFAULT_TIMEOUT_MS = 60 * 60_000;
 const MAX_TIMEOUT_MS = 120 * 60_000;
@@ -37,23 +43,6 @@ const SPAWN_GRACE_MS = 3_000;
 
 /** A job may start further jobs until this nesting level; a top-level session is depth 0. */
 export const MAX_DELEGATION_DEPTH = 2;
-
-/** Inputs of the role prompt builders; each role reads only the fields it documents. */
-export interface RoleFields {
-  question?: string;
-  context?: string;
-  target?: string;
-  focus?: string;
-  topic?: string;
-  questions?: string[];
-  scope?: string;
-  goal?: string;
-  constraints?: string;
-  existingPlan?: string;
-  task?: string;
-  acceptance?: string;
-  objective?: string;
-}
 
 /**
  * Role jobs are described by `fields` (a flat bag instead of a discriminated union, so MCP and CLI
@@ -70,6 +59,8 @@ export interface StartOptions {
   mode?: JobMode;
   timeoutMinutes?: number;
   continueJob?: string;
+  /** crossreview only: review rounds before it stops, 1 to 5 (default 2). */
+  maxRounds?: number;
 }
 
 type PrimaryField = "question" | "target" | "topic" | "goal" | "task" | "objective";
@@ -80,6 +71,7 @@ const PRIMARY_FIELD: Record<Exclude<JobRole, "custom">, PrimaryField> = {
   plan: "goal",
   implement: "task",
   teamlead: "objective",
+  crossreview: "task",
 };
 
 export const isTerminal = (job: Job) => TERMINAL.includes(job.status);
@@ -97,7 +89,13 @@ function workerCommand(id: string): { command: string; args: string[] } {
 }
 
 /** Renders the prompt a job will send; the builder runs here, in the process that starts the job. */
-function renderPrompt(options: StartOptions, role: JobRole, provider: Provider, mode: JobMode) {
+function renderPrompt(
+  options: StartOptions,
+  role: JobRole,
+  provider: Provider,
+  mode: JobMode,
+  maxRounds: number,
+) {
   if (role === "custom") {
     if (!options.prompt)
       throw new Error("A custom job needs a prompt. Run `agentmate jobs start --help`.");
@@ -142,6 +140,14 @@ function renderPrompt(options: StartOptions, role: JobRole, provider: Provider, 
         constraints,
         context,
       });
+    case "crossreview":
+      return buildCrossreviewPrompt({
+        task: required,
+        acceptance: fields.acceptance,
+        implementer: provider,
+        reviewer: otherAgent(provider),
+        maxRounds,
+      });
   }
 }
 
@@ -151,6 +157,16 @@ function currentDepth(): number {
   return Number.isFinite(depth) && depth > 0 ? depth : 0;
 }
 
+/** What the crossreview worker needs to brief its steps: the task, acceptance criteria and context. */
+function crossreviewFields(options: StartOptions): RoleFields {
+  const { acceptance, context } = options.fields ?? {};
+  return {
+    task: options.fields?.task || options.prompt || "",
+    ...(acceptance ? { acceptance } : {}),
+    ...(context ? { context } : {}),
+  };
+}
+
 export function startJob(options: StartOptions): Job {
   const role = options.role ?? "custom";
   const depth = currentDepth();
@@ -158,9 +174,22 @@ export function startJob(options: StartOptions): Job {
     throw new Error(
       `Delegation depth limit reached (${depth} >= ${MAX_DELEGATION_DEPTH}); a delegated worker cannot start more jobs. Report back to your parent instead.`,
     );
-  if (role === "teamlead" && depth > 0)
+  if ((role === "teamlead" || role === "crossreview") && depth > 0)
     throw new Error(
-      "Only a top-level session can start a teamlead job. Start it from the host session with `agentmate jobs start`.",
+      `Only a top-level session can start a ${role} job. Start it from the host session with \`agentmate jobs start\`.`,
+    );
+  if (options.maxRounds !== undefined) {
+    if (role !== "crossreview") throw new Error("maxRounds applies only to the crossreview role.");
+    if (
+      !Number.isInteger(options.maxRounds) ||
+      options.maxRounds < 1 ||
+      options.maxRounds > MAX_ROUNDS_LIMIT
+    )
+      throw new Error(`maxRounds must be a whole number from 1 to ${MAX_ROUNDS_LIMIT}.`);
+  }
+  if (role === "crossreview" && options.continueJob)
+    throw new Error(
+      "A crossreview job cannot continue another job; it continues its own implementer sessions.",
     );
   const parentJob = process.env["AGENTMATE_JOB_ID"] || undefined;
 
@@ -192,13 +221,16 @@ export function startJob(options: StartOptions): Job {
     (options.timeoutMinutes ?? DEFAULT_TIMEOUT_MS / 60_000) * 60_000,
     MAX_TIMEOUT_MS,
   );
-  if (role === "implement" && options.mode === "read-only")
-    throw new Error("Role implement needs mode write. Drop --mode or pass --mode write.");
-  const mode = options.mode ?? (role === "implement" ? "write" : "read-only");
+  const writes = role === "implement" || role === "crossreview";
+  if (writes && options.mode === "read-only")
+    throw new Error(`Role ${role} needs mode write. Drop --mode or pass --mode write.`);
+  const mode = options.mode ?? (writes ? "write" : "read-only");
   if (mode === "write" && process.env["AGENTMATE_PARENT_MODE"] === "read-only")
     throw new Error(
       "The parent job is read-only, so this job cannot use mode write. Start it read-only or from the host session.",
     );
+  const maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS;
+  const prompt = renderPrompt(options, role, provider, mode, maxRounds);
   const job: Job = {
     id: newJobId(),
     provider,
@@ -206,13 +238,19 @@ export function startJob(options: StartOptions): Job {
     role,
     depth,
     ...(parentJob ? { parentJob } : {}),
-    prompt: renderPrompt(options, role, provider, mode),
+    prompt,
     cwd: options.cwd ?? process.cwd(),
     ...(options.model ? { model: options.model } : {}),
     timeoutMs,
     status: "queued",
     createdAt: new Date().toISOString(),
     ...(sessionNote ? { continuesJob: sessionNote } : {}),
+    ...(role === "crossreview"
+      ? {
+          fields: crossreviewFields(options),
+          workflow: { maxRounds, rounds: [] },
+        }
+      : {}),
   };
   writeJob(job);
 

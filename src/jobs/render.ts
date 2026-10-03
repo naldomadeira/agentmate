@@ -50,7 +50,7 @@ export function renderObservation({
 
 function listLine(job: Job): string {
   const prompt = job.prompt.replace(/\s+/g, " ").slice(0, 60);
-  return `${job.id}  ${job.status.padEnd(8)} ${job.role.padEnd(9)} ${job.provider}/${job.mode}  ${elapsedSeconds(job)}s  ${prompt}`;
+  return `${job.id}  ${job.status.padEnd(8)} ${job.role.padEnd(11)} ${job.provider}/${job.mode}  ${elapsedSeconds(job)}s  ${prompt}`;
 }
 
 /** Newest first; a job whose parent is also listed is indented beneath it, oldest child first. */

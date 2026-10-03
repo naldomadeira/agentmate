@@ -8,7 +8,15 @@ export type Provider = AgentId;
 export type JobMode = "read-only" | "write";
 export type JobStatus = "queued" | "running" | "done" | "error" | "canceled" | "timeout";
 
-export type JobRole = "custom" | "ask" | "review" | "research" | "plan" | "implement" | "teamlead";
+export type JobRole =
+  | "custom"
+  | "ask"
+  | "review"
+  | "research"
+  | "plan"
+  | "implement"
+  | "teamlead"
+  | "crossreview";
 
 export const JOB_ROLES = [
   "custom",
@@ -18,9 +26,45 @@ export const JOB_ROLES = [
   "plan",
   "implement",
   "teamlead",
+  "crossreview",
 ] as const satisfies readonly JobRole[];
 
 export const TERMINAL: readonly JobStatus[] = ["done", "error", "canceled", "timeout"];
+
+/** Inputs of the role prompt builders; each role reads only the fields it documents. */
+export interface RoleFields {
+  question?: string;
+  context?: string;
+  target?: string;
+  focus?: string;
+  topic?: string;
+  questions?: string[];
+  scope?: string;
+  goal?: string;
+  constraints?: string;
+  existingPlan?: string;
+  task?: string;
+  acceptance?: string;
+  objective?: string;
+}
+
+/** The reviewer's last word on a round; `none` when it gave no clear verdict or the review failed. */
+export type Verdict = "approve" | "request-changes" | "none";
+
+export interface WorkflowRound {
+  implementJob: string;
+  reviewJob: string;
+  verdict: Verdict;
+}
+
+/** Progress of a `crossreview` job: a workflow whose steps are child jobs. */
+export interface Workflow {
+  maxRounds: number;
+  rounds: WorkflowRound[];
+}
+
+export const DEFAULT_MAX_ROUNDS = 2;
+export const MAX_ROUNDS_LIMIT = 5;
 
 export interface Job {
   id: string;
@@ -46,6 +90,10 @@ export interface Job {
   sessionId?: string;
   continuesJob?: string;
   error?: string;
+  /** What a workflow job (crossreview) needs after it is started; other roles leave it unset. */
+  fields?: RoleFields;
+  /** Settings and per-round progress of a crossreview job. */
+  workflow?: Workflow;
 }
 
 /** Jobs live outside any repo so ids resolve from any session or cwd. */
