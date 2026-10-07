@@ -7,6 +7,8 @@ import { TERMINAL, type Job } from "./store.js";
 
 const MAX_RESULT_CHARS = 80_000;
 const NOTES_MARKER = "\n\n---\n## Shared session notes (";
+const CONTEXT_MARKER = "\n\n---\n## Session context (";
+const MAX_CONTEXT_DISPLAY_CHARS = 2_000;
 
 export function renderResult(job: Job, text: string | null): string {
   const head = summarize(job);
@@ -58,9 +60,12 @@ export function renderObservation({
 }
 
 function listLine(job: Job): string {
-  // Skip the shared-notes block that sessions put after the role prompt.
-  const notes = job.prompt.indexOf(NOTES_MARKER);
-  const own = notes >= 0 ? job.prompt.slice(0, notes) : job.prompt;
+  // Skip the session context and shared-notes blocks that sessions put after the role prompt.
+  let own = job.prompt;
+  const ctx = own.indexOf(CONTEXT_MARKER);
+  if (ctx >= 0) own = own.slice(0, ctx);
+  const notes = own.indexOf(NOTES_MARKER);
+  if (notes >= 0) own = own.slice(0, notes);
   const prompt = own.replace(/\s+/g, " ").slice(0, 60);
   const session = job.session ? `session ${job.session}  ` : "";
   const model =
@@ -109,11 +114,19 @@ export function renderModels(catalog: ModelCatalog): string {
   return lines.join("\n");
 }
 
-/** A session, its notes (the tail the workers see) and the jobs started in it, newest first. */
-export function renderSession(session: Session, notes: string, jobs: Job[]): string {
+function renderContext(context: string): string {
+  const trimmed = context.trim();
+  if (!trimmed) return "(no context)";
+  if (trimmed.length <= MAX_CONTEXT_DISPLAY_CHARS) return trimmed;
+  return `${trimmed.slice(0, MAX_CONTEXT_DISPLAY_CHARS)}\n\n…[truncated, ${trimmed.length} characters total]`;
+}
+
+/** A session, its context, its notes (the tail the workers see) and the jobs started in it, newest first. */
+export function renderSession(session: Session, notes: string, jobs: Job[], context = ""): string {
   const sections = [
     `session ${session.id} · ${session.title}`,
     `cwd: ${session.cwd}\ncreated: ${session.createdAt} · updated: ${session.updatedAt}`,
+    `context:\n${renderContext(context)}`,
     `jobs:\n${renderList([...jobs].reverse())
       .split("\n")
       .map((line) => `  ${line}`)

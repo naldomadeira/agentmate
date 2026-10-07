@@ -34,9 +34,11 @@ import {
   createSession,
   getSession,
   listSessions,
+  readContext,
   readNotes,
   sessionJobCounts,
   sessionJobs,
+  setContext,
 } from "./jobs/sessions.js";
 import { EFFORTS, JOB_ROLES, type Effort, type JobMode, type Provider } from "./jobs/store.js";
 import { logger } from "./lib/logger.js";
@@ -82,7 +84,7 @@ const sessionArg = z
   .string()
   .optional()
   .describe(
-    "Id of a session (mate_session_start): its short shared notes prefix the worker's briefing and the job is recorded in it",
+    "Id of a session (mate_session_start): its short shared notes and fixed context prefix the worker's briefing; put the fixed briefing (spec, decisions, how to test) in the session context once; each job then passes only its focus",
   );
 
 const provider = z
@@ -425,24 +427,53 @@ server.registerTool(
 
 const sessionId = z.string().describe("Session id returned by mate_session_start");
 const SESSION_HINT =
-  "A session is shared context across jobs and agents. Pass its id as `session` to any mate_* job tool; every worker in the session reads the notes in its briefing, so keep notes short and factual.";
+  "A session is shared context across jobs and agents. Pass its id as `session` to any mate_* job tool; put the fixed briefing (spec, decisions, how to test) in the session context once; each job then passes only its focus. Every worker in the session reads the context and shared notes in its briefing.";
 
 server.registerTool(
   "mate_session_start",
   {
     title: "Start a session",
-    description: `Create a session: shared context across jobs and agents. Its notes (mate_session_notes) are read by every worker started with that session, so keep them short and factual. ${SESSION_HINT}`,
+    description: `Create a session: shared context across jobs and agents. Put the fixed briefing (spec, decisions, how to test) in the session context once; each job then passes only its focus. Notes (mate_session_notes) are read by every worker started with that session, so keep them short and factual. ${SESSION_HINT}`,
     inputSchema: {
       title: z.string().min(1).describe("A short name for the work, e.g. the feature or bug"),
       cwd: z
         .string()
         .optional()
         .describe("Working directory the session is about (defaults to the server cwd)"),
+      context: z
+        .string()
+        .optional()
+        .describe(
+          "Fixed briefing (spec, decisions, how to test, max ~16 KB) that every worker in the session receives in full",
+        ),
     },
   },
-  guard(({ title, cwd }) => {
-    const session = createSession({ title, cwd: cwd ?? process.cwd() });
+  guard(({ title, cwd, context }) => {
+    const session = createSession({ title, cwd: cwd ?? process.cwd(), context });
     return `Started session ${session.id} (${session.title}). Pass session=${session.id} to the mate_* job tools and add notes with mate_session_notes. Notes are read by every worker in the session, so keep them short and factual.`;
+  }),
+);
+
+server.registerTool(
+  "mate_session_context",
+  {
+    title: "Set or extend session context",
+    description:
+      "Set or append to the fixed context of a session (max ~16 KB). Every worker started in the session receives this context in full ahead of notes, so jobs only need to pass their own focus.",
+    inputSchema: {
+      session: z.string().describe("Session id returned by mate_session_start"),
+      context: z
+        .string()
+        .describe("The fixed context text (spec, decisions, how to test, max ~16 KB)"),
+      mode: z
+        .enum(["replace", "append"])
+        .optional()
+        .describe("replace (default) or append to existing context"),
+    },
+  },
+  guard(({ session, context, mode }) => {
+    setContext(session, context, mode ?? "replace");
+    return `${mode === "append" ? "Appended to" : "Set"} context for session ${session}.`;
   }),
 );
 
@@ -451,10 +482,10 @@ server.registerTool(
   {
     title: "Show a session",
     description:
-      "Show a session: its title, the tail of its shared notes (what workers read) and the jobs started in it.",
+      "Show a session: its title, its fixed context, the tail of its shared notes (what workers read) and the jobs started in it.",
     inputSchema: { id: sessionId },
   },
-  guard(({ id }) => renderSession(getSession(id), readNotes(id), sessionJobs(id))),
+  guard(({ id }) => renderSession(getSession(id), readNotes(id), sessionJobs(id), readContext(id))),
 );
 
 server.registerTool(
