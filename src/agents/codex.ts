@@ -36,11 +36,15 @@ export const codexAdapter: AgentAdapter = {
   teamleadNeedsWrite: false,
   versionArgs: ["--version"],
 
+  effortError: () => null,
+
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {
     const args = resumeSessionId
       ? ["exec", "resume", resumeSessionId, "--json"]
       : ["exec", "--json", "--skip-git-repo-check"];
     if (job.model) args.push("--model", job.model);
+    // A config override is accepted by `exec` and `exec resume` alike, so a continued job keeps it.
+    if (job.effort) args.push("-c", `model_reasoning_effort=${job.effort}`);
     // `exec resume` does not accept --sandbox; the resumed thread keeps its original one.
     if (!resumeSessionId) args.push("--sandbox", codexSandbox(job));
     args.push(job.prompt);

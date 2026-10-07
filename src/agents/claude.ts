@@ -113,6 +113,8 @@ export const claudeAdapter: AgentAdapter = {
   teamleadNeedsWrite: false,
   versionArgs: ["--version"],
 
+  effortError: () => null,
+
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {
     const args = ["-p", "--output-format", "stream-json", "--verbose"];
     // Without this the worker starts every MCP server of the user (claude.ai connectors and plugins
@@ -120,6 +122,7 @@ export const claudeAdapter: AgentAdapter = {
     if (process.env["AGENTMATE_CLAUDE_INHERIT_MCP"] !== "1") args.push("--strict-mcp-config");
     if (resumeSessionId) args.push("--resume", resumeSessionId);
     if (job.model) args.push("--model", job.model);
+    if (job.effort) args.push("--effort", job.effort);
     if (job.mode === "write") args.push("--permission-mode", "acceptEdits");
     // `--allowedTools <tool>` is variadic and would swallow the positional prompt, so each is `=`-joined.
     for (const tool of claudeAllowedTools(job)) args.push(`--allowedTools=${tool}`);

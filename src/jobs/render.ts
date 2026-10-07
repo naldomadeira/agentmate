@@ -62,7 +62,11 @@ function listLine(job: Job): string {
   const own = notes >= 0 ? job.prompt.slice(0, notes) : job.prompt;
   const prompt = own.replace(/\s+/g, " ").slice(0, 60);
   const session = job.session ? `session ${job.session}  ` : "";
-  return `${job.id}  ${job.status.padEnd(8)} ${job.role.padEnd(11)} ${job.provider}/${job.mode}  ${elapsedSeconds(job)}s  ${session}${prompt}`;
+  const model =
+    job.model || job.effort
+      ? `${[job.model ?? "default", job.effort].filter(Boolean).join("·")}  `
+      : "";
+  return `${job.id}  ${job.status.padEnd(8)} ${job.role.padEnd(11)} ${job.provider}/${job.mode}  ${elapsedSeconds(job)}s  ${model}${session}${prompt}`;
 }
 
 /** Newest first; a job whose parent is also listed is indented beneath it, oldest child first. */

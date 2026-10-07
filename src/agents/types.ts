@@ -63,6 +63,12 @@ export interface AgentAdapter {
   teamleadNeedsWrite: boolean;
   /** The error for a read-only team lead on an agent with `teamleadNeedsWrite`. */
   teamleadWriteReason?: string;
+  /**
+   * Why this agent cannot honor `job.effort` (with `job.model`), or null when it can. Called by
+   * `startJob` before anything is spawned, so an effort is never dropped in silence. An adapter
+   * without it refuses every effort.
+   */
+  effortError?(job: Pick<Job, "effort" | "model">): string | null;
   buildInvocation(job: Job, resumeSessionId?: string): Invocation;
   parseOutcome(stdout: string, stderr: string, exitCode: number): Outcome;
   /** Turns one stdout line into filtered events; `job` is left empty for the worker to fill. */

@@ -241,6 +241,7 @@ export async function runCrossreview(id: string): Promise<void> {
               mode: "write",
               cwd: job.cwd,
               model: job.model,
+              effort: job.effort,
             }
           : {
               provider: implementer,
@@ -256,6 +257,7 @@ export async function runCrossreview(id: string): Promise<void> {
               mode: "write",
               cwd: job.cwd,
               model: job.model,
+              effort: job.effort,
               ...(canResume ? { continueJob: previousImplement.id } : {}),
             };
       const implement = await step(`round ${round}: implement`, implementOptions);

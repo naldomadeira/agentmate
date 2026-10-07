@@ -4,7 +4,7 @@ import {
   parseAgyOutput,
   payloadFailure,
 } from "../lib/agy-output-parser.js";
-import type { Job } from "../jobs/store.js";
+import type { Effort, Job } from "../jobs/store.js";
 import type { AgentAdapter, Invocation, JobEvent, Outcome } from "./types.js";
 
 const MAX_EVENT_TEXT = 500;
@@ -52,6 +52,18 @@ function hintOf(parameters: Record<string, unknown>): string {
     if (value) return basename(value);
   }
   return Object.values(parameters).find((v): v is string => typeof v === "string" && !!v) ?? "";
+}
+
+const AGY_EFFORTS: readonly string[] = ["low", "medium", "high"];
+const AGY_EFFORT_SUFFIX = /-(low|medium|high)$/;
+
+/**
+ * agy names the effort inside the model id (`gemini-3.1-pro-high`), so an effort replaces the id's
+ * effort suffix or is appended to an id without one. Without an effort the id is passed as given.
+ */
+export function agyModelId(model: string, effort: Effort | undefined): string {
+  if (!effort) return model;
+  return `${model.replace(AGY_EFFORT_SUFFIX, "")}-${effort}`;
 }
 
 /**
@@ -147,6 +159,15 @@ export function createAgyAdapter(): AgentAdapter {
 
     resetStream: reset,
 
+    effortError: ({ effort, model }) => {
+      if (!effort) return null;
+      if (!AGY_EFFORTS.includes(effort))
+        return `agy model ids carry low, medium or high, not ${effort}. Pick one of those.`;
+      if (!model)
+        return `agy carries the effort in the model id (gemini-3.1-pro-high), so effort ${effort} needs a model. Pass model too, e.g. gemini-3.1-pro.`;
+      return null;
+    },
+
     buildInvocation(job: Job, resumeSessionId?: string): Invocation {
       // `-p` takes the prompt as its value, but a prompt that starts with `-` could still be read as a
       // flag, so it is prefixed with a space (the model does not care).
@@ -162,7 +183,7 @@ export function createAgyAdapter(): AgentAdapter {
         "--print-timeout",
         `${minutes}m`,
       ];
-      if (job.model) args.push("--model", job.model);
+      if (job.model) args.push("--model", agyModelId(job.model, job.effort));
       if (resumeSessionId) args.push("--conversation", resumeSessionId);
       if (job.mode === "write") args.push("--dangerously-skip-permissions");
       return { command: adapter.binary(), args };

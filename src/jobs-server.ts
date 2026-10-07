@@ -36,7 +36,7 @@ import {
   sessionJobCounts,
   sessionJobs,
 } from "./jobs/sessions.js";
-import { JOB_ROLES, type JobMode, type Provider } from "./jobs/store.js";
+import { EFFORTS, JOB_ROLES, type Effort, type JobMode, type Provider } from "./jobs/store.js";
 import { logger } from "./lib/logger.js";
 import { VERSION } from "./lib/version.js";
 
@@ -93,11 +93,19 @@ const partnerArg = z
     "The agent that works with the provider (reviewer, delegate); must differ from it. Defaults to the first installed other agent (codex, claude, gemini, agy); it must be installed",
   );
 const context = z.string().optional().describe("Background the worker needs; it sees nothing else");
+const effortArg = (who = "") =>
+  z
+    .enum(EFFORTS)
+    .optional()
+    .describe(
+      `Reasoning effort${who}: codex -c model_reasoning_effort, claude --effort, agy folds it into the model id (needs model; low/medium/high). gemini refuses it. Default: the agent's own configured effort`,
+    );
 
 /** Optional arguments shared by every job-starting tool. */
 const common = {
   cwd: z.string().optional().describe("Working directory (defaults to the server cwd)"),
   model: z.string().optional().describe("Model override passed to the CLI"),
+  effort: effortArg(),
   timeoutMinutes: z
     .number()
     .positive()
@@ -116,6 +124,7 @@ const common = {
 interface Common {
   cwd?: string | undefined;
   model?: string | undefined;
+  effort?: Effort | undefined;
   timeoutMinutes?: number | undefined;
   waitSeconds?: number | undefined;
   session?: string | undefined;
@@ -142,6 +151,7 @@ function runRole(
     partner,
     cwd,
     model,
+    effort,
     timeoutMinutes,
     waitSeconds,
     session,
@@ -157,6 +167,7 @@ function runRole(
       partner,
       cwd,
       model,
+      effort,
       timeoutMinutes,
       sessionId: session,
     },
@@ -334,6 +345,7 @@ server.registerTool(
         .describe("Most implement-and-review rounds, default 2"),
       cwd: common.cwd,
       model: z.string().optional().describe("Model override for the implementer only"),
+      effort: effortArg(" for the implementer only"),
       timeoutMinutes: z
         .number()
         .positive()
@@ -374,6 +386,7 @@ server.registerTool(
       cwd: common.cwd,
       session: sessionArg,
       model: z.string().optional().describe("Model override for the planner and same-agent parts"),
+      effort: effortArg(" for the planner and same-agent parts"),
       timeoutMinutes: z
         .number()
         .positive()

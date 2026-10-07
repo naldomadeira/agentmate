@@ -39,6 +39,7 @@ import {
   writeJob,
   type Job,
   type JobMode,
+  type Effort,
   type JobRole,
   type Provider,
   type RoleFields,
@@ -67,6 +68,8 @@ export interface StartOptions {
   fields?: RoleFields;
   cwd?: string;
   model?: string;
+  /** Reasoning effort; validated against the provider's adapter before the job is written. */
+  effort?: Effort;
   mode?: JobMode;
   timeoutMinutes?: number;
   continueJob?: string;
@@ -273,6 +276,9 @@ export function startJob(options: StartOptions): Job {
 
   let provider = options.provider;
   let sessionNote: string | undefined;
+  // A continued job keeps the effort it ran with unless the caller names another.
+  let effort = options.effort;
+  let model = options.model;
   if (options.continueJob) {
     if (!getAgent(provider).capabilities.resume)
       throw new Error(
@@ -297,9 +303,18 @@ export function startJob(options: StartOptions): Job {
       );
     provider = prior.provider;
     sessionNote = prior.id;
+    effort ??= prior.effort;
+    model ??= prior.model;
   }
   const cwd = options.cwd ?? process.cwd();
   assertAgentAvailable(provider, cwd);
+  if (effort) {
+    const adapter = getAgent(provider);
+    const refusal = adapter.effortError
+      ? adapter.effortError({ effort, model })
+      : `${provider} cannot apply a reasoning effort. Drop effort.`;
+    if (refusal) throw new Error(refusal);
+  }
   // The partner is settled before anything is spawned: a default pointing at an agent that is not
   // installed would otherwise fail only after the implementer had already edited files.
   const needsPartner = role === "teamlead" || role === "crossreview" || role === "split";
@@ -339,7 +354,8 @@ export function startJob(options: StartOptions): Job {
     ...(parentJob ? { parentJob } : {}),
     prompt,
     cwd,
-    ...(options.model ? { model: options.model } : {}),
+    ...(model ? { model } : {}),
+    ...(effort ? { effort } : {}),
     timeoutMs,
     status: "queued",
     createdAt: new Date().toISOString(),
@@ -548,6 +564,9 @@ export function summarize(job: Job): string {
     `job ${job.id}`,
     `${job.provider}/${job.mode}`,
     ...(job.role === "custom" ? [] : [job.role]),
+    ...(job.model || job.effort
+      ? [[job.model ?? "default model", job.effort].filter(Boolean).join(" · ")]
+      : []),
     job.status,
     `${elapsedSeconds(job)}s`,
   ];

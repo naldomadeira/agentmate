@@ -7,6 +7,9 @@ import type { AgentId } from "../agents/types.js";
 
 export type Provider = AgentId;
 export type JobMode = "read-only" | "write";
+/** Reasoning effort a job asks of its model; each adapter maps it to its CLI or refuses it. */
+export type Effort = "low" | "medium" | "high" | "xhigh";
+export const EFFORTS = ["low", "medium", "high", "xhigh"] as const satisfies readonly Effort[];
 export type JobStatus =
   | "queued"
   | "running"
@@ -128,6 +131,8 @@ export interface Job {
   prompt: string;
   cwd: string;
   model?: string;
+  /** Reasoning effort; unset means the agent's own configured default. */
+  effort?: Effort;
   timeoutMs: number;
   status: JobStatus;
   createdAt: string;

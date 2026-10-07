@@ -24,11 +24,13 @@ import {
   renderResult,
 } from "../jobs/render.js";
 import {
+  EFFORTS,
   JOB_ROLES,
   MAX_PARTS_LIMIT,
   MAX_ROUNDS_LIMIT,
   MIN_MAX_PARTS,
   TERMINAL,
+  type Effort,
   type JobMode,
   type JobRole,
   type Provider,
@@ -43,6 +45,13 @@ const parseProvider = (value: string, name = "provider"): Provider => {
   if (!isAgentId(value))
     throw new Error(`${name} must be codex or claude (or gemini/agy, experimental)`);
   return value;
+};
+
+const parseEffort = (value: string | undefined): Effort | undefined => {
+  if (value === undefined) return undefined;
+  if (!EFFORTS.includes(value as Effort))
+    throw new Error(`effort must be one of: ${EFFORTS.join(", ")}`);
+  return value as Effort;
 };
 
 /** Parses `90s` / `10m` (bare numbers are minutes) into milliseconds. */
@@ -88,6 +97,7 @@ export default defineCommand({
         prompt: { type: "positional", required: true, description: "Task briefing" },
         cwd: { type: "string", description: "Working directory" },
         model: { type: "string", description: "Model override" },
+        effort: { type: "string", description: `Reasoning effort: ${EFFORTS.join(", ")}` },
         mode: { type: "string", description: "read-only (default) or write" },
         role: {
           type: "string",
@@ -159,6 +169,7 @@ export default defineCommand({
           role: args.role as JobRole | undefined,
           cwd: args.cwd,
           model: args.model,
+          effort: parseEffort(args.effort),
           mode: args.mode as JobMode | undefined,
           timeoutMinutes,
           continueJob: args.continue,
@@ -182,6 +193,7 @@ export default defineCommand({
         wait: { type: "string", description: "Max wait, e.g. 90s or 2m (default 120s)" },
         cwd: { type: "string", description: "Working directory" },
         model: { type: "string", description: "Model override" },
+        effort: { type: "string", description: `Reasoning effort: ${EFFORTS.join(", ")}` },
       },
       run: userFacing(async ({ args }) => {
         const { job, text } = await askJob(
@@ -191,6 +203,7 @@ export default defineCommand({
             fields: { question: args.question },
             cwd: args.cwd,
             model: args.model,
+            effort: parseEffort(args.effort),
           },
           parseDuration(args.wait ?? "120s"),
         );

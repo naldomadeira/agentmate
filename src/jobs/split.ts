@@ -559,6 +559,7 @@ export async function runSplit(id: string): Promise<void> {
       mode: "read-only",
       cwd: job.cwd,
       model: job.model,
+      effort: job.effort,
       partner,
     });
     const [planDone] = await settle("plan", [planChild]);
@@ -663,6 +664,7 @@ export async function runSplit(id: string): Promise<void> {
             mode: "write",
             cwd: part.worktree!,
             model: sameProvider ? job.model : undefined,
+            effort: sameProvider ? job.effort : undefined,
           })
         : begin(`part ${part.id}: research`, {
             provider: part.agent,
@@ -671,6 +673,7 @@ export async function runSplit(id: string): Promise<void> {
             mode: "read-only",
             cwd: job.cwd,
             model: sameProvider ? job.model : undefined,
+            effort: sameProvider ? job.effort : undefined,
           });
       part.partJob = child.id;
       return child;
