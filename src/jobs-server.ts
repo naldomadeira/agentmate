@@ -90,13 +90,13 @@ const sessionArg = z
 const provider = z
   .enum(AGENT_IDS)
   .describe(
-    "Which agent CLI runs the task: codex, claude, gemini or agy (gemini and agy are experimental: no shell in headless read-only mode, no web; gemini cannot continue a job)",
+    "Which agent CLI runs the task: codex, claude, gemini, agy or copilot (gemini, agy and copilot are experimental; gemini and agy have no shell in headless read-only mode and no web; gemini cannot continue a job)",
   );
 const partnerArg = z
   .enum(AGENT_IDS)
   .optional()
   .describe(
-    "The agent that works with the provider (reviewer, delegate); must differ from it. Defaults to the first installed other agent (codex, claude, gemini, agy); it must be installed",
+    "The agent that works with the provider (reviewer, delegate); must differ from it. Defaults to the first installed other agent (codex, claude, gemini, agy, copilot); it must be installed",
   );
 const context = z.string().optional().describe("Background the worker needs; it sees nothing else");
 const effortArg = (who = "") =>
@@ -104,7 +104,7 @@ const effortArg = (who = "") =>
     .enum(EFFORTS)
     .optional()
     .describe(
-      `Reasoning effort${who}: codex -c model_reasoning_effort, claude --effort, agy folds it into the model id (needs model; low/medium/high). gemini refuses it. Default: the agent's own configured effort`,
+      `Reasoning effort${who}: codex -c model_reasoning_effort, claude --effort, agy folds it into the model id (needs model; low/medium/high), copilot --reasoning-effort (needs a model other than auto). gemini refuses it. Default: the agent's own configured effort`,
     );
 
 /** Optional arguments shared by every job-starting tool. */
@@ -198,7 +198,7 @@ server.registerTool(
   {
     title: "Start a delegated job",
     description:
-      "Delegate a free-form task to another agent CLI (codex, claude, gemini or agy) as a background job; prefer the role tools (mate_ask, mate_review, ...) when one fits. The job keeps running even if this session ends. The worker has no context beyond the briefing you give it.",
+      "Delegate a free-form task to another agent CLI (codex, claude, gemini, agy or copilot) as a background job; prefer the role tools (mate_ask, mate_review, ...) when one fits. The job keeps running even if this session ends. The worker has no context beyond the briefing you give it.",
     inputSchema: {
       provider,
       prompt: z.string().describe("The full task briefing; the worker has no other context"),
@@ -226,7 +226,7 @@ server.registerTool(
   {
     title: "Ask the other agent",
     description:
-      "Ask codex, claude, gemini or agy (experimental) a direct question and get the answer in this call; use it for a second opinion or a quick fact check. The worker has no context beyond the question and context you pass.",
+      "Ask codex, claude, gemini, agy or copilot (experimental) a direct question and get the answer in this call; use it for a second opinion or a quick fact check. The worker has no context beyond the question and context you pass.",
     inputSchema: {
       provider,
       question: z.string().describe("A self-contained question"),
@@ -242,7 +242,7 @@ server.registerTool(
   {
     title: "Request a code review",
     description:
-      "Have codex, claude, gemini or agy (experimental) review a diff, files or a description, read-only, with findings ordered by severity and a verdict; use it before merging or after a large change. The worker has no context beyond the target, focus and context you pass.",
+      "Have codex, claude, gemini, agy or copilot (experimental) review a diff, files or a description, read-only, with findings ordered by severity and a verdict; use it before merging or after a large change. The worker has no context beyond the target, focus and context you pass.",
     inputSchema: {
       provider,
       target: z
@@ -254,7 +254,7 @@ server.registerTool(
         .boolean()
         .optional()
         .describe(
-          "Let the reviewer run commands (tests, builds) to verify its claims. This gives it write access in practice (codex runs workspace-write, claude gets Bash): only its briefing forbids editing files. Not available for gemini or agy. Use it only when the user accepts that",
+          "Let the reviewer run commands (tests, builds) to verify its claims. This gives it write access in practice (codex runs workspace-write, claude and copilot get the shell): only its briefing forbids editing files. Not available for gemini or agy. Use it only when the user accepts that",
         ),
       ...common,
     },
@@ -269,7 +269,7 @@ server.registerTool(
   {
     title: "Research a topic",
     description:
-      "Have codex, claude, gemini or agy (experimental) investigate a topic read-only and report findings, compared options and a recommendation; use it when you need evidence before deciding. The worker has no context beyond the briefing you pass.",
+      "Have codex, claude, gemini, agy or copilot (experimental) investigate a topic read-only and report findings, compared options and a recommendation; use it when you need evidence before deciding. The worker has no context beyond the briefing you pass.",
     inputSchema: {
       provider,
       topic: z.string().describe("What to investigate"),
@@ -289,7 +289,7 @@ server.registerTool(
   {
     title: "Plan or critique a plan",
     description:
-      "Have codex, claude, gemini or agy (experimental) write a step-by-step plan for a goal, or critique an existing plan when existingPlan is given, read-only; use it before non-trivial work. The worker has no context beyond the briefing you pass.",
+      "Have codex, claude, gemini, agy or copilot (experimental) write a step-by-step plan for a goal, or critique an existing plan when existingPlan is given, read-only; use it before non-trivial work. The worker has no context beyond the briefing you pass.",
     inputSchema: {
       provider,
       goal: z.string().describe("What the plan must achieve"),
@@ -309,7 +309,7 @@ server.registerTool(
   {
     title: "Delegate an implementation",
     description:
-      "Have codex, claude, gemini or agy (experimental) implement a scoped task by editing files in the working directory (write mode); use it only when the user authorized edits, and run one write job at a time. The worker has no context beyond the task, acceptance criteria and context you pass.",
+      "Have codex, claude, gemini, agy or copilot (experimental) implement a scoped task by editing files in the working directory (write mode); use it only when the user authorized edits, and run one write job at a time. The worker has no context beyond the task, acceptance criteria and context you pass.",
     inputSchema: {
       provider,
       task: z.string().describe("A complete, scoped description of the change"),
@@ -328,7 +328,7 @@ server.registerTool(
   {
     title: "Start a team lead",
     description:
-      "Put codex, claude, gemini or agy (experimental) in charge of a broad objective: it decomposes the work, delegates subtasks to the other agent, reviews the results and reports back; use it for multi-part work, and follow it with mate_observe. A codex team lead runs with danger-full-access; a Gemini team lead (experimental) needs mode write and runs with --approval-mode yolo; an agy team lead (experimental) needs mode write and runs with --dangerously-skip-permissions. The worker has no context beyond the objective, constraints and context you pass.",
+      "Put codex, claude, gemini, agy or copilot (experimental) in charge of a broad objective: it decomposes the work, delegates subtasks to the other agent, reviews the results and reports back; use it for multi-part work, and follow it with mate_observe. A codex team lead runs with danger-full-access; a Gemini team lead (experimental) needs mode write and runs with --approval-mode yolo; an agy team lead (experimental) needs mode write and runs with --dangerously-skip-permissions. The worker has no context beyond the objective, constraints and context you pass.",
     inputSchema: {
       provider,
       partner: partnerArg,

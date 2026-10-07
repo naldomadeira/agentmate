@@ -289,7 +289,7 @@ describe("cli", () => {
     const result = await runCli(["jobs", "start", "bogus", "x"]);
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("provider must be codex or claude");
-    expect(result.stderr).toContain("(or gemini/agy, experimental)");
+    expect(result.stderr).toContain("(or gemini/agy/copilot, experimental)");
     expect(result.stderr).not.toContain("    at ");
   });
 

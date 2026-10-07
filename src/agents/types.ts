@@ -1,6 +1,6 @@
 import type { Job } from "../jobs/store.js";
 
-export type AgentId = "codex" | "claude" | "gemini" | "agy";
+export type AgentId = "codex" | "claude" | "gemini" | "agy" | "copilot";
 
 export interface AgentCapabilities {
   /** Supports `write` mode. */
@@ -33,6 +33,8 @@ export interface Usage {
   reasoningTokens?: number;
   cachedInputTokens?: number;
   costUsd?: number;
+  /** Copilot bills by premium request rather than by token. */
+  premiumRequests?: number;
 }
 
 export interface Outcome {

@@ -14,3 +14,7 @@ for (const key of Object.keys(process.env)) {
 // Model ids in tests are placeholders; the real catalogs (~/.codex, `agy models`) must not decide
 // whether a job starts. test/models.test.ts turns the check back on with its own catalogs.
 process.env["AGENTMATE_SKIP_MODEL_CHECK"] = "1";
+
+// The developer's own Copilot CLI must not count as installed: the availability and default-partner
+// tests enumerate agents. test/copilot.test.ts points AGENTMATE_COPILOT_BIN at a fake binary.
+process.env["AGENTMATE_COPILOT_BIN"] = "/nonexistent/agentmate-test/copilot";
