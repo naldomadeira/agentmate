@@ -1,6 +1,6 @@
 ---
 description: Split a goal into independent parts that both agents work on in parallel, cross-reviewed, with integration steps.
-argument-hint: "<codex|claude|gemini|agy> <goal>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <goal>"
 ---
 
 Request: $ARGUMENTS

@@ -201,6 +201,7 @@ function filesUnder(relativeDir: string): string[] {
 }
 
 const SKILLS = [
+  "copilot",
   "ask",
   "review",
   "research",
@@ -220,7 +221,7 @@ const SKILLS = [
 const AGENTS = ["codex-teammate", "codex-reviewer", "codex-researcher", "codex-teamlead"];
 
 describe("skills", () => {
-  it("ships the fifteen skills", () => {
+  it("ships the sixteen skills", () => {
     const names = readdirSync(resolve(root, "skills"), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
@@ -256,7 +257,7 @@ describe("skills", () => {
       expect(hint, path).toContain("agy");
     }
     // Where one hint lists the providers, it lists them in the registry order.
-    const listed = naming.filter(([, hint]) => hint.includes("<codex|claude|gemini|agy>"));
+    const listed = naming.filter(([, hint]) => hint.includes("<codex|claude|gemini|agy|copilot>"));
     expect(listed.length).toBeGreaterThan(15);
   });
 

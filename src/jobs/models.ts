@@ -167,6 +167,11 @@ export function listModels(provider: Provider, options: ListModelsOptions = {}):
       );
     case "gemini":
       return unavailable("gemini", "Headless Gemini CLI has no model list command.");
+    case "copilot":
+      return unavailable(
+        "copilot",
+        "Copilot has no model list command, and the models it accepts depend on your Copilot plan and policies; `auto` (the default) always works. An unavailable model fails with Copilot's own message.",
+      );
   }
 }
 

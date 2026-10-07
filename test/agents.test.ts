@@ -72,8 +72,10 @@ describe("agent registry", () => {
     expect(otherAgent("gemini")).toBe("claude");
   });
 
-  it("registers gemini as the third agent and agy as the fourth", () => {
-    expect([...AGENT_IDS]).toEqual(["codex", "claude", "gemini", "agy"]);
+  it("registers gemini third, agy fourth and copilot fifth", () => {
+    expect([...AGENT_IDS]).toEqual(["codex", "claude", "gemini", "agy", "copilot"]);
+    expect(AGENTS.copilot.displayName).toBe("GitHub Copilot CLI");
+    expect(otherAgent("copilot")).toBe("claude");
     expect(AGENTS.gemini.displayName).toBe("Gemini CLI");
     expect(AGENTS.agy.displayName).toBe("Antigravity CLI (agy)");
     expect(otherAgent("agy")).toBe("claude");
@@ -133,6 +135,7 @@ describe("agent registry", () => {
       claude: false,
       gemini: true,
       agy: true,
+      copilot: false,
     });
   });
   it("honors the binary override", () => {

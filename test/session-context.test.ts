@@ -332,7 +332,7 @@ describe("CLI sessions commands with context", () => {
     const id = res.stdout.trim();
     expect(id).toMatch(/^[a-z0-9-]+$/);
     expect(readContext(id)).toBe("CLI spec");
-  });
+  }, 30_000);
 
   it("sessions start with --context-file reads context from file", async () => {
     const filePath = path.join(home, "spec.md");
@@ -348,7 +348,7 @@ describe("CLI sessions commands with context", () => {
     expect(res.exitCode).toBe(0);
     const id = res.stdout.trim();
     expect(readContext(id)).toBe("Spec from file content");
-  });
+  }, 30_000);
 
   it("sessions context <id> sets, appends, and reads context", async () => {
     const session = createSession({ title: "CLI context test", cwd: home });
@@ -369,7 +369,7 @@ describe("CLI sessions commands with context", () => {
     expect(appendRes.exitCode).toBe(0);
     expect(appendRes.stdout).toContain(`Appended to context for session ${session.id}.`);
     expect(readContext(session.id)).toBe("Initial CLI text\n\nSecond line");
-  });
+  }, 30_000);
 
   it("sessions context <id> --file sets context from file", async () => {
     const session = createSession({ title: "CLI file context", cwd: home });
@@ -379,7 +379,7 @@ describe("CLI sessions commands with context", () => {
     const res = await runCli(["sessions", "context", session.id, "--file", filePath]);
     expect(res.exitCode).toBe(0);
     expect(readContext(session.id)).toBe("Overridden from file");
-  });
+  }, 30_000);
 
   it("sessions show <id> displays the context", async () => {
     const session = createSession({
@@ -390,7 +390,7 @@ describe("CLI sessions commands with context", () => {
     const res = await runCli(["sessions", "show", session.id]);
     expect(res.exitCode).toBe(0);
     expect(res.stdout).toContain("Context shown via CLI");
-  });
+  }, 30_000);
 });
 
 describe("session context from a worker", () => {

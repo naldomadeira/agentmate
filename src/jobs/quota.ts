@@ -29,10 +29,16 @@ export const QUOTA_PATTERNS: readonly RegExp[] = [
   // 429): Individual quota reached. Resets in 4h1m13s`. The upper-case status is specific to that
   // CLI; its `quota reached` wording is already covered above. A bare `code 429` is not added.
   /\bRESOURCE_EXHAUSTED\b/,
+  // GitHub Copilot bills by premium request; its plan allowance is spent when those run out.
+  /\bpremium requests?\b.*\b(limit|quota|allowance)\b.*\b(reached|exceeded|exhausted|hit|used)\b/i,
+  /\b(reached|exceeded|exhausted|hit|used up) (your |the )?(monthly )?(premium request|copilot)\b/i,
 ];
 
-/** Lines that look like a quota but are not the agent's own allowance. */
-const NOT_QUOTA = /\bdisk\b|\bgithub\b/i;
+/**
+ * Lines that look like a quota but are not the agent's own allowance. "GitHub" alone is a GitHub
+ * API call the agent made; "GitHub Copilot" is the copilot agent's own plan.
+ */
+const NOT_QUOTA = /\bdisk\b|\bgithub\b(?!\s+copilot)/i;
 
 function extraPatterns(): RegExp[] {
   const patterns: RegExp[] = [];

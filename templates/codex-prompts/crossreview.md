@@ -1,6 +1,6 @@
 ---
 description: Have one agent implement a change and the other review it, looping on findings until the reviewer approves.
-argument-hint: "<codex|claude|gemini|agy> <task>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <task>"
 ---
 
 Request: $ARGUMENTS

@@ -621,6 +621,9 @@ function usageSegments(job: Job): string[] {
   return [
     ...(tokens.length > 0 ? [`${tokens.join(" / ")} tok`] : []),
     ...(usage.costUsd ? [`$${usage.costUsd.toFixed(2)}`] : []),
+    ...(usage.premiumRequests
+      ? [`${usage.premiumRequests} premium request${usage.premiumRequests === 1 ? "" : "s"}`]
+      : []),
   ];
 }
 

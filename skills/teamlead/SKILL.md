@@ -1,7 +1,7 @@
 ---
 name: teamlead
 description: Hand a broad objective to Codex, Claude, Gemini or Antigravity (the last two experimental) acting as team lead, which breaks it down and delegates pieces to the other model as child jobs. Use when the user says /mate:teamlead, 'run a team lead', 'let codex lead this', 'coloque o claude como líder', or has multi-part work that needs one coordinating owner.
-argument-hint: "<codex|claude|gemini|agy> <objective>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <objective>"
 ---
 
 # Run a team lead

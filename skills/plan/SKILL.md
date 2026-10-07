@@ -1,7 +1,7 @@
 ---
 name: plan
 description: Get an implementation plan from Codex, Claude, Gemini or Antigravity (the last two experimental), or a critique of a plan you already have, with files, risks and verification steps. Use when the user says /mate:plan, 'plan this with codex', 'challenge this plan', 'planeje com o claude', or before a non-trivial change.
-argument-hint: "<codex|claude|gemini|agy> <goal> | <codex|claude|gemini|agy> critique <plan>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <goal> | <codex|claude|gemini|agy|copilot> critique <plan>"
 ---
 
 # Plan or critique a plan

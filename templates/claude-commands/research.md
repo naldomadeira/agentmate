@@ -1,6 +1,6 @@
 ---
 description: Have Codex or Claude investigate a topic read-only and report findings and a recommendation.
-argument-hint: "<codex|claude|gemini|agy> <topic>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <topic>"
 ---
 
 Request: $ARGUMENTS

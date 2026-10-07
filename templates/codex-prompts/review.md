@@ -1,6 +1,6 @@
 ---
 description: Have Codex or Claude review a diff, files or a plan, read-only, and report findings by severity.
-argument-hint: "<codex|claude|gemini|agy> <target: diff, files or plan>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <target: diff, files or plan>"
 ---
 
 Request: $ARGUMENTS

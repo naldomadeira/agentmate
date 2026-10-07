@@ -1,6 +1,6 @@
 # AgentMate architecture
 
-AgentMate is one runtime with two faces. **Delegation** hands a task to another coding agent as a durable background job and collects the result. **Collaboration** lets agents review, split and continue each other's work through the same jobs, using filtered events instead of raw transcripts. Claude Code and Codex CLI are the first teammates (Gemini CLI joins as an experimental one); the adapter layer is where new agents plug in.
+AgentMate is one runtime with two faces. **Delegation** hands a task to another coding agent as a durable background job and collects the result. **Collaboration** lets agents review, split and continue each other's work through the same jobs, using filtered events instead of raw transcripts. Claude Code and Codex CLI are the first teammates (Gemini, Antigravity, and Copilot CLIs join as experimental ones); the adapter layer is where new agents plug in.
 
 ```text
                          AgentMate
@@ -18,7 +18,7 @@ AgentMate is one runtime with two faces. **Delegation** hands a task to another 
                              │
       ┌──────────┬────────┴─┬──────────┬────────────┐
       │          │          │          │
-   Claude      Codex      Gemini   Antigravity (agy)
+   Claude      Codex      Gemini   Antigravity (agy)   Copilot
 ```
 
 ## Agent adapters (`src/agents/`)
@@ -46,7 +46,7 @@ A job is a directory under `~/.agentmate/jobs/<id>/` with `job.json` (atomic, ow
 
 Roles (`ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `crossreview`, `split`, or `custom`) select a prompt builder and the permissions the adapter applies. Jobs record `depth` and `parentJob`; a session starts a team lead (depth 0), the team lead starts children (depth 1), and children cannot start jobs. A read-only parent cannot start write children. Continued jobs inherit their previous `model`, `effort` and `account`. In `crossreview`, `model`, `effort` and `account` apply to the implementer only. In `split`, they apply to the planner and same-agent parts (and `account` to Codex reviewers).
 
-**Model catalog and validation (`src/jobs/models.ts`).** `listModels(provider, options)` queries supported models and reasoning efforts: agy runs `agy models` cached on disk for 6 hours in `~/.agentmate/cache/models-agy.json`; Codex reads `$CODEX_HOME/models_cache.json` for the job's account including supported reasoning levels; Claude and Gemini have no list command and are reported unavailable. `assertKnownModel` validates models and efforts before job dispatch, offering closest suggestions via edit distance; set `AGENTMATE_SKIP_MODEL_CHECK=1` to bypass validation.
+**Model catalog and validation (`src/jobs/models.ts`).** `listModels(provider, options)` queries supported models and reasoning efforts: agy runs `agy models` cached on disk for 6 hours in `~/.agentmate/cache/models-agy.json`; Codex reads `$CODEX_HOME/models_cache.json` for the job's account including supported reasoning levels; Claude, Gemini, and Copilot have no list command and are reported unavailable. `assertKnownModel` validates models and efforts before job dispatch, offering closest suggestions via edit distance; set `AGENTMATE_SKIP_MODEL_CHECK=1` to bypass validation.
 
 **Result header and usage metrics.** `summarize(job)` formats the job result header with `model · effort`, effective model (`ran <effective> (asked <requested>)`), account name and note, `commands allowed`, token usage (`in / out / reasoning tok`), USD cost, status and elapsed duration. In `mate_list` and `jobs list`, each line displays `model·effort`.
 

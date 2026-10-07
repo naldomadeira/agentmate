@@ -1,6 +1,6 @@
 ---
 description: Put Codex or Claude in charge of a broad objective; it delegates pieces to the other model and reports.
-argument-hint: "<codex|claude|gemini|agy> <objective>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <objective>"
 ---
 
 Request: $ARGUMENTS

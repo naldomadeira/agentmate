@@ -3,6 +3,7 @@ import path from "node:path";
 import { agyAdapter } from "./agy.js";
 import { claudeAdapter } from "./claude.js";
 import { codexAdapter } from "./codex.js";
+import { copilotAdapter } from "./copilot.js";
 import { geminiAdapter } from "./gemini.js";
 import type { AgentAdapter, AgentId } from "./types.js";
 
@@ -11,10 +12,17 @@ export const AGENTS: Record<AgentId, AgentAdapter> = {
   claude: claudeAdapter,
   gemini: geminiAdapter,
   agy: agyAdapter,
+  copilot: copilotAdapter,
 };
 
 /** Tuple form, for zod enums and CLI validation. */
-export const AGENT_IDS = ["codex", "claude", "gemini", "agy"] as const satisfies readonly AgentId[];
+export const AGENT_IDS = [
+  "codex",
+  "claude",
+  "gemini",
+  "agy",
+  "copilot",
+] as const satisfies readonly AgentId[];
 
 export const getAgent = (id: AgentId): AgentAdapter => AGENTS[id];
 
@@ -23,8 +31,8 @@ export function isAgentId(value: unknown): value is AgentId {
 }
 
 /**
- * The static default partner of an agent: codex and claude pair with each other and gemini and agy pair
- * with claude. It does not look at what is installed; workflows use `firstAvailableOther`.
+ * The static default partner of an agent: codex and claude pair with each other and gemini, agy and
+ * copilot pair with claude. It does not look at what is installed; workflows use `firstAvailableOther`.
  */
 export function otherAgent(id: AgentId): AgentId {
   return id === "claude" ? "codex" : "claude";
