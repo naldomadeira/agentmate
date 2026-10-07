@@ -137,6 +137,10 @@ export interface Job {
   usage?: Usage;
   /** mate_review only: widens read-only sandbox so reviewer may run commands to verify. */
   allowCommands?: boolean;
+  /** Codex profile account name; 'principal' is the default. */
+  account?: string;
+  /** Note on account resolution, e.g. when 'auto' fell back to principal. */
+  accountNote?: string;
   timeoutMs: number;
   status: JobStatus;
   createdAt: string;

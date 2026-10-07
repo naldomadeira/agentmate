@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import { parseCodexOutput } from "../lib/codex-output-parser.js";
 import type { Job } from "../jobs/store.js";
 import type { AgentAdapter, Invocation, JobEvent, Outcome } from "./types.js";
@@ -38,6 +40,13 @@ export const codexAdapter: AgentAdapter = {
   versionArgs: ["--version"],
 
   effortError: () => null,
+
+  env(job: Job): Record<string, string> | undefined {
+    if (!job.account || job.account === "principal") return undefined;
+    const profilesDir =
+      process.env["AGENTMATE_CODEX_PROFILES"] || path.join(os.homedir(), ".codex-profiles");
+    return { CODEX_HOME: path.join(profilesDir, job.account) };
+  },
 
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {
     const args = resumeSessionId

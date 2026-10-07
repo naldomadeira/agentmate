@@ -98,6 +98,10 @@ export default defineCommand({
         cwd: { type: "string", description: "Working directory" },
         model: { type: "string", description: "Model override" },
         effort: { type: "string", description: `Reasoning effort: ${EFFORTS.join(", ")}` },
+        account: {
+          type: "string",
+          description: "Codex account name, or 'auto' to resolve the recommended one",
+        },
         mode: { type: "string", description: "read-only (default) or write" },
         role: {
           type: "string",
@@ -177,6 +181,7 @@ export default defineCommand({
           model: args.model,
           effort: parseEffort(args.effort),
           allowCommands: args["allow-commands"] ? true : undefined,
+          account: args.account,
           mode: args.mode as JobMode | undefined,
           timeoutMinutes,
           continueJob: args.continue,
@@ -201,6 +206,10 @@ export default defineCommand({
         cwd: { type: "string", description: "Working directory" },
         model: { type: "string", description: "Model override" },
         effort: { type: "string", description: `Reasoning effort: ${EFFORTS.join(", ")}` },
+        account: {
+          type: "string",
+          description: "Codex account name, or 'auto' to resolve the recommended one",
+        },
       },
       run: userFacing(async ({ args }) => {
         const { job, text } = await askJob(
@@ -211,6 +220,7 @@ export default defineCommand({
             cwd: args.cwd,
             model: args.model,
             effort: parseEffort(args.effort),
+            account: args.account,
           },
           parseDuration(args.wait ?? "120s"),
         );

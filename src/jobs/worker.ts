@@ -85,6 +85,7 @@ export async function runWorker(id: string): Promise<void> {
       command: resolveBinary(command, job.cwd),
       args,
       cwd: job.cwd,
+      env: adapter.env?.(job),
       timeoutMs: job.timeoutMs,
       signal: controller.signal,
       // A quota line can look like a transient 429; retrying it only burns the reset window.
