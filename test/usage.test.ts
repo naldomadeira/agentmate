@@ -117,4 +117,24 @@ describe("Usage extraction", () => {
       );
     });
   });
+
+  it("does not call an agy id with the effort folded in a mismatch", () => {
+    const job = {
+      id: "j-agy",
+      provider: "agy",
+      mode: "read-only",
+      role: "ask",
+      depth: 0,
+      prompt: "q",
+      cwd: "/",
+      timeoutMs: 1000,
+      status: "done",
+      createdAt: new Date().toISOString(),
+      model: "gemini-3.8-flash",
+      effort: "low",
+      usage: { model: "gemini-3.8-flash-low" },
+    } as Job;
+    expect(summarize(job)).toContain("ran gemini-3.8-flash-low · low");
+    expect(summarize(job)).not.toContain("asked");
+  });
 });

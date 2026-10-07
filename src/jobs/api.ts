@@ -20,6 +20,7 @@ import {
   buildTeamleadPrompt,
 } from "../lib/prompt-builder.js";
 import { DEFAULT_ACCOUNT, effectiveCodexHome, resolveAccount, sameAccount } from "./accounts.js";
+import { agyModelId } from "../agents/agy.js";
 import { readEvents } from "./events.js";
 import { assertKnownModel } from "./models.js";
 import { getSession, withSessionNotes } from "./sessions.js";
@@ -600,8 +601,10 @@ const kilo = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
 /** `gpt-6.1-sol · high`, or what actually ran when the CLI reported it: `ran X (asked Y) · high`. */
 function modelSegment(job: Job): string | undefined {
   const ran = job.usage?.model;
+  // agy runs the id with the effort folded in, which is what was asked, not a substitute.
+  const asked = job.model && job.provider === "agy" ? agyModelId(job.model, job.effort) : job.model;
   const model = ran
-    ? `ran ${ran}${job.model && job.model !== ran ? ` (asked ${job.model})` : ""}`
+    ? `ran ${ran}${job.model && asked !== ran ? ` (asked ${job.model})` : ""}`
     : (job.model ?? (job.effort ? "default model" : undefined));
   return model ? [model, job.effort].filter(Boolean).join(" · ") : undefined;
 }
