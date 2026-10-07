@@ -5,8 +5,9 @@ import type { AgentAdapter, Invocation, JobEvent, Outcome } from "./types.js";
 const MAX_EVENT_TEXT = 500;
 
 /** The team lead must spawn `node` processes and write job state outside the repo, which workspace-write blocks. */
-function codexSandbox(job: Job): string {
+export function codexSandbox(job: Job): string {
   if (job.role === "teamlead") return "danger-full-access";
+  if (job.role === "review" && job.allowCommands) return "workspace-write";
   return job.mode === "write" ? "workspace-write" : "read-only";
 }
 

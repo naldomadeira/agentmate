@@ -122,6 +122,10 @@ export default defineCommand({
           description:
             "teamlead, crossreview and split only: the agent that works with the provider (default: the first installed other agent); must differ from it",
         },
+        "allow-commands": {
+          type: "boolean",
+          description: "role review only: allow reviewer to run commands to verify claims",
+        },
       },
       run: userFacing(({ args }) => {
         const provider = parseProvider(args.provider);
@@ -129,6 +133,8 @@ export default defineCommand({
           throw new Error("mode must be read-only or write");
         if (args.role && !JOB_ROLES.includes(args.role as JobRole))
           throw new Error(`role must be one of: ${JOB_ROLES.join(", ")}`);
+        if (args["allow-commands"] && args.role !== "review")
+          throw new Error("allow-commands applies only with --role review");
         const timeoutMinutes = args.timeout === undefined ? undefined : Number(args.timeout);
         if (
           timeoutMinutes !== undefined &&
@@ -170,6 +176,7 @@ export default defineCommand({
           cwd: args.cwd,
           model: args.model,
           effort: parseEffort(args.effort),
+          allowCommands: args["allow-commands"] ? true : undefined,
           mode: args.mode as JobMode | undefined,
           timeoutMinutes,
           continueJob: args.continue,
