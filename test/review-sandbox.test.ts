@@ -127,7 +127,7 @@ describe("review prompt in both modes", () => {
   it("permits command verification, forbids editing, and requires verified commands reporting when commands are allowed", () => {
     const prompt = buildReviewPrompt({ target: "main..HEAD", commandsAllowed: true });
     expect(prompt).toContain("You may run tests and commands to verify claims");
-    expect(prompt).toContain("must not edit files");
+    expect(prompt).toContain("you must not: no edits");
     expect(prompt).toContain("Verified");
     expect(prompt).toContain("verified: <cmd> passed/failed");
     expect(prompt).toContain("Not verified");

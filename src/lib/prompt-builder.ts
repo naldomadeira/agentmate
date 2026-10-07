@@ -38,7 +38,7 @@ export function buildReviewPrompt(options: {
       ? "You cannot run shell commands, so inspect the change with your file-reading tools and the diff or findings given in the context."
       : "Use read-only git commands (diff, log, show, status) to inspect it.";
   const commandsPolicy = options.commandsAllowed
-    ? "You may run tests and commands to verify claims, but you must not edit files."
+    ? "You may run tests and commands to verify claims. Your sandbox would let you change files, but you must not: no edits, no formatting, no git commands that change the working tree or history."
     : "The sandbox is read-only; commands that need to write (tests with caches, DB sockets) may fail because of the sandbox.";
   const verificationSection = options.commandsAllowed
     ? `3. **Verified** - For each claim verified by running something, report the command and its result ("verified: <cmd> passed/failed")

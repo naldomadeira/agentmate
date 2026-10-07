@@ -107,7 +107,19 @@ function legacyJobIds(id: string): string[] {
   }
 }
 
+/**
+ * Every job in the session receives the context as part of its briefing, so only the host session
+ * may write it: a worker that could would be briefing its siblings with its own instructions.
+ */
+function assertHostWritesContext(): void {
+  if (process.env["AGENTMATE_JOB_ID"])
+    throw new Error(
+      "Only the host session can set a session's context; a worker reports back to its parent instead, or adds a short note with mate_session_notes.",
+    );
+}
+
 export function createSession(options: { title: string; cwd: string; context?: string }): Session {
+  if (options.context) assertHostWritesContext();
   if (options.context && options.context.length > MAX_CONTEXT_CHARS) {
     throw new Error(
       `Session context is too large (${options.context.length} characters, max ${MAX_CONTEXT_CHARS}). Keep the fixed context under ${MAX_CONTEXT_CHARS} characters.`,
@@ -247,6 +259,7 @@ export function setContext(
   text: string,
   mode: "replace" | "append" = "replace",
 ): string {
+  assertHostWritesContext();
   getSession(id);
   const current = mode === "append" ? readContext(id) : "";
   const combined = current ? `${current.trimEnd()}\n\n${text}` : text;

@@ -254,7 +254,7 @@ server.registerTool(
         .boolean()
         .optional()
         .describe(
-          "Allow running commands (e.g. tests) to verify claims. Widens the sandbox, but the reviewer is still instructed not to edit files",
+          "Let the reviewer run commands (tests, builds) to verify its claims. This gives it write access in practice (codex runs workspace-write, claude gets Bash): only its briefing forbids editing files. Not available for gemini or agy. Use it only when the user accepts that",
         ),
       ...common,
     },

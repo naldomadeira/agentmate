@@ -52,6 +52,16 @@ describe("Usage extraction", () => {
       const parsed = parseAgyOutput(out, 0);
       expect(parsed.usage).toEqual({ model: "gemini-test" });
     });
+
+    it("reads the tokens of the final payload", () => {
+      const out = `{"event":"init","init":{"model":"gemini-3.8-flash-low"}}\n{"event":"result","result":{"status":"SUCCESS","response":"OK","usage":{"input_tokens":120,"output_tokens":3,"thinking_tokens":40,"cache_read_tokens":0}}}`;
+      expect(parseAgyOutput(out, 0).usage).toEqual({
+        model: "gemini-3.8-flash-low",
+        inputTokens: 120,
+        outputTokens: 3,
+        reasoningTokens: 40,
+      });
+    });
   });
 
   describe("Summary rendering", () => {

@@ -392,3 +392,27 @@ describe("CLI sessions commands with context", () => {
     expect(res.stdout).toContain("Context shown via CLI");
   });
 });
+
+describe("session context from a worker", () => {
+  it("is refused, so a worker cannot brief its siblings", () => {
+    const saved = process.env["AGENTMATE_JOB_ID"];
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "abm-ctx-worker-"));
+    const savedHome = process.env["AGENTMATE_HOME"];
+    process.env["AGENTMATE_HOME"] = home;
+    try {
+      const session = createSession({ title: "t", cwd: home });
+      process.env["AGENTMATE_JOB_ID"] = "worker-1";
+      expect(() => setContext(session.id, "do this instead")).toThrow(/Only the host session/);
+      expect(() => createSession({ title: "t", cwd: home, context: "x" })).toThrow(
+        /Only the host session/,
+      );
+      expect(readContext(session.id)).toBe("");
+    } finally {
+      if (saved === undefined) delete process.env["AGENTMATE_JOB_ID"];
+      else process.env["AGENTMATE_JOB_ID"] = saved;
+      if (savedHome === undefined) delete process.env["AGENTMATE_HOME"];
+      else process.env["AGENTMATE_HOME"] = savedHome;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+});

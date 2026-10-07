@@ -14,7 +14,7 @@ export interface AgyResult {
   partial?: boolean;
   /** A final `result` event or the single JSON object of `--output-format json` was seen. */
   completed: boolean;
-  /** The model the `init` event names; agy reports no token counts. */
+  /** The model the `init` event names and the tokens of the final payload. */
   usage?: Usage;
 }
 
@@ -148,8 +148,28 @@ function fromObject(parsed: Obj, result: AgyResult): AgyResult {
   return fromPayload(parsed, result, "");
 }
 
+/** The payload's `usage` (`input_tokens`, `output_tokens`, `thinking_tokens`, `cache_read_tokens`). */
+function payloadUsage(payload: Obj): Usage {
+  const usage = payload["usage"];
+  if (!isObject(usage)) return {};
+  const count = (key: string) =>
+    typeof usage[key] === "number" && usage[key] > 0 ? usage[key] : undefined;
+  const tokens: Usage = {};
+  const input = count("input_tokens");
+  const output = count("output_tokens");
+  const thinking = count("thinking_tokens");
+  const cached = count("cache_read_tokens");
+  if (input) tokens.inputTokens = input;
+  if (output) tokens.outputTokens = output;
+  if (thinking) tokens.reasoningTokens = thinking;
+  if (cached) tokens.cachedInputTokens = cached;
+  return tokens;
+}
+
 function fromPayload(payload: Obj, result: AgyResult, streamed: string): AgyResult {
   result.completed = true;
+  const tokens = payloadUsage(payload);
+  if (Object.keys(tokens).length > 0) result.usage = { ...result.usage, ...tokens };
   const failure = payloadFailure(payload);
   if (failure) result.errors.push(failure);
   result.resultText = str(payload["response"]).trim() || streamed;
