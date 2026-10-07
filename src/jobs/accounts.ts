@@ -13,6 +13,10 @@ export function codexProfilesDir(): string {
   return process.env["AGENTMATE_CODEX_PROFILES"] || path.join(os.homedir(), ".codex-profiles");
 }
 
+/** A profile is a full CODEX_HOME: a directory holding the login or the config codex reads. */
+const isProfile = (dir: string) =>
+  fs.existsSync(path.join(dir, "auth.json")) || fs.existsSync(path.join(dir, "config.toml"));
+
 const isDefault = (account: string | undefined) =>
   !account || account === DEFAULT_ACCOUNT || account === "default";
 
@@ -60,18 +64,19 @@ export function resolveAccount(requested: string): { account: string; note?: str
   if (!/^[a-z0-9_-]+$/i.test(account))
     throw new Error(`Invalid Codex account name: ${account}. Use a profile directory name.`);
   const home = codexHomeFor(account)!;
-  if (!fs.existsSync(home)) {
+  if (!isProfile(home)) {
     let names: string[] = [];
     try {
       names = fs
         .readdirSync(codexProfilesDir(), { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name);
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+        .map((entry) => entry.name)
+        .filter((name) => isProfile(path.join(codexProfilesDir(), name)));
     } catch {
       // No profiles directory: only the default account exists.
     }
     throw new Error(
-      `Codex account "${account}" not found at ${home}. Available: ${[DEFAULT_ACCOUNT, ...names].join(", ")}.`,
+      `Codex account "${account}" is not a profile (no auth.json or config.toml in ${home}). Available: ${[DEFAULT_ACCOUNT, ...names].join(", ")}.`,
     );
   }
   return { account, ...(note ? { note } : {}) };

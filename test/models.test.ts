@@ -107,6 +107,7 @@ exit 0
   it("reads the codex catalog of the job's account", () => {
     const profiles = fs.mkdtempSync(path.join(os.tmpdir(), "amw-profiles-"));
     fs.mkdirSync(path.join(profiles, "zeus"));
+    fs.writeFileSync(path.join(profiles, "zeus", "auth.json"), "{}");
     fs.writeFileSync(
       path.join(profiles, "zeus", "models_cache.json"),
       JSON.stringify({ models: [{ slug: "gpt-zeus-only" }] }),

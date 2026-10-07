@@ -67,6 +67,10 @@ describe("startJob account validation", () => {
     binDir = path.join(home, "bin");
     fs.mkdirSync(profiles, { mode: 0o700 });
     fs.mkdirSync(path.join(profiles, "zeus"), { mode: 0o700 });
+    fs.writeFileSync(path.join(profiles, "zeus", "config.toml"), "");
+    // Not profiles: a hidden directory and one without auth.json or config.toml.
+    fs.mkdirSync(path.join(profiles, ".meta"), { mode: 0o700 });
+    fs.mkdirSync(path.join(profiles, "bin"), { mode: 0o700 });
     fs.mkdirSync(binDir, { mode: 0o700 });
 
     const fake = path.join(binDir, "fake");
@@ -93,7 +97,7 @@ describe("startJob account validation", () => {
   it("refuses an unknown profile and lists available ones", () => {
     expect(() =>
       startJob({ provider: "codex", prompt: "q", account: "kratos", cwd: home }),
-    ).toThrow(/Codex account "kratos" not found.*Available: principal, zeus/);
+    ).toThrow(/Codex account "kratos" is not a profile.*Available: principal, zeus\.$/);
   });
 
   it("resolves auto with limites script", () => {
