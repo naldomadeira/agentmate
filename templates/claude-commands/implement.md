@@ -1,6 +1,6 @@
 ---
 description: Have Codex or Claude implement a scoped change by editing files, only when you authorized edits.
-argument-hint: "<codex|claude|gemini|agy> <task>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <task>"
 ---
 
 Request: $ARGUMENTS

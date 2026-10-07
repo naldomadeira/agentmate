@@ -1,7 +1,7 @@
 ---
 name: implement
 description: Delegate a scoped code change to Codex, Claude, Gemini or Antigravity (the last two experimental) with write access, with acceptance criteria and verification. Use only when the user says /mate:implement, 'have codex implement this', 'peça ao claude para implementar', or otherwise explicitly authorizes the other agent to edit files.
-argument-hint: "<codex|claude|gemini|agy> <task>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <task>"
 ---
 
 # Delegate an implementation

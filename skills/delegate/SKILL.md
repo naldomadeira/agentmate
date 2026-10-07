@@ -1,7 +1,7 @@
 ---
 name: delegate
 description: Delegate a task to another agent CLI (codex, claude, gemini or agy; the last two experimental) as a background job, covering second opinions, reviews, research and scoped implementation. Use when the user says /mate:delegate, 'hand this to codex', 'delegue ao claude', or wants an independent opinion from a different model that fits no single role.
-argument-hint: "<codex|claude|gemini|agy> <task>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <task>"
 ---
 
 # Delegate to another agent

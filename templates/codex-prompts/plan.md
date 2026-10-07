@@ -1,6 +1,6 @@
 ---
 description: Have Codex or Claude write a step-by-step plan for a goal, or critique an existing plan, read-only.
-argument-hint: "<codex|claude|gemini|agy> <goal>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <goal>"
 ---
 
 Request: $ARGUMENTS

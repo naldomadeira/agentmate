@@ -1,7 +1,7 @@
 ---
 name: crossreview
 description: Have one agent implement a scoped change and the other agent review it, looping on the findings without you relaying anything by hand. Use when the user says /mate:crossreview, 'cross-review', 'cross review this', 'revisão cruzada', 'implementa e o outro revisa', 'codex implementa e o claude revisa', or wants one agent to build and the other to check the work.
-argument-hint: "<codex|claude|gemini|agy> <task>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <task>"
 ---
 
 # Cross-review

@@ -1,6 +1,6 @@
 ---
 description: Ask Codex or Claude a direct question and get the answer in the same turn.
-argument-hint: "<codex|claude|gemini|agy> <question>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <question>"
 ---
 
 Request: $ARGUMENTS

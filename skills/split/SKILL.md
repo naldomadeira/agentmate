@@ -1,7 +1,7 @@
 ---
 name: split
 description: Split a broad goal into independent parts that both agents work on in parallel, then cross-review each part and report how to integrate them. Use when the user says /mate:split, 'split the task', 'task splitting', 'split this between codex and claude', 'dividir a tarefa', 'divida o trabalho entre os agentes', or has a goal that breaks into parts with separate files.
-argument-hint: "<codex|claude|gemini|agy> <goal>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <goal>"
 ---
 
 # Split a task

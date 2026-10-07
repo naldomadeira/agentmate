@@ -1,7 +1,7 @@
 ---
 name: research
 description: Investigate a technical topic with Codex, Claude, Gemini or Antigravity (the last two experimental) and get findings, compared options and a recommendation with evidence. Use when the user says /mate:research, 'research this with codex', 'pesquise com o claude', or needs a library choice, root-cause hunt or design trade-off surveyed.
-argument-hint: "<codex|claude|gemini|agy> <topic>"
+argument-hint: "<codex|claude|gemini|agy|copilot> <topic>"
 ---
 
 # Research a topic

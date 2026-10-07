@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- GitHub Copilot CLI as the fifth agent (`copilot`), currently experimental.
 - Reasoning effort (`effort` / `--effort`): selectable reasoning level (`low`, `medium`, `high`, `xhigh`) on every job-starting MCP tool (`mate_start`, `mate_ask`, `mate_review`, `mate_research`, `mate_plan`, `mate_implement`, `mate_teamlead`, `mate_crossreview`, `mate_split`) and CLI `agentmate jobs start` / `jobs ask`. Codex passes `-c model_reasoning_effort=<effort>` (also on `exec resume`); Claude passes `--effort <effort>`; agy folds effort into the model identifier (`<model>-<effort>`, requires `model`, supports `low`, `medium`, and `high` only, e.g. `gemini-3.1-pro` + `high` → `gemini-3.1-pro-high`); Gemini refuses effort. Continued jobs inherit previous `effort` and `model`. In `crossreview`, effort applies to the implementer; in `split`, it applies to the planner and same-agent parts.
 - Models catalog and validation (`src/jobs/models.ts`): MCP tool `mate_models(provider?, refresh?)` and CLI `agentmate jobs models [provider] [--refresh]` inspect available models and reasoning levels. `startJob` validates models before launch: agy queries `agy models` cached on disk for 6 hours (`~/.agentmate/cache/models-agy.json`); Codex reads `$CODEX_HOME/models_cache.json` for the job's account including supported effort levels; Claude and Gemini have no listing command and report unavailable. Validation suggests closest matches via edit distance when a model or effort level is unknown or unsupported. `AGENTMATE_SKIP_MODEL_CHECK=1` bypasses validation.
 - Codex account profiles (`account` / `--account`): Codex jobs can target isolated profile directories via `account: "<name>"` or `--account <name>`, locating profiles under `~/.codex-profiles/<name>` (customizable via `AGENTMATE_CODEX_PROFILES`) and setting `CODEX_HOME`. `principal` and `default` use `~/.codex`. `account: "auto"` chooses a profile based on remaining quota suggestions from `limites --json` (`AGENTMATE_LIMITES_BIN`), falling back to `principal` with a note when `limites` is missing or unavailable. Continued jobs retain their account. Workflows propagate account: the implementer in `crossreview`; the planner, same-agent parts, and Codex reviewers in `split`.
@@ -18,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Quota: Exclude plain "GitHub" lines from exhaustion patterns, but include "GitHub Copilot" and "premium request" lines.
 - Claude workers start with `--strict-mcp-config`: none of the user's MCP servers (claude.ai connectors and plugins, AgentMate's own included) load into a job. A probe went from 18 servers and 563 tools to 0 servers and 26 tools, with no sign-in noise in answers. `AGENTMATE_CLAUDE_INHERIT_MCP=1` restores the old behaviour.
 - The `ask` prompt follows a form the question asks for ("reply only with OK") instead of forcing the Answer / Evidence / Caveats structure.
 - The npm package no longer ships `assets/` (3.4 MB → about 100 KB); the README has a new hero image.
