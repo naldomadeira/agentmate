@@ -31,7 +31,7 @@ const WRITE_CLAUDE_TOOLS = [
   "Bash(git commit *)",
 ];
 /** Never reachable by a read-only job, whatever the user's own settings allow. */
-const READ_ONLY_DENIED_CLAUDE_TOOLS = ["Edit", "Write", "NotebookEdit"];
+export const READ_ONLY_DENIED_CLAUDE_TOOLS = ["Edit", "Write", "NotebookEdit"];
 /** Lets a claude team lead run the AgentMate CLI's `jobs` subcommand, pinned to this version, to delegate to codex. */
 const TEAMLEAD_CLAUDE_TOOLS = [
   `Bash(npx -y agentmate@${VERSION} jobs *)`,
@@ -47,7 +47,14 @@ function extraWriteTools(): string[] {
 }
 
 /** Tools claude may use without prompting. In write mode this only adds to `acceptEdits`. */
-function claudeAllowedTools(job: Job): string[] {
+export function claudeAllowedTools(job: Job): string[] {
+  if (job.role === "review" && job.allowCommands) {
+    // A review with commands allowed may run arbitrary shell commands (tests, builds, DB sockets)
+    // to verify claims, so unrestricted Bash is allowed. Edit and Write remain denied because
+    // buildInvocation passes READ_ONLY_DENIED_CLAUDE_TOOLS ("Edit", "Write", "NotebookEdit")
+    // to --disallowedTools for every read-only job, ensuring files cannot be modified.
+    return ["Read", "Grep", "Glob", "Bash"];
+  }
   const tools =
     job.mode === "write"
       ? [...WRITE_CLAUDE_TOOLS, ...extraWriteTools()]

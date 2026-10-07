@@ -133,7 +133,10 @@ export interface Job {
   model?: string;
   /** Reasoning effort; unset means the agent's own configured default. */
   effort?: Effort;
+  /** What the CLI reported running: effective model, tokens and cost. */
   usage?: Usage;
+  /** mate_review only: widens read-only sandbox so reviewer may run commands to verify. */
+  allowCommands?: boolean;
   timeoutMs: number;
   status: JobStatus;
   createdAt: string;

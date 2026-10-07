@@ -70,6 +70,8 @@ export interface StartOptions {
   model?: string;
   /** Reasoning effort; validated against the provider's adapter before the job is written. */
   effort?: Effort;
+  /** review only: widens the sandbox so the reviewer can run commands to verify. */
+  allowCommands?: boolean;
   mode?: JobMode;
   timeoutMinutes?: number;
   continueJob?: string;
@@ -146,6 +148,7 @@ function renderPrompt(
         focus: fields.focus,
         context,
         shell: getAgent(provider).capabilities.shell,
+        commandsAllowed: options.allowCommands,
       });
     case "research":
       return buildResearchPrompt({
@@ -270,6 +273,12 @@ export function startJob(options: StartOptions): Job {
         `partner must differ from the provider (both are ${options.provider}). Pick another agent.`,
       );
   }
+  if (options.allowCommands) {
+    if (role !== "review")
+      throw new Error(
+        "allowCommands applies only to the review role. Drop allowCommands or set role to review.",
+      );
+  }
   // Validated up front so an unknown session never leaves a half-started job behind.
   if (options.sessionId) getSession(options.sessionId);
   const parentJob = process.env["AGENTMATE_JOB_ID"] || undefined;
@@ -315,6 +324,11 @@ export function startJob(options: StartOptions): Job {
       : `${provider} cannot apply a reasoning effort. Drop effort.`;
     if (refusal) throw new Error(refusal);
   }
+  if (options.allowCommands && getAgent(provider).capabilities.shell === false) {
+    throw new Error(
+      `${provider} has no shell capability: allowCommands cannot be used. Run without allowCommands or pick another provider.`,
+    );
+  }
   // The partner is settled before anything is spawned: a default pointing at an agent that is not
   // installed would otherwise fail only after the implementer had already edited files.
   const needsPartner = role === "teamlead" || role === "crossreview" || role === "split";
@@ -356,6 +370,7 @@ export function startJob(options: StartOptions): Job {
     cwd,
     ...(model ? { model } : {}),
     ...(effort ? { effort } : {}),
+    ...(options.allowCommands ? { allowCommands: true } : {}),
     timeoutMs,
     status: "queued",
     createdAt: new Date().toISOString(),
@@ -576,6 +591,7 @@ export function summarize(job: Job): string {
     `${job.provider}/${job.mode}`,
     ...(job.role === "custom" ? [] : [job.role]),
     ...(modelStr || job.effort ? [[modelStr, job.effort].filter(Boolean).join(" · ")] : []),
+    ...(job.allowCommands ? ["commands allowed"] : []),
   ];
 
   if (job.usage) {

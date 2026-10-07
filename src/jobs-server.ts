@@ -139,6 +139,7 @@ function runRole(
     maxRounds?: number | undefined;
     maxParts?: number | undefined;
     partner?: Provider | undefined;
+    allowCommands?: boolean | undefined;
   },
   fields: RoleFields,
   defaultWaitSeconds = 0,
@@ -149,6 +150,7 @@ function runRole(
     maxRounds,
     maxParts,
     partner,
+    allowCommands,
     cwd,
     model,
     effort,
@@ -165,6 +167,7 @@ function runRole(
       maxRounds,
       maxParts,
       partner,
+      allowCommands,
       cwd,
       model,
       effort,
@@ -232,6 +235,12 @@ server.registerTool(
         .describe("Diff range (e.g. main..HEAD), files or a description of the change"),
       focus: z.string().optional().describe("What to scrutinize most"),
       context,
+      allowCommands: z
+        .boolean()
+        .optional()
+        .describe(
+          "Allow running commands (e.g. tests) to verify claims. Widens the sandbox, but the reviewer is still instructed not to edit files",
+        ),
       ...common,
     },
   },
