@@ -133,6 +133,10 @@ export interface Job {
   model?: string;
   /** Reasoning effort; unset means the agent's own configured default. */
   effort?: Effort;
+  /** Codex profile account name; 'principal' is the default. */
+  account?: string;
+  /** Note on account resolution, e.g. when 'auto' fell back to principal. */
+  accountNote?: string;
   timeoutMs: number;
   status: JobStatus;
   createdAt: string;

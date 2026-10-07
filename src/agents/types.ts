@@ -69,6 +69,8 @@ export interface AgentAdapter {
    * without it refuses every effort.
    */
   effortError?(job: Pick<Job, "effort" | "model">): string | null;
+  /** Extra environment variables the agent CLI needs for this job. */
+  env?(job: Job): Record<string, string> | undefined;
   buildInvocation(job: Job, resumeSessionId?: string): Invocation;
   parseOutcome(stdout: string, stderr: string, exitCode: number): Outcome;
   /** Turns one stdout line into filtered events; `job` is left empty for the worker to fill. */

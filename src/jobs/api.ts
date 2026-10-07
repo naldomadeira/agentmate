@@ -1,5 +1,7 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EventLevel, JobEvent } from "../agents/types.js";
 import {
@@ -70,6 +72,8 @@ export interface StartOptions {
   model?: string;
   /** Reasoning effort; validated against the provider's adapter before the job is written. */
   effort?: Effort;
+  /** Codex profile account name, or 'auto' to resolve the recommended account. */
+  account?: string;
   mode?: JobMode;
   timeoutMinutes?: number;
   continueJob?: string;
@@ -279,6 +283,8 @@ export function startJob(options: StartOptions): Job {
   // A continued job keeps the effort it ran with unless the caller names another.
   let effort = options.effort;
   let model = options.model;
+  let account = options.account;
+  let accountNote: string | undefined;
   if (options.continueJob) {
     if (!getAgent(provider).capabilities.resume)
       throw new Error(
@@ -301,13 +307,59 @@ export function startJob(options: StartOptions): Job {
       throw new Error(
         `Job ${prior.id} ran on ${prior.provider}, not ${provider}. Start the follow-up with \`agentmate jobs start ${prior.provider}\`.`,
       );
+    if (options.account && options.account !== prior.account)
+      throw new Error(
+        `A continued codex job must run in its original account to inherit the thread. Refusing explicit account '${options.account}' over prior '${prior.account ?? "principal"}'.`,
+      );
     provider = prior.provider;
     sessionNote = prior.id;
     effort ??= prior.effort;
     model ??= prior.model;
+    account ??= prior.account;
   }
   const cwd = options.cwd ?? process.cwd();
   assertAgentAvailable(provider, cwd);
+  if (account && provider !== "codex") {
+    throw new Error(
+      `The account option is only supported for the codex provider. Drop --account or pick codex.`,
+    );
+  }
+  if (account === "auto") {
+    try {
+      const bin = process.env["AGENTMATE_LIMITES_BIN"] || "limites";
+      const result = execFileSync(bin, ["--json"], { timeout: 10_000, encoding: "utf8" });
+      const parsed = JSON.parse(result);
+      if (parsed?.suggestion?.name) {
+        account = parsed.suggestion.name;
+      } else {
+        account = "principal";
+        accountNote = "limites --json returned no suggestion";
+      }
+    } catch (e: any) {
+      account = "principal";
+      accountNote = `limites auto-resolution failed: ${e.message}`;
+    }
+  }
+  if (account === "principal" || account === "default") {
+    account = "principal";
+  } else if (account) {
+    if (!/^[a-z0-9_-]+$/i.test(account)) {
+      throw new Error(`Invalid Codex account name: ${account}.`);
+    }
+    const profilesDir =
+      process.env["AGENTMATE_CODEX_PROFILES"] || path.join(os.homedir(), ".codex-profiles");
+    const profilePath = path.join(profilesDir, account);
+    if (!fs.existsSync(profilePath)) {
+      let available: string[] = [];
+      try {
+        available = fs
+          .readdirSync(profilesDir)
+          .filter((d) => fs.statSync(path.join(profilesDir, d)).isDirectory());
+      } catch {}
+      const availStr = available.length > 0 ? ` Available profiles: ${available.join(", ")}.` : "";
+      throw new Error(`Codex account '${account}' not found at ${profilePath}.${availStr}`);
+    }
+  }
   if (effort) {
     const adapter = getAgent(provider);
     const refusal = adapter.effortError
@@ -356,6 +408,8 @@ export function startJob(options: StartOptions): Job {
     cwd,
     ...(model ? { model } : {}),
     ...(effort ? { effort } : {}),
+    ...(account ? { account } : {}),
+    ...(accountNote ? { accountNote } : {}),
     timeoutMs,
     status: "queued",
     createdAt: new Date().toISOString(),
@@ -564,8 +618,16 @@ export function summarize(job: Job): string {
     `job ${job.id}`,
     `${job.provider}/${job.mode}`,
     ...(job.role === "custom" ? [] : [job.role]),
-    ...(job.model || job.effort
-      ? [[job.model ?? "default model", job.effort].filter(Boolean).join(" · ")]
+    ...(job.model || job.effort || (job.account && job.account !== "principal")
+      ? [
+          [
+            job.model ?? "default model",
+            job.effort,
+            job.account && job.account !== "principal" ? `account ${job.account}` : undefined,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        ]
       : []),
     job.status,
     `${elapsedSeconds(job)}s`,

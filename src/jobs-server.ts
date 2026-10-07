@@ -66,8 +66,10 @@ const jobId = z.string().describe("Job id returned by any mate_* tool that start
  */
 async function startAndMaybeWait(options: StartOptions, waitSeconds: number): Promise<string> {
   const job = startJob(options);
-  if (waitSeconds <= 0)
-    return `Started job ${job.id} (${job.provider}/${job.mode}${job.role === "custom" ? "" : `, ${job.role}`}). Call mate_wait with this id to collect the result.`;
+  if (waitSeconds <= 0) {
+    const acc = job.account && job.account !== "principal" ? `, account ${job.account}` : "";
+    return `Started job ${job.id} (${job.provider}/${job.mode}${job.role === "custom" ? "" : `, ${job.role}`}${acc}). Call mate_wait with this id to collect the result.`;
+  }
   const settled = await waitJob(job.id, waitSeconds * 1000);
   if (!isTerminal(settled))
     return `Job ${job.id} is still running after ${waitSeconds}s; call mate_wait with id ${job.id} to keep waiting.`;
@@ -106,6 +108,12 @@ const common = {
   cwd: z.string().optional().describe("Working directory (defaults to the server cwd)"),
   model: z.string().optional().describe("Model override passed to the CLI"),
   effort: effortArg(),
+  account: z
+    .string()
+    .optional()
+    .describe(
+      "Codex profile account name (e.g. 'zeus', 'kratos'), or 'auto' to resolve the recommended account",
+    ),
   timeoutMinutes: z
     .number()
     .positive()
@@ -125,6 +133,7 @@ interface Common {
   cwd?: string | undefined;
   model?: string | undefined;
   effort?: Effort | undefined;
+  account?: string | undefined;
   timeoutMinutes?: number | undefined;
   waitSeconds?: number | undefined;
   session?: string | undefined;
@@ -152,6 +161,7 @@ function runRole(
     cwd,
     model,
     effort,
+    account,
     timeoutMinutes,
     waitSeconds,
     session,
@@ -168,6 +178,7 @@ function runRole(
       cwd,
       model,
       effort,
+      account,
       timeoutMinutes,
       sessionId: session,
     },
@@ -195,9 +206,9 @@ server.registerTool(
       ...common,
     },
   },
-  guard(({ continue: continueJob, prompt, role, provider, mode, session, ...rest }) =>
+  guard(({ continue: continueJob, prompt, role, provider, mode, session, account, ...rest }) =>
     startAndMaybeWait(
-      { provider, prompt, role, mode, continueJob, sessionId: session, ...rest },
+      { provider, prompt, role, mode, account, continueJob, sessionId: session, ...rest },
       rest.waitSeconds ?? 0,
     ),
   ),
@@ -346,6 +357,7 @@ server.registerTool(
       cwd: common.cwd,
       model: z.string().optional().describe("Model override for the implementer only"),
       effort: effortArg(" for the implementer only"),
+      account: z.string().optional().describe("Codex account for the implementer only"),
       timeoutMinutes: z
         .number()
         .positive()
@@ -387,6 +399,7 @@ server.registerTool(
       session: sessionArg,
       model: z.string().optional().describe("Model override for the planner and same-agent parts"),
       effort: effortArg(" for the planner and same-agent parts"),
+      account: z.string().optional().describe("Codex account for the planner and same-agent parts"),
       timeoutMinutes: z
         .number()
         .positive()
