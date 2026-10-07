@@ -77,6 +77,14 @@ function fromStream(events: Obj[], result: ClaudeResult): ClaudeResult {
   const last = lastWhere(events, (event) => event["type"] === "result");
   for (const event of events) {
     if (typeof event["session_id"] === "string") result.sessionId = event["session_id"];
+    // system or init event has model
+    if (
+      (event["type"] === "system" || event["type"] === "init") &&
+      typeof event["model"] === "string"
+    ) {
+      if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
+      result.usage.model = event["model"];
+    }
   }
   if (!last) {
     // Cut off (timeout, cancel, crash): the last thing the assistant said is the partial output.
@@ -89,7 +97,34 @@ function fromStream(events: Obj[], result: ClaudeResult): ClaudeResult {
   }
 
   if (typeof last["session_id"] === "string") result.sessionId = last["session_id"];
-  if (typeof last["total_cost_usd"] === "number") result.costUsd = last["total_cost_usd"];
+
+  if (typeof last["total_cost_usd"] === "number") {
+    if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
+    result.usage.costUsd = last["total_cost_usd"];
+  }
+
+  const usage = last["usage"] as Record<string, number> | undefined;
+  if (usage) {
+    if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
+    result.usage.inputTokens += usage["input_tokens"] ?? usage["inputTokens"] ?? 0;
+    result.usage.outputTokens += usage["output_tokens"] ?? usage["outputTokens"] ?? 0;
+    const cached =
+      (usage["cache_read_input_tokens"] ?? 0) + (usage["cache_creation_input_tokens"] ?? 0);
+    if (cached) result.usage.cachedInputTokens = (result.usage.cachedInputTokens ?? 0) + cached;
+  }
+
+  const modelUsage = last["modelUsage"] as Record<string, Record<string, number>> | undefined;
+  if (modelUsage && Object.keys(modelUsage).length > 0) {
+    const mainModel = Object.keys(modelUsage)[0]!;
+    if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
+    if (!result.usage.model) result.usage.model = mainModel;
+    const mUsage = modelUsage[mainModel]!;
+    if (mUsage) {
+      // Overwrite or sum? The requirements say sum across turns, but claude's result event has the total.
+      // Wait, if it has `usage` already, maybe `modelUsage` is just a breakdown.
+      // Let's just trust `usage` for totals and extract model.
+    }
+  }
 
   if (last["is_error"] === true) {
     const text = typeof last["result"] === "string" ? last["result"].trim() : "";

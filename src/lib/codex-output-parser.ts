@@ -41,6 +41,11 @@ export function parseCodexOutput(jsonlOutput: string): CodexResult {
       continue;
     }
 
+    if (typeof event["model"] === "string") {
+      if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
+      result.usage.model = event["model"];
+    }
+
     const type = event["type"] as string | undefined;
     if (!type) continue;
 
@@ -89,10 +94,15 @@ export function parseCodexOutput(jsonlOutput: string): CodexResult {
       case "turn.completed": {
         const usage = event["usage"] as Record<string, number> | undefined;
         if (usage) {
-          result.usage = {
-            inputTokens: usage["input_tokens"] ?? usage["inputTokens"] ?? 0,
-            outputTokens: usage["output_tokens"] ?? usage["outputTokens"] ?? 0,
-          };
+          if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
+          result.usage.inputTokens += usage["input_tokens"] ?? usage["inputTokens"] ?? 0;
+          result.usage.outputTokens += usage["output_tokens"] ?? usage["outputTokens"] ?? 0;
+          const reasoning = usage["reasoning_output_tokens"] ?? usage["reasoningOutputTokens"] ?? 0;
+          if (reasoning)
+            result.usage.reasoningTokens = (result.usage.reasoningTokens ?? 0) + reasoning;
+          const cached = usage["cached_input_tokens"] ?? usage["cachedInputTokens"] ?? 0;
+          if (cached)
+            result.usage.cachedInputTokens = (result.usage.cachedInputTokens ?? 0) + cached;
         }
         break;
       }

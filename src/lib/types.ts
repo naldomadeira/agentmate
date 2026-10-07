@@ -33,8 +33,12 @@ export interface CodexResult {
     output: string;
   }>;
   usage: {
+    model?: string;
     inputTokens: number;
     outputTokens: number;
+    reasoningTokens?: number;
+    cachedInputTokens?: number;
+    costUsd?: number;
   } | null;
   errors: string[];
 }
@@ -42,7 +46,14 @@ export interface CodexResult {
 export interface ClaudeResult {
   resultText: string;
   sessionId: string | null;
-  costUsd: number | null;
+  usage: {
+    model?: string;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens?: number;
+    cachedInputTokens?: number;
+    costUsd?: number;
+  } | null;
   errors: string[];
   /** `resultText` is the last assistant text of a stream that ended without a `result` event. */
   partial?: boolean;

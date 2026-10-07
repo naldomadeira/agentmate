@@ -53,7 +53,12 @@ export const codexAdapter: AgentAdapter = {
 
   parseOutcome(stdout: string, stderr: string, exitCode: number): Outcome {
     const r = parseCodexOutput(stdout);
-    const outcome: Outcome = { text: r.agentMessage, sessionId: r.threadId, errors: r.errors };
+    const outcome: Outcome = {
+      text: r.agentMessage,
+      sessionId: r.threadId,
+      errors: r.errors,
+      usage: r.usage || undefined,
+    };
     if (exitCode !== 0 && !outcome.text && stderr.trim()) outcome.errors.push(stderr.trim());
     return outcome;
   },

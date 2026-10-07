@@ -140,6 +140,7 @@ export const claudeAdapter: AgentAdapter = {
       sessionId: r.sessionId,
       errors: r.errors,
       ...(r.partial ? { partial: true } : {}),
+      ...(r.usage ? { usage: r.usage } : {}),
     };
     if (exitCode !== 0 && !outcome.text && stderr.trim()) outcome.errors.push(stderr.trim());
     return outcome;

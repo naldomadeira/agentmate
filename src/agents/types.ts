@@ -26,12 +26,22 @@ export interface Invocation {
   args: string[];
 }
 
+export interface Usage {
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  cachedInputTokens?: number;
+  costUsd?: number;
+}
+
 export interface Outcome {
   text: string;
   sessionId: string | null;
   errors: string[];
   /** `text` is what a stream printed before it ended without a final result. */
   partial?: boolean;
+  usage?: Usage;
 }
 
 export type EventLevel = "important" | "status" | "fyi";

@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentId } from "../agents/types.js";
+import type { AgentId, Usage } from "../agents/types.js";
 
 export type Provider = AgentId;
 export type JobMode = "read-only" | "write";
@@ -133,6 +133,7 @@ export interface Job {
   model?: string;
   /** Reasoning effort; unset means the agent's own configured default. */
   effort?: Effort;
+  usage?: Usage;
   timeoutMs: number;
   status: JobStatus;
   createdAt: string;

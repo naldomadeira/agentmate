@@ -13,6 +13,14 @@ export interface AgyResult {
   partial?: boolean;
   /** A final `result` event or the single JSON object of `--output-format json` was seen. */
   completed: boolean;
+  usage?: {
+    model?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    reasoningTokens?: number;
+    cachedInputTokens?: number;
+    costUsd?: number;
+  };
 }
 
 const isObject = (value: unknown): value is Obj =>
@@ -114,6 +122,9 @@ function fromStream(events: Obj[], exitCode: number, result: AgyResult): AgyResu
     const body = eventBody(event);
     const id = conversationId(body);
     if (id) result.sessionId = id;
+    if (event["event"] === "init" && typeof body["model"] === "string") {
+      result.usage = { model: body["model"] };
+    }
     if (event["event"] === "result" && body !== event) final = body;
     else if (event["event"] === "step_update" && body["step_type"] === "agent_response") {
       const delta = str(body["text_delta"]);

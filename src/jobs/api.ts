@@ -560,16 +560,37 @@ export function elapsedSeconds(job: Job): number {
 }
 
 export function summarize(job: Job): string {
+  const k = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+  let modelStr = job.model;
+  if (job.usage?.model) {
+    modelStr =
+      job.usage.model === job.model
+        ? `ran ${job.usage.model}`
+        : `ran ${job.usage.model} (asked ${job.model ?? "default model"})`;
+  } else if (!job.model && job.effort) {
+    modelStr = "default model";
+  }
+
   const parts = [
     `job ${job.id}`,
     `${job.provider}/${job.mode}`,
     ...(job.role === "custom" ? [] : [job.role]),
-    ...(job.model || job.effort
-      ? [[job.model ?? "default model", job.effort].filter(Boolean).join(" · ")]
-      : []),
-    job.status,
-    `${elapsedSeconds(job)}s`,
+    ...(modelStr || job.effort ? [[modelStr, job.effort].filter(Boolean).join(" · ")] : []),
   ];
+
+  if (job.usage) {
+    const toks = [
+      job.usage.inputTokens ? `in ${k(job.usage.inputTokens)}` : "",
+      job.usage.outputTokens ? `out ${k(job.usage.outputTokens)}` : "",
+      job.usage.reasoningTokens ? `reasoning ${k(job.usage.reasoningTokens)}` : "",
+    ]
+      .filter(Boolean)
+      .join(" / ");
+    if (toks) parts.push(`${toks} tok`);
+    if (job.usage.costUsd) parts.push(`$${job.usage.costUsd.toFixed(2)}`);
+  }
+
+  parts.push(job.status, `${elapsedSeconds(job)}s`);
   if (job.parentJob) parts.push(`parent ${job.parentJob}`);
   if (job.session) parts.push(`session ${job.session}`);
   if (job.error) parts.push(`error: ${job.error}`);
