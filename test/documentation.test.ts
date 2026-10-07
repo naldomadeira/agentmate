@@ -185,7 +185,10 @@ describe("project documentation", () => {
     const count = readdirSync(resolve(root, "skills"), { withFileTypes: true }).filter((entry) =>
       entry.isDirectory(),
     ).length;
-    const words: Record<string, [string, string]> = { "15": ["fifteen", "quinze"], "16": ["sixteen", "dezesseis"] };
+    const words: Record<string, [string, string]> = {
+      "15": ["fifteen", "quinze"],
+      "16": ["sixteen", "dezesseis"],
+    };
     const [english, portuguese] = words[String(count)] ?? ["?", "?"];
     expect(read("docs/INSTALL_FOR_AGENTS.md")).toContain(`packages ${english} skills`);
     expect(read("docs/INSTALL_FOR_AGENTS.pt-BR.md")).toContain(`fornece ${portuguese} skills`);
