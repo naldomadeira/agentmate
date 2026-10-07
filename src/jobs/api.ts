@@ -1,7 +1,5 @@
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EventLevel, JobEvent } from "../agents/types.js";
 import {
@@ -21,7 +19,9 @@ import {
   buildSplitPrompt,
   buildTeamleadPrompt,
 } from "../lib/prompt-builder.js";
+import { DEFAULT_ACCOUNT, effectiveCodexHome, resolveAccount, sameAccount } from "./accounts.js";
 import { readEvents } from "./events.js";
+import { assertKnownModel } from "./models.js";
 import { getSession, withSessionNotes } from "./sessions.js";
 import {
   DEFAULT_MAX_PARTS,
@@ -316,9 +316,9 @@ export function startJob(options: StartOptions): Job {
       throw new Error(
         `Job ${prior.id} ran on ${prior.provider}, not ${provider}. Start the follow-up with \`agentmate jobs start ${prior.provider}\`.`,
       );
-    if (options.account && options.account !== prior.account)
+    if (options.account && !sameAccount(options.account, prior.account))
       throw new Error(
-        `A continued codex job must run in its original account to inherit the thread. Refusing explicit account '${options.account}' over prior '${prior.account ?? "principal"}'.`,
+        `Job ${prior.id} ran on Codex account ${prior.account ?? DEFAULT_ACCOUNT}, and its thread lives there. Drop account to continue it, or start a new job on ${options.account}.`,
       );
     provider = prior.provider;
     sessionNote = prior.id;
@@ -328,46 +328,12 @@ export function startJob(options: StartOptions): Job {
   }
   const cwd = options.cwd ?? process.cwd();
   assertAgentAvailable(provider, cwd);
-  if (account && provider !== "codex") {
-    throw new Error(
-      `The account option is only supported for the codex provider. Drop --account or pick codex.`,
-    );
-  }
-  if (account === "auto") {
-    try {
-      const bin = process.env["AGENTMATE_LIMITES_BIN"] || "limites";
-      const result = execFileSync(bin, ["--json"], { timeout: 10_000, encoding: "utf8" });
-      const parsed = JSON.parse(result);
-      if (parsed?.suggestion?.name) {
-        account = parsed.suggestion.name;
-      } else {
-        account = "principal";
-        accountNote = "limites --json returned no suggestion";
-      }
-    } catch (e: any) {
-      account = "principal";
-      accountNote = `limites auto-resolution failed: ${e.message}`;
-    }
-  }
-  if (account === "principal" || account === "default") {
-    account = "principal";
-  } else if (account) {
-    if (!/^[a-z0-9_-]+$/i.test(account)) {
-      throw new Error(`Invalid Codex account name: ${account}.`);
-    }
-    const profilesDir =
-      process.env["AGENTMATE_CODEX_PROFILES"] || path.join(os.homedir(), ".codex-profiles");
-    const profilePath = path.join(profilesDir, account);
-    if (!fs.existsSync(profilePath)) {
-      let available: string[] = [];
-      try {
-        available = fs
-          .readdirSync(profilesDir)
-          .filter((d) => fs.statSync(path.join(profilesDir, d)).isDirectory());
-      } catch {}
-      const availStr = available.length > 0 ? ` Available profiles: ${available.join(", ")}.` : "";
-      throw new Error(`Codex account '${account}' not found at ${profilePath}.${availStr}`);
-    }
+  if (account && provider !== "codex")
+    throw new Error(`account applies only to codex (its CODEX_HOME profiles). Drop account.`);
+  if (account) {
+    const resolved = resolveAccount(account);
+    account = resolved.account;
+    accountNote = resolved.note;
   }
   if (effort) {
     const adapter = getAgent(provider);
@@ -376,11 +342,12 @@ export function startJob(options: StartOptions): Job {
       : `${provider} cannot apply a reasoning effort. Drop effort.`;
     if (refusal) throw new Error(refusal);
   }
-  if (options.allowCommands && getAgent(provider).capabilities.shell === false) {
+  if (options.allowCommands && !getAgent(provider).capabilities.shell)
     throw new Error(
       `${provider} has no shell capability: allowCommands cannot be used. Run without allowCommands or pick another provider.`,
     );
-  }
+  // A misspelled id would otherwise run on the CLI's fallback model, or fail only after the start.
+  if (model) assertKnownModel(provider, model, effort, effectiveCodexHome(account));
   // The partner is settled before anything is spawned: a default pointing at an agent that is not
   // installed would otherwise fail only after the implementer had already edited files.
   const needsPartner = role === "teamlead" || role === "crossreview" || role === "split";

@@ -28,7 +28,7 @@ describe("Usage extraction", () => {
 
   describe("Claude", () => {
     it("extracts model, cost, and tokens from stream", () => {
-      const out = `{"type":"init","model":"claude-3-opus"}\n{"type":"result","result":"Done","session_id":"s-1","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5},"total_cost_usd":0.045}`;
+      const out = `{"type":"system","subtype":"init","model":"claude-3-opus"}\n{"type":"result","result":"Done","session_id":"s-1","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5},"total_cost_usd":0.045}`;
       const parsed = parseClaudeOutput(out);
       expect(parsed.usage).toEqual({
         model: "claude-3-opus",

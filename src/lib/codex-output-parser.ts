@@ -42,8 +42,7 @@ export function parseCodexOutput(jsonlOutput: string): CodexResult {
     }
 
     if (typeof event["model"] === "string") {
-      if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
-      result.usage.model = event["model"];
+      result.usage = { ...result.usage, model: event["model"] };
     }
 
     const type = event["type"] as string | undefined;
@@ -94,9 +93,12 @@ export function parseCodexOutput(jsonlOutput: string): CodexResult {
       case "turn.completed": {
         const usage = event["usage"] as Record<string, number> | undefined;
         if (usage) {
-          if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
-          result.usage.inputTokens += usage["input_tokens"] ?? usage["inputTokens"] ?? 0;
-          result.usage.outputTokens += usage["output_tokens"] ?? usage["outputTokens"] ?? 0;
+          result.usage ??= {};
+          result.usage.inputTokens =
+            (result.usage.inputTokens ?? 0) + (usage["input_tokens"] ?? usage["inputTokens"] ?? 0);
+          result.usage.outputTokens =
+            (result.usage.outputTokens ?? 0) +
+            (usage["output_tokens"] ?? usage["outputTokens"] ?? 0);
           const reasoning = usage["reasoning_output_tokens"] ?? usage["reasoningOutputTokens"] ?? 0;
           if (reasoning)
             result.usage.reasoningTokens = (result.usage.reasoningTokens ?? 0) + reasoning;

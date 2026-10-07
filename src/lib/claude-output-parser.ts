@@ -32,7 +32,7 @@ export function parseClaudeOutput(jsonOutput: string): ClaudeResult {
   const result: ClaudeResult = {
     resultText: "",
     sessionId: null,
-    costUsd: null,
+    usage: null,
     errors: [],
   };
 
@@ -72,19 +72,41 @@ export function parseClaudeOutput(jsonOutput: string): ClaudeResult {
   return fromObject(parsed, result);
 }
 
+const num = (value: unknown) => (typeof value === "number" ? value : undefined);
+
+/** Tokens and cost of the final `result` event; cache reads and writes count as cached input. */
+function claudeUsage(last: Obj): NonNullable<ClaudeResult["usage"]> {
+  const usage: NonNullable<ClaudeResult["usage"]> = {};
+  const costUsd = num(last["total_cost_usd"]);
+  if (costUsd !== undefined) usage.costUsd = costUsd;
+  const tokens = last["usage"];
+  if (tokens && typeof tokens === "object") {
+    const t = tokens as Obj;
+    const input = num(t["input_tokens"]);
+    const output = num(t["output_tokens"]);
+    const cached =
+      (num(t["cache_read_input_tokens"]) ?? 0) + (num(t["cache_creation_input_tokens"]) ?? 0);
+    if (input !== undefined) usage.inputTokens = input;
+    if (output !== undefined) usage.outputTokens = output;
+    if (cached) usage.cachedInputTokens = cached;
+  }
+  // `modelUsage` is keyed by model id; its first key names the model when no init event did.
+  const byModel = last["modelUsage"];
+  if (byModel && typeof byModel === "object") {
+    const first = Object.keys(byModel)[0];
+    if (first) usage.model = first;
+  }
+  return usage;
+}
+
 /** Stream-json: the last `result` event wins; a stream cut off before one yields the last assistant text, flagged `partial`. */
 function fromStream(events: Obj[], result: ClaudeResult): ClaudeResult {
   const last = lastWhere(events, (event) => event["type"] === "result");
   for (const event of events) {
     if (typeof event["session_id"] === "string") result.sessionId = event["session_id"];
-    // system or init event has model
-    if (
-      (event["type"] === "system" || event["type"] === "init") &&
-      typeof event["model"] === "string"
-    ) {
-      if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
-      result.usage.model = event["model"];
-    }
+    // The `system`/`init` event names the model the session actually runs.
+    if (event["type"] === "system" && typeof event["model"] === "string")
+      result.usage = { ...result.usage, model: event["model"] };
   }
   if (!last) {
     // Cut off (timeout, cancel, crash): the last thing the assistant said is the partial output.
@@ -98,33 +120,9 @@ function fromStream(events: Obj[], result: ClaudeResult): ClaudeResult {
 
   if (typeof last["session_id"] === "string") result.sessionId = last["session_id"];
 
-  if (typeof last["total_cost_usd"] === "number") {
-    if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
-    result.usage.costUsd = last["total_cost_usd"];
-  }
-
-  const usage = last["usage"] as Record<string, number> | undefined;
-  if (usage) {
-    if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
-    result.usage.inputTokens += usage["input_tokens"] ?? usage["inputTokens"] ?? 0;
-    result.usage.outputTokens += usage["output_tokens"] ?? usage["outputTokens"] ?? 0;
-    const cached =
-      (usage["cache_read_input_tokens"] ?? 0) + (usage["cache_creation_input_tokens"] ?? 0);
-    if (cached) result.usage.cachedInputTokens = (result.usage.cachedInputTokens ?? 0) + cached;
-  }
-
-  const modelUsage = last["modelUsage"] as Record<string, Record<string, number>> | undefined;
-  if (modelUsage && Object.keys(modelUsage).length > 0) {
-    const mainModel = Object.keys(modelUsage)[0]!;
-    if (!result.usage) result.usage = { inputTokens: 0, outputTokens: 0 };
-    if (!result.usage.model) result.usage.model = mainModel;
-    const mUsage = modelUsage[mainModel]!;
-    if (mUsage) {
-      // Overwrite or sum? The requirements say sum across turns, but claude's result event has the total.
-      // Wait, if it has `usage` already, maybe `modelUsage` is just a breakdown.
-      // Let's just trust `usage` for totals and extract model.
-    }
-  }
+  // The init event's model wins over the `modelUsage` guess.
+  result.usage = { ...claudeUsage(last), ...result.usage };
+  if (Object.keys(result.usage).length === 0) result.usage = null;
 
   if (last["is_error"] === true) {
     const text = typeof last["result"] === "string" ? last["result"].trim() : "";
@@ -186,11 +184,9 @@ function fromObject(parsed: Obj, result: ClaudeResult): ClaudeResult {
 
   // Extract metadata
   result.sessionId = (parsed["session_id"] as string) ?? (parsed["sessionId"] as string) ?? null;
-  result.costUsd =
-    (parsed["cost_usd"] as number) ??
-    (parsed["total_cost_usd"] as number) ??
-    (parsed["costUsd"] as number) ??
-    null;
+  const costUsd =
+    num(parsed["cost_usd"]) ?? num(parsed["total_cost_usd"]) ?? num(parsed["costUsd"]);
+  if (costUsd !== undefined) result.usage = { ...result.usage, costUsd };
 
   // Check for errors
   const error = parsed["error"] as string | Record<string, unknown> | undefined;

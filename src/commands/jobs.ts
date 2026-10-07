@@ -11,7 +11,8 @@ import {
   summarize,
   waitJob,
 } from "../jobs/api.js";
-import { isAgentId } from "../agents/registry.js";
+import { AGENT_IDS, isAgentId } from "../agents/registry.js";
+import { listModels } from "../jobs/models.js";
 import type { EventLevel } from "../agents/types.js";
 import { readEvents } from "../jobs/events.js";
 import { ackTerminalJob } from "../jobs/inbox.js";
@@ -20,6 +21,7 @@ import {
   renderEvent,
   renderEvents,
   renderList,
+  renderModels,
   renderObservation,
   renderResult,
 } from "../jobs/render.js";
@@ -318,6 +320,24 @@ export default defineCommand({
       args: idArg,
       run: userFacing(async ({ args }) => {
         console.log(summarize(await cancelJob(args.id)));
+      }),
+    }),
+    models: defineCommand({
+      meta: { name: "models", description: "List available models for each agent" },
+      args: {
+        provider: {
+          type: "positional",
+          required: false,
+          description: "Only list models for this agent (e.g. codex, agy)",
+        },
+        refresh: { type: "boolean", description: "Bypass cache and fetch a fresh list" },
+      },
+      run: userFacing(({ args }) => {
+        const providers = args.provider ? [parseProvider(args.provider)] : AGENT_IDS;
+        const output = providers
+          .map((p) => renderModels(listModels(p, { refresh: args.refresh })))
+          .join("\n\n");
+        console.log(output);
       }),
     }),
     list: defineCommand({

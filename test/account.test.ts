@@ -86,14 +86,14 @@ describe("startJob account validation", () => {
 
   it("refuses account for non-codex providers", () => {
     expect(() => startJob({ provider: "claude", prompt: "q", account: "zeus", cwd: home })).toThrow(
-      /only supported for the codex provider/,
+      /account applies only to codex/,
     );
   });
 
   it("refuses an unknown profile and lists available ones", () => {
     expect(() =>
       startJob({ provider: "codex", prompt: "q", account: "kratos", cwd: home }),
-    ).toThrow(/Codex account 'kratos' not found.*Available profiles: zeus/);
+    ).toThrow(/Codex account "kratos" not found.*Available: principal, zeus/);
   });
 
   it("resolves auto with limites script", () => {
@@ -150,7 +150,7 @@ describe("startJob account validation", () => {
         account: "zeus",
         cwd: home,
       }),
-    ).toThrow(/must run in its original account to inherit the thread/);
+    ).toThrow(/ran on Codex account .*its thread lives there/);
   });
 });
 

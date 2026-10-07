@@ -1,6 +1,7 @@
 import type { JobEvent } from "../agents/types.js";
 import { getAgent, installedOther } from "../agents/registry.js";
 import { elapsedSeconds, summarize, type Observation } from "./api.js";
+import type { ModelCatalog } from "./models.js";
 import type { Session } from "./sessions.js";
 import { TERMINAL, type Job } from "./store.js";
 
@@ -83,6 +84,28 @@ export function renderList(jobs: Job[]): string {
     for (const child of childrenOf(job.id)) add(child, `${indent}  `);
   };
   for (const job of jobs) if (!job.parentJob || !listed.has(job.parentJob)) add(job, "");
+  return lines.join("\n");
+}
+
+/** One provider's catalog as a small table, or why it has none. */
+export function renderModels(catalog: ModelCatalog): string {
+  const lines = [`Provider: ${catalog.provider}`];
+  if (!catalog.available) {
+    lines.push(`Available: false`);
+    if (catalog.note) lines.push(`Note: ${catalog.note}`);
+    return lines.join("\n");
+  }
+  lines.push(`Source: ${catalog.source}`);
+  if (catalog.note) lines.push(`Note: ${catalog.note}`);
+  lines.push("");
+  lines.push("ID | Label | Efforts | Default Effort");
+  lines.push("---|-------|---------|---------------");
+  for (const m of catalog.models) {
+    const efforts = m.efforts ? m.efforts.join(", ") : "-";
+    const defaultEffort = m.defaultEffort || "-";
+    const label = m.label || "-";
+    lines.push(`${m.id} | ${label} | ${efforts} | ${defaultEffort}`);
+  }
   return lines.join("\n");
 }
 

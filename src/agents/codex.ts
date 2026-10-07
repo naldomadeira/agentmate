@@ -1,6 +1,5 @@
-import os from "node:os";
-import path from "node:path";
 import { parseCodexOutput } from "../lib/codex-output-parser.js";
+import { codexHomeFor } from "../jobs/accounts.js";
 import type { Job } from "../jobs/store.js";
 import type { AgentAdapter, Invocation, JobEvent, Outcome } from "./types.js";
 
@@ -41,11 +40,10 @@ export const codexAdapter: AgentAdapter = {
 
   effortError: () => null,
 
+  /** A non-default account runs under its own CODEX_HOME, where its login and threads live. */
   env(job: Job): Record<string, string> | undefined {
-    if (!job.account || job.account === "principal") return undefined;
-    const profilesDir =
-      process.env["AGENTMATE_CODEX_PROFILES"] || path.join(os.homedir(), ".codex-profiles");
-    return { CODEX_HOME: path.join(profilesDir, job.account) };
+    const home = codexHomeFor(job.account);
+    return home ? { CODEX_HOME: home } : undefined;
   },
 
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {
@@ -67,7 +65,7 @@ export const codexAdapter: AgentAdapter = {
       text: r.agentMessage,
       sessionId: r.threadId,
       errors: r.errors,
-      usage: r.usage || undefined,
+      ...(r.usage ? { usage: r.usage } : {}),
     };
     if (exitCode !== 0 && !outcome.text && stderr.trim()) outcome.errors.push(stderr.trim());
     return outcome;

@@ -1,3 +1,4 @@
+import type { Usage } from "../agents/types.js";
 type Obj = Record<string, unknown>;
 
 /** What `parseAgyOutput` makes of an Antigravity CLI (`agy`) run. */
@@ -13,14 +14,8 @@ export interface AgyResult {
   partial?: boolean;
   /** A final `result` event or the single JSON object of `--output-format json` was seen. */
   completed: boolean;
-  usage?: {
-    model?: string;
-    inputTokens?: number;
-    outputTokens?: number;
-    reasoningTokens?: number;
-    cachedInputTokens?: number;
-    costUsd?: number;
-  };
+  /** The model the `init` event names; agy reports no token counts. */
+  usage?: Usage;
 }
 
 const isObject = (value: unknown): value is Obj =>

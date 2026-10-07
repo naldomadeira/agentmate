@@ -18,10 +18,12 @@ import {
   type StartOptions,
 } from "./jobs/api.js";
 import { readEvents } from "./jobs/events.js";
+import { listModels } from "./jobs/models.js";
 import { ackTerminalJob, inboxToolText } from "./jobs/inbox.js";
 import {
   renderEvents,
   renderList,
+  renderModels,
   renderObservation,
   renderResult,
   renderSession,
@@ -595,6 +597,23 @@ server.registerTool(
     },
   },
   guard(({ cwd, limit, parent }) => renderList(listJobs({ cwd, limit, parent }))),
+);
+
+server.registerTool(
+  "mate_models",
+  {
+    title: "List available models",
+    description:
+      "List the model ids each agent CLI accepts, and their reasoning efforts, so a job's model can be checked before dispatch.",
+    inputSchema: {
+      provider: provider.optional().describe("Only list models for this agent"),
+      refresh: z.boolean().optional().describe("Bypass cache and fetch a fresh list"),
+    },
+  },
+  guard(({ provider, refresh }) => {
+    const providers = provider ? [provider] : AGENT_IDS;
+    return providers.map((p) => renderModels(listModels(p, { refresh }))).join("\n\n");
+  }),
 );
 
 server.registerTool(
