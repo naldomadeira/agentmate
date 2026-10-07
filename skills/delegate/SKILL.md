@@ -19,8 +19,8 @@ Use `delegate` for work that fits none of them, with `mate_start` and `role` lef
 ## Workflow
 
 1. **Brief** — the worker has no context besides your prompt. State the goal, the files or diff to look at,
-   and the shape of the answer you want.
-2. **Start** — `mate_start` (CLI: `npx -y agentmate jobs start <provider> "<prompt>" [--role <role>]`).
+   and the shape of the answer you want. Pass `session` to attach fixed session context and notes.
+2. **Start** — `mate_start` with `provider`, `prompt`, optional `effort`, `model`, `account` (Codex only), `session`, `role` (CLI: `npx -y agentmate jobs start <provider> "<prompt>" [--role <role>] [--effort <e>] [--account <acc>] [--session <id>]`).
    Default mode is `read-only`; pass `mode: write` only when the task must edit files, and say so in the briefing.
 3. **Wait** — `mate_wait` (CLI: `npx -y agentmate jobs wait <id>`). Expiring a wait does **not** stop the job; call it again.
    Do other independent work in between instead of polling.
