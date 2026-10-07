@@ -303,6 +303,28 @@ export default defineCommand({
         console.log(summarize(await cancelJob(args.id)));
       }),
     }),
+    models: defineCommand({
+      meta: { name: "models", description: "List available models for each agent" },
+      args: {
+        provider: {
+          type: "positional",
+          required: false,
+          description: "Only list models for this agent (e.g. codex, agy)",
+        },
+        refresh: { type: "boolean", description: "Bypass cache and fetch a fresh list" },
+      },
+      run: userFacing(async ({ args }) => {
+        const { listModels } = await import("../jobs/models.js");
+        const { renderModels } = await import("../jobs/render.js");
+        const { AGENT_IDS } = await import("../agents/registry.js");
+
+        const providers = args.provider ? [parseProvider(args.provider)] : AGENT_IDS;
+        const output = providers
+          .map((p) => renderModels(listModels(p, { refresh: args.refresh })))
+          .join("\n\n");
+        console.log(output);
+      }),
+    }),
     list: defineCommand({
       meta: { name: "list", description: "List recent jobs" },
       args: {

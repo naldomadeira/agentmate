@@ -8,6 +8,9 @@ import {
   firstAvailableOther,
   getAgent,
 } from "../agents/registry.js";
+import { agyModelId } from "../agents/agy.js";
+import { listModels, getClosestModels } from "./models.js";
+
 import {
   buildAskPrompt,
   buildCrossreviewPrompt,
@@ -314,6 +317,45 @@ export function startJob(options: StartOptions): Job {
       ? adapter.effortError({ effort, model })
       : `${provider} cannot apply a reasoning effort. Drop effort.`;
     if (refusal) throw new Error(refusal);
+  }
+
+  if (model && process.env["AGENTMATE_SKIP_MODEL_CHECK"] !== "1") {
+    const catalog = listModels(provider);
+    if (catalog.available) {
+      if (provider === "codex") {
+        const m = catalog.models.find((x) => x.id === model);
+        if (!m) {
+          const closest = getClosestModels(
+            model,
+            catalog.models.map((x) => x.id),
+            3,
+          );
+          throw new Error(
+            `Unknown codex model "${model}". Closest: ${closest.join(", ")}. Run mate_models to see all.`,
+          );
+        }
+        if (effort && m.efforts && !m.efforts.includes(effort)) {
+          throw new Error(
+            `Model ${model} does not support effort "${effort}". Supported efforts: ${m.efforts.join(", ")}.`,
+          );
+        }
+      } else if (provider === "agy") {
+        const finalId = agyModelId(model, effort);
+        const validIds = new Set<string>();
+        for (const m of catalog.models) {
+          validIds.add(m.id);
+          if (m.efforts) {
+            for (const e of m.efforts) validIds.add(`${m.id}-${e}`);
+          }
+        }
+        if (!validIds.has(finalId)) {
+          const closest = getClosestModels(finalId, Array.from(validIds), 3);
+          throw new Error(
+            `Unknown agy model "${finalId}". Closest: ${closest.join(", ")}. Run mate_models to see all.`,
+          );
+        }
+      }
+    }
   }
   // The partner is settled before anything is spawned: a default pointing at an agent that is not
   // installed would otherwise fail only after the implementer had already edited files.

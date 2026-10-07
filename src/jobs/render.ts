@@ -86,6 +86,27 @@ export function renderList(jobs: Job[]): string {
   return lines.join("\n");
 }
 
+export function renderModels(catalog: import("./models.js").ModelCatalog): string {
+  const lines = [`Provider: ${catalog.provider}`];
+  if (!catalog.available) {
+    lines.push(`Available: false`);
+    if (catalog.note) lines.push(`Note: ${catalog.note}`);
+    return lines.join("\n");
+  }
+  lines.push(`Source: ${catalog.source}`);
+  if (catalog.note) lines.push(`Note: ${catalog.note}`);
+  lines.push("");
+  lines.push("ID | Label | Efforts | Default Effort");
+  lines.push("---|-------|---------|---------------");
+  for (const m of catalog.models) {
+    const efforts = m.efforts ? m.efforts.join(", ") : "-";
+    const defaultEffort = m.defaultEffort || "-";
+    const label = m.label || "-";
+    lines.push(`${m.id} | ${label} | ${efforts} | ${defaultEffort}`);
+  }
+  return lines.join("\n");
+}
+
 /** A session, its notes (the tail the workers see) and the jobs started in it, newest first. */
 export function renderSession(session: Session, notes: string, jobs: Job[]): string {
   const sections = [

@@ -576,6 +576,25 @@ server.registerTool(
 );
 
 server.registerTool(
+  "mate_models",
+  {
+    title: "List available models",
+    description:
+      "List the model ids each agent CLI accepts, and their reasoning efforts, so a job's model can be checked before dispatch.",
+    inputSchema: {
+      provider: provider.optional().describe("Only list models for this agent"),
+      refresh: z.boolean().optional().describe("Bypass cache and fetch a fresh list"),
+    },
+  },
+  guard(async ({ provider, refresh }) => {
+    const { listModels } = await import("./jobs/models.js");
+    const { renderModels } = await import("./jobs/render.js");
+    const providers = provider ? [provider] : AGENT_IDS;
+    return providers.map((p) => renderModels(listModels(p, { refresh }))).join("\n\n");
+  }),
+);
+
+server.registerTool(
   "mate_inbox",
   {
     title: "Read the inbox",
