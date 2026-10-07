@@ -10,11 +10,11 @@ Ask the other model to review work you or the user produced. The first argument 
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_review` with `provider`, `target`, optional `focus` (for example "concurrency", "security", "public API compatibility") and optional `context`. It returns a job id immediately; collect the result with `mate_wait`. Pass `waitSeconds` to wait inside the same call.
+1. **MCP (preferred)** — call `mate_review` with `provider`, `target`, optional `focus` (for example "concurrency", "security", "public API compatibility"), `allowCommands` (widen sandbox so the reviewer can run tests/commands to verify claims; denied on Gemini/agy), `effort`, `model`, `account` (Codex only) and `context`. It returns a job id immediately; collect the result with `mate_wait`. Pass `waitSeconds` to wait inside the same call.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agentmate jobs start <provider> "<review briefing>" --role review
+   npx -y agentmate jobs start <provider> "<review briefing>" --role review [--allow-commands] [--effort <effort>]
    npx -y agentmate jobs wait <id> --timeout 10m
    ```
 

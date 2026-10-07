@@ -10,11 +10,11 @@ Delegate an investigation and receive a structured report: findings with evidenc
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_research` with `provider`, `topic`, and optionally `questions` (the specific things you need answered), `scope` (where to look: directories, docs, the web) and `context`. It returns a job id; collect it with `mate_wait`. Research can take minutes, so do other work in between.
+1. **MCP (preferred)** — call `mate_research` with `provider`, `topic`, and optionally `questions` (the specific things you need answered), `scope` (where to look: directories, docs, the web), `effort`, `model`, `account` (Codex only) and `context`. It returns a job id; collect it with `mate_wait`. Research can take minutes, so do other work in between.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agentmate jobs start <provider> "<research briefing>" --role research
+   npx -y agentmate jobs start <provider> "<research briefing>" --role research [--effort <effort>]
    npx -y agentmate jobs wait <id> --timeout 10m
    ```
 

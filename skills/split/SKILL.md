@@ -16,11 +16,11 @@ goal -> plan (1..maxParts parts, closed interfaces, no shared files)
 
 ## How to run it
 
-1. **MCP (preferred)**: call `mate_split` with `provider` (who plans), `partner` (the other agent, default: the first installed one), `goal`, optional `acceptance`, `maxParts` (2 to 4, default 3), `mode` (`read-only` default or `write`), `session`, `cwd`, `model`, `timeoutMinutes`. It returns the workflow's job id; follow it with `mate_observe`, collect it with `mate_wait` / `mate_result`.
+1. **MCP (preferred)**: call `mate_split` with `provider` (who plans), `partner` (the other agent, default: the first installed one), `goal`, optional `acceptance`, `maxParts` (2 to 4, default 3), `mode` (`read-only` default or `write`), `session`, `cwd`, `model`, `effort`, `account` (planner and same-agent parts), `timeoutMinutes`. It returns the workflow's job id; follow it with `mate_observe`, collect it with `mate_wait` / `mate_result`.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agentmate jobs start <provider> "<goal>" --role split [--max-parts 3] [--mode write] --cwd .
+   npx -y agentmate jobs start <provider> "<goal>" --role split [--max-parts 3] [--mode write] [--effort <e>] [--account <acc>] --cwd .
    npx -y agentmate jobs wait <id> --timeout 10m
    ```
 
@@ -46,7 +46,7 @@ goal -> plan (1..maxParts parts, closed interfaces, no shared files)
 ## Rules
 
 - When you resume a turn with jobs in progress, call `mate_inbox` before `mate_wait`: it reports what finished or failed since you last looked.
-- Only a top-level session can start it; a worker cannot. `mate_cancel` stops the workflow and its running children.
+- Only a top-level session can start it; a worker cannot. `model`, `effort` and `account` apply to the planner and same-agent parts. `mate_cancel` stops the workflow and its running children.
 - Parts use only the provider and the partner. A `gemini` or `agy` reviewer (experimental) gets the part's diff in its briefing because it cannot run `git diff`.
 - It costs a plan, one job per part and one review per part. For one change use `implement`; for one opinion use `review`.
 - In write mode run one split per working tree at a time and do not edit the repository meanwhile.
