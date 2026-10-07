@@ -1,3 +1,5 @@
+import type { Usage } from "../agents/types.js";
+
 export interface ExecOptions {
   command: string;
   args: string[];
@@ -32,17 +34,16 @@ export interface CodexResult {
     exitCode: number | null;
     output: string;
   }>;
-  usage: {
-    inputTokens: number;
-    outputTokens: number;
-  } | null;
+  /** Effective model and token counts summed over turns; null when the stream reported none. */
+  usage: Usage | null;
   errors: string[];
 }
 
 export interface ClaudeResult {
   resultText: string;
   sessionId: string | null;
-  costUsd: number | null;
+  /** Effective model, tokens and cost; null when the stream reported none. */
+  usage: Usage | null;
   errors: string[];
   /** `resultText` is the last assistant text of a stream that ended without a `result` event. */
   partial?: boolean;

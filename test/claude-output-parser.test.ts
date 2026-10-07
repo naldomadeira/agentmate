@@ -57,7 +57,7 @@ describe("parseClaudeOutput", () => {
     });
 
     const result = parseClaudeOutput(json);
-    expect(result.costUsd).toBe(0.05);
+    expect(result.usage?.costUsd).toBe(0.05);
   });
 
   it("handles nested error object", () => {
@@ -114,7 +114,7 @@ describe("parseClaudeOutput (stream-json)", () => {
     const result = parseClaudeOutput(jsonl(STREAM));
     expect(result.resultText).toBe("Hello.");
     expect(result.sessionId).toBe("s-real");
-    expect(result.costUsd).toBe(0.0448268);
+    expect(result.usage?.costUsd).toBe(0.0448268);
     expect(result.errors).toEqual([]);
   });
 

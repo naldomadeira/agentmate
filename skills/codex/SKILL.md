@@ -27,14 +27,15 @@ When the request is ambiguous, default to `mate_ask` (read-only, answers in the 
 If the `mate_*` tools are not loaded, use the same roles from a shell:
 
 ```bash
-npx -y agentmate jobs ask codex "<question>" --wait 120s
-npx -y agentmate jobs start codex "<briefing>" --role <review|research|plan|implement|teamlead>
+npx -y agentmate jobs ask codex "<question>" --wait 120s [--effort <e>] [--account <acc>]
+npx -y agentmate jobs start codex "<briefing>" --role <review|research|plan|implement|teamlead> [--effort <e>] [--account <acc>]
 npx -y agentmate jobs wait <id> --timeout 10m   # exit 0 done, 1 failed, 2 still running
 ```
 
 ## Briefing and result
 
 - OpenAI Codex has no memory of this session. Put the goal, the files or diff, constraints and the wanted answer shape in the briefing; read referenced files first so you can name them exactly.
+- Pass `effort` (`low`, `medium`, `high`, `xhigh`) for reasoning effort and `account` (profile under `~/.codex-profiles/<name>` or `auto`) to pick the Codex account.
 - Run read-only unless the user clearly authorized edits. Never use `mate_implement` or `mode: write` on an ambiguous request.
 - Summarize the result in your own words, verify anything you will act on, and own the decision. Do not paste raw output.
 

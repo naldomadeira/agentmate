@@ -26,12 +26,22 @@ export interface Invocation {
   args: string[];
 }
 
+export interface Usage {
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  cachedInputTokens?: number;
+  costUsd?: number;
+}
+
 export interface Outcome {
   text: string;
   sessionId: string | null;
   errors: string[];
   /** `text` is what a stream printed before it ended without a final result. */
   partial?: boolean;
+  usage?: Usage;
 }
 
 export type EventLevel = "important" | "status" | "fyi";
@@ -63,6 +73,14 @@ export interface AgentAdapter {
   teamleadNeedsWrite: boolean;
   /** The error for a read-only team lead on an agent with `teamleadNeedsWrite`. */
   teamleadWriteReason?: string;
+  /**
+   * Why this agent cannot honor `job.effort` (with `job.model`), or null when it can. Called by
+   * `startJob` before anything is spawned, so an effort is never dropped in silence. An adapter
+   * without it refuses every effort.
+   */
+  effortError?(job: Pick<Job, "effort" | "model">): string | null;
+  /** Extra environment variables the agent CLI needs for this job. */
+  env?(job: Job): Record<string, string> | undefined;
   buildInvocation(job: Job, resumeSessionId?: string): Invocation;
   parseOutcome(stdout: string, stderr: string, exitCode: number): Outcome;
   /** Turns one stdout line into filtered events; `job` is left empty for the worker to fill. */

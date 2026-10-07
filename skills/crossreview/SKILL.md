@@ -15,11 +15,11 @@ implement (A, write) -> review (B, read-only) -> Verdict: approve          -> do
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_crossreview` with `provider` (who implements), `task`, optional `partner`, `acceptance`, `maxRounds` (1 to 5, default 2), `cwd`, `model`, `timeoutMinutes`. It returns the workflow's job id; follow it with `mate_observe`, collect it with `mate_wait` / `mate_result`. `mate_start` with `role: crossreview` works too.
+1. **MCP (preferred)** — call `mate_crossreview` with `provider` (who implements), `task`, optional `partner`, `acceptance`, `maxRounds` (1 to 5, default 2), `cwd`, `model`, `effort`, `account` (implementer only), `timeoutMinutes`. It returns the workflow's job id; follow it with `mate_observe`, collect it with `mate_wait` / `mate_result`. `mate_start` with `role: crossreview` works too.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agentmate jobs start <provider> "<task briefing>" --role crossreview [--max-rounds 3] --cwd .
+   npx -y agentmate jobs start <provider> "<task briefing>" --role crossreview [--max-rounds 3] [--effort <e>] [--account <acc>] --cwd .
    npx -y agentmate jobs wait <id> --timeout 10m
    ```
 
@@ -43,6 +43,6 @@ implement (A, write) -> review (B, read-only) -> Verdict: approve          -> do
 - When you resume a turn with jobs in progress, call `mate_inbox` before `mate_wait`: it reports what finished or failed since you last looked.
 - A `gemini` or `agy` reviewer (experimental) cannot run `git diff`, so the diff is embedded in its briefing (capped at 30 000 characters); a `gemini` implementer cannot be resumed, so a later round starts a fresh job with the findings (an `agy` implementer continues its conversation).
 - It edits files: the implementer runs in **write mode**. Use it only when the user authorized edits, and keep one write job per working tree.
-- Only a top-level session can start it; a worker cannot. `model` applies to the implementer only.
+- Only a top-level session can start it; a worker cannot. `model`, `effort` and `account` apply to the implementer only.
 - The reviewer reads the uncommitted diff, so do not commit between rounds. `mate_cancel` stops the workflow and its running child.
 - A cross-review costs at least two model runs per round. For one opinion on existing code use `review`.

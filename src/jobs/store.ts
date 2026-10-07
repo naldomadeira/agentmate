@@ -3,10 +3,13 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentId } from "../agents/types.js";
+import type { AgentId, Usage } from "../agents/types.js";
 
 export type Provider = AgentId;
 export type JobMode = "read-only" | "write";
+/** Reasoning effort a job asks of its model; each adapter maps it to its CLI or refuses it. */
+export type Effort = "low" | "medium" | "high" | "xhigh";
+export const EFFORTS = ["low", "medium", "high", "xhigh"] as const satisfies readonly Effort[];
 export type JobStatus =
   | "queued"
   | "running"
@@ -128,6 +131,16 @@ export interface Job {
   prompt: string;
   cwd: string;
   model?: string;
+  /** Reasoning effort; unset means the agent's own configured default. */
+  effort?: Effort;
+  /** What the CLI reported running: effective model, tokens and cost. */
+  usage?: Usage;
+  /** mate_review only: widens read-only sandbox so reviewer may run commands to verify. */
+  allowCommands?: boolean;
+  /** Codex profile account name; 'principal' is the default. */
+  account?: string;
+  /** Note on account resolution, e.g. when 'auto' fell back to principal. */
+  accountNote?: string;
   timeoutMs: number;
   status: JobStatus;
   createdAt: string;

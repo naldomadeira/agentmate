@@ -11,7 +11,8 @@ import {
   summarize,
   waitJob,
 } from "../jobs/api.js";
-import { isAgentId } from "../agents/registry.js";
+import { AGENT_IDS, isAgentId } from "../agents/registry.js";
+import { listModels } from "../jobs/models.js";
 import type { EventLevel } from "../agents/types.js";
 import { readEvents } from "../jobs/events.js";
 import { ackTerminalJob } from "../jobs/inbox.js";
@@ -20,15 +21,18 @@ import {
   renderEvent,
   renderEvents,
   renderList,
+  renderModels,
   renderObservation,
   renderResult,
 } from "../jobs/render.js";
 import {
+  EFFORTS,
   JOB_ROLES,
   MAX_PARTS_LIMIT,
   MAX_ROUNDS_LIMIT,
   MIN_MAX_PARTS,
   TERMINAL,
+  type Effort,
   type JobMode,
   type JobRole,
   type Provider,
@@ -43,6 +47,13 @@ const parseProvider = (value: string, name = "provider"): Provider => {
   if (!isAgentId(value))
     throw new Error(`${name} must be codex or claude (or gemini/agy, experimental)`);
   return value;
+};
+
+const parseEffort = (value: string | undefined): Effort | undefined => {
+  if (value === undefined) return undefined;
+  if (!EFFORTS.includes(value as Effort))
+    throw new Error(`effort must be one of: ${EFFORTS.join(", ")}`);
+  return value as Effort;
 };
 
 /** Parses `90s` / `10m` (bare numbers are minutes) into milliseconds. */
@@ -88,6 +99,11 @@ export default defineCommand({
         prompt: { type: "positional", required: true, description: "Task briefing" },
         cwd: { type: "string", description: "Working directory" },
         model: { type: "string", description: "Model override" },
+        effort: { type: "string", description: `Reasoning effort: ${EFFORTS.join(", ")}` },
+        account: {
+          type: "string",
+          description: "Codex account name, or 'auto' to resolve the recommended one",
+        },
         mode: { type: "string", description: "read-only (default) or write" },
         role: {
           type: "string",
@@ -112,6 +128,10 @@ export default defineCommand({
           description:
             "teamlead, crossreview and split only: the agent that works with the provider (default: the first installed other agent); must differ from it",
         },
+        "allow-commands": {
+          type: "boolean",
+          description: "role review only: allow reviewer to run commands to verify claims",
+        },
       },
       run: userFacing(({ args }) => {
         const provider = parseProvider(args.provider);
@@ -119,6 +139,8 @@ export default defineCommand({
           throw new Error("mode must be read-only or write");
         if (args.role && !JOB_ROLES.includes(args.role as JobRole))
           throw new Error(`role must be one of: ${JOB_ROLES.join(", ")}`);
+        if (args["allow-commands"] && args.role !== "review")
+          throw new Error("allow-commands applies only with --role review");
         const timeoutMinutes = args.timeout === undefined ? undefined : Number(args.timeout);
         if (
           timeoutMinutes !== undefined &&
@@ -159,6 +181,9 @@ export default defineCommand({
           role: args.role as JobRole | undefined,
           cwd: args.cwd,
           model: args.model,
+          effort: parseEffort(args.effort),
+          allowCommands: args["allow-commands"] ? true : undefined,
+          account: args.account,
           mode: args.mode as JobMode | undefined,
           timeoutMinutes,
           continueJob: args.continue,
@@ -182,6 +207,11 @@ export default defineCommand({
         wait: { type: "string", description: "Max wait, e.g. 90s or 2m (default 120s)" },
         cwd: { type: "string", description: "Working directory" },
         model: { type: "string", description: "Model override" },
+        effort: { type: "string", description: `Reasoning effort: ${EFFORTS.join(", ")}` },
+        account: {
+          type: "string",
+          description: "Codex account name, or 'auto' to resolve the recommended one",
+        },
       },
       run: userFacing(async ({ args }) => {
         const { job, text } = await askJob(
@@ -191,6 +221,8 @@ export default defineCommand({
             fields: { question: args.question },
             cwd: args.cwd,
             model: args.model,
+            effort: parseEffort(args.effort),
+            account: args.account,
           },
           parseDuration(args.wait ?? "120s"),
         );
@@ -288,6 +320,24 @@ export default defineCommand({
       args: idArg,
       run: userFacing(async ({ args }) => {
         console.log(summarize(await cancelJob(args.id)));
+      }),
+    }),
+    models: defineCommand({
+      meta: { name: "models", description: "List available models for each agent" },
+      args: {
+        provider: {
+          type: "positional",
+          required: false,
+          description: "Only list models for this agent (e.g. codex, agy)",
+        },
+        refresh: { type: "boolean", description: "Bypass cache and fetch a fresh list" },
+      },
+      run: userFacing(({ args }) => {
+        const providers = args.provider ? [parseProvider(args.provider)] : AGENT_IDS;
+        const output = providers
+          .map((p) => renderModels(listModels(p, { refresh: args.refresh })))
+          .join("\n\n");
+        console.log(output);
       }),
     }),
     list: defineCommand({

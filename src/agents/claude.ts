@@ -31,7 +31,7 @@ const WRITE_CLAUDE_TOOLS = [
   "Bash(git commit *)",
 ];
 /** Never reachable by a read-only job, whatever the user's own settings allow. */
-const READ_ONLY_DENIED_CLAUDE_TOOLS = ["Edit", "Write", "NotebookEdit"];
+export const READ_ONLY_DENIED_CLAUDE_TOOLS = ["Edit", "Write", "NotebookEdit"];
 /** Lets a claude team lead run the AgentMate CLI's `jobs` subcommand, pinned to this version, to delegate to codex. */
 const TEAMLEAD_CLAUDE_TOOLS = [
   `Bash(npx -y agentmate@${VERSION} jobs *)`,
@@ -47,7 +47,14 @@ function extraWriteTools(): string[] {
 }
 
 /** Tools claude may use without prompting. In write mode this only adds to `acceptEdits`. */
-function claudeAllowedTools(job: Job): string[] {
+export function claudeAllowedTools(job: Job): string[] {
+  if (job.role === "review" && job.allowCommands) {
+    // A review with commands allowed may run arbitrary shell commands (tests, builds, DB sockets)
+    // to verify claims, so unrestricted Bash is allowed. Edit and Write remain denied because
+    // buildInvocation passes READ_ONLY_DENIED_CLAUDE_TOOLS ("Edit", "Write", "NotebookEdit")
+    // to --disallowedTools for every read-only job, ensuring files cannot be modified.
+    return ["Read", "Grep", "Glob", "Bash"];
+  }
   const tools =
     job.mode === "write"
       ? [...WRITE_CLAUDE_TOOLS, ...extraWriteTools()]
@@ -113,6 +120,8 @@ export const claudeAdapter: AgentAdapter = {
   teamleadNeedsWrite: false,
   versionArgs: ["--version"],
 
+  effortError: () => null,
+
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {
     const args = ["-p", "--output-format", "stream-json", "--verbose"];
     // Without this the worker starts every MCP server of the user (claude.ai connectors and plugins
@@ -120,6 +129,7 @@ export const claudeAdapter: AgentAdapter = {
     if (process.env["AGENTMATE_CLAUDE_INHERIT_MCP"] !== "1") args.push("--strict-mcp-config");
     if (resumeSessionId) args.push("--resume", resumeSessionId);
     if (job.model) args.push("--model", job.model);
+    if (job.effort) args.push("--effort", job.effort);
     if (job.mode === "write") args.push("--permission-mode", "acceptEdits");
     // `--allowedTools <tool>` is variadic and would swallow the positional prompt, so each is `=`-joined.
     for (const tool of claudeAllowedTools(job)) args.push(`--allowedTools=${tool}`);
@@ -137,6 +147,7 @@ export const claudeAdapter: AgentAdapter = {
       sessionId: r.sessionId,
       errors: r.errors,
       ...(r.partial ? { partial: true } : {}),
+      ...(r.usage ? { usage: r.usage } : {}),
     };
     if (exitCode !== 0 && !outcome.text && stderr.trim()) outcome.errors.push(stderr.trim());
     return outcome;

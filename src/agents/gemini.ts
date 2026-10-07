@@ -84,6 +84,11 @@ export function createGeminiAdapter(): AgentAdapter {
       "A Gemini team lead needs mode write: delegation requires the shell, which Gemini only allows in yolo mode.",
     versionArgs: ["--version"],
 
+    effortError: ({ effort }) =>
+      effort
+        ? `gemini has no reasoning effort setting in headless mode, so effort ${effort} cannot be applied. Drop effort, or use codex, claude or agy.`
+        : null,
+
     resetStream(): void {
       pendingText = "";
     },

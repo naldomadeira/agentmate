@@ -29,13 +29,23 @@ export function buildReviewPrompt(options: {
   context?: string;
   /** False for an agent that cannot run the shell: it is told to rely on the files and the context instead of git. */
   shell?: boolean;
+  /** When true, reviewer may run commands/tests to verify claims, but must not edit files. */
+  commandsAllowed?: boolean;
 }): string {
   const focus = options.focus ? `\n\nFocus especially on: ${options.focus}` : "";
   const inspect =
     options.shell === false
       ? "You cannot run shell commands, so inspect the change with your file-reading tools and the diff or findings given in the context."
       : "Use read-only git commands (diff, log, show, status) to inspect it.";
-  return `Review the following change as a rigorous, skeptical code reviewer. ${READ_ONLY_RULE} ${inspect}
+  const commandsPolicy = options.commandsAllowed
+    ? "You may run tests and commands to verify claims. Your sandbox would let you change files, but you must not: no edits, no formatting, no git commands that change the working tree or history."
+    : "The sandbox is read-only; commands that need to write (tests with caches, DB sockets) may fail because of the sandbox.";
+  const verificationSection = options.commandsAllowed
+    ? `3. **Verified** - For each claim verified by running something, report the command and its result ("verified: <cmd> passed/failed")
+4. **Not verified** - What you did not verify`
+    : `3. **Not verified** - What you could not verify and why (sandbox vs. other)`;
+  const verdictIndex = options.commandsAllowed ? 5 : 4;
+  return `Review the following change as a rigorous, skeptical code reviewer. ${READ_ONLY_RULE} ${inspect} ${commandsPolicy}
 
 Review target: ${options.target}${focus}${withContext(options.context)}
 
@@ -44,7 +54,8 @@ Report only real problems: correctness bugs, security issues, data loss, race co
 Structure your response with:
 1. **Findings** - Ordered by severity (critical, high, medium, low). For each: severity, file:line, what is wrong, and the **Failure scenario** (the concrete input or sequence that breaks it)
 2. **Suggested fixes** - One line per finding
-3. **Verdict** - A one-sentence reason, then, as the very last line of your response, exactly one of these two lines and nothing after it:
+${verificationSection}
+${verdictIndex}. **Verdict** - A one-sentence reason, then, as the very last line of your response, exactly one of these two lines and nothing after it:
 Verdict: approve
 Verdict: request-changes`;
 }

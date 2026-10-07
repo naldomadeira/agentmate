@@ -140,7 +140,7 @@ O Codex limita uma chamada de ferramenta MCP a cerca de 60 segundos por padrão.
 
 Outras seis skills completam o conjunto:
 
-- `jobs` lista, observa, coleta e cancela jobs.
+- `jobs` lista, observa, coleta e cancela jobs, e inspeciona modelos com `mate_models`.
 - `delegate` é o caminho genérico (`mate_start`) para trabalho que não cabe em nenhum papel.
 - `codex`, `claude`, `gemini` e `agy` (os dois últimos experimentais) são atalhos que encaminham um pedido simples ao papel certo, já com o provider definido.
 - `init` prepara um repositório para o AgentMate (veja [Preparar um repositório](#preparar-um-repositório)).
@@ -281,12 +281,13 @@ Cada job também grava um log de eventos append-only (`events.jsonl`). Tanto o C
 | Ler eventos do job       | `mate_events`                                                                                                        | `jobs events <id> [--follow]`        |
 | Cancelar trabalho        | `mate_cancel`                                                                                                        | `jobs cancel <id>`                   |
 | Encontrar jobs           | `mate_list`                                                                                                          | `jobs list [--cwd] [--parent <id>]`  |
-| Sessões                  | `mate_session_start`, `mate_session_show`, `mate_session_notes`, `mate_session_list`                                 | `sessions start/show/notes/list`, `jobs start --session <id>` |
+| Listar modelos           | `mate_models`                                                                                                        | `jobs models [provider] [--refresh]` |
+| Sessões                  | `mate_session_start`, `mate_session_context`, `mate_session_show`, `mate_session_notes`, `mate_session_list`          | `sessions start/context/show/notes/list`, `jobs start --session <id>` |
 | Caixa de entrada         | `mate_inbox`                                                                                                         | `inbox [--cwd] [--all] [--no-ack] [--follow]` |
 
 ### Sessões
 
-Uma sessão é contexto compartilhado entre jobs e agentes. `mate_session_start(title, cwd?)` cria uma em `~/.agentmate/sessions/<id>/` (`session.json` mais `notes.md`; os membros são derivados dos jobs que carregam o id da sessão, então o `session.json` não tem uma lista `jobs`); passe o id como `session` a qualquer ferramenta de papel ou ao `mate_start` (CLI: `jobs start ... --session <id>`) e o job fica registrado nela. `mate_session_notes(id, text, author?)` acrescenta uma nota (cada nota é limitada a 2000 caracteres), `mate_session_show(id)` mostra o final das notas e os jobs da sessão, e `mate_session_list(cwd?, limit?)` lista as sessões. Quando a sessão tem notas, todo worker iniciado nela recebe as notas **depois** da tarefa, sob `## Shared session notes`, dentro de um bloco de código e apresentadas como dados escritos por outros agentes, não como instruções. A injeção é limitada a 4000 caracteres de entradas inteiras (as mais recentes que couberem), qualquer que seja o papel; por isso mantenha as notas curtas e factuais: decisões, restrições, locais de arquivos. Os jobs que um workflow inicia (`crossreview`, `split`) herdam a sessão do workflow, e o `split` cria uma sessão própria quando você não passa nenhuma e grava o plano nas notas. As notas são texto simples em `~/.agentmate`; não coloque segredos nelas.
+Uma sessão é contexto compartilhado entre jobs e agentes. `mate_session_start(title, cwd?, context?)` cria uma em `~/.agentmate/sessions/<id>/` (`session.json`, `notes.md` e o opcional `context.md`; os membros são derivados dos jobs que carregam o id da sessão, então o `session.json` não tem uma lista `jobs`); passe o id como `session` a qualquer ferramenta de papel ou ao `mate_start` (CLI: `jobs start ... --session <id>`) e o job fica registrado nela. A sessão guarda um briefing fixo (especificação, decisões, como testar, até 16 000 caracteres) definido na criação ou via `mate_session_context(session, context, mode? = "replace" | "append")` (CLI: `sessions start --context/--context-file`, `sessions context <id> [text|--file] [--append]`). Todo worker iniciado na sessão recebe esse contexto fixo na íntegra sob `## Session context (session <id>)` antes das notas, para que cada job passe apenas o seu foco específico. Só a sessão hospedeira pode defini-lo; um worker não pode. `mate_session_notes(id, text, author?)` acrescenta uma nota (cada nota é limitada a 2000 caracteres), `mate_session_show(id)` mostra o contexto (até ~2 KB), o final das notas e os jobs da sessão, e `mate_session_list(cwd?, limit?)` lista as sessões. Quando a sessão tem notas, todo worker iniciado nela recebe as notas **depois** da tarefa e do contexto, sob `## Shared session notes`, dentro de um bloco de código e apresentadas como dados escritos por outros agentes, não como instruções. A injeção é limitada a 4000 caracteres de entradas inteiras (as mais recentes que couberem), qualquer que seja o papel; por isso mantenha as notas curtas e factuais: decisões, restrições, locais de arquivos. Os jobs que um workflow inicia (`crossreview`, `split`) herdam a sessão do workflow, e o `split` cria uma sessão própria quando você não passa nenhuma e grava o plano nas notas. As notas e o contexto são texto simples em `~/.agentmate`; não coloque segredos neles.
 
 **Resumo ao iniciar a sessão.** No Claude Code o plugin também registra um hook `SessionStart` (`hooks/hooks.json`). Ao abrir uma sessão, ele imprime uma linha (no máximo 400 caracteres) sobre os jobs iniciados nesse diretório ou em um subdiretório: os que terminaram desde a última sessão ali (os `quota_exhausted` primeiro, marcados com "needs hand-off"), quantos ainda rodam e quantos estão obsoletos (o worker sumiu). Fica em silêncio quando não há nada a relatar e por 120 segundos após o último resumo no mesmo diretório; na primeira vez em um diretório, olha as últimas 24 horas. Defina `AGENTMATE_HOOK_QUIET=1` para desligá-lo. Ele nunca derruba uma sessão: qualquer erro sai em silêncio. É um recurso só do Claude Code; o Codex não tem hook equivalente.
 
@@ -386,6 +387,51 @@ npx -y agentmate jobs start codex "Resolva o achado de maior prioridade." --cont
 
 `jobs wait --timeout` (por exemplo `10m` ou `90s`) limita apenas quanto tempo o comando espera. Para limitar quanto tempo um job pode rodar, use `jobs start --timeout <minutos>`: um número positivo de minutos, no máximo 120.
 
+### Esforço de raciocínio
+
+Passe `effort` (`low`, `medium`, `high`, `xhigh`) em qualquer ferramenta que inicia um job ou `--effort` em `jobs start` / `jobs ask`:
+
+- **Codex** passa `-c model_reasoning_effort=<effort>` em `exec` e `exec resume`.
+- **Claude** passa `--effort <effort>`.
+- **agy** incorpora o esforço no ID do modelo (`<model>-<effort>`, exige `model`, aceita `low`, `medium` ou `high`, por exemplo `gemini-3.1-pro` + `high` → `gemini-3.1-pro-high`).
+- **Gemini** não tem configuração de esforço de raciocínio no modo headless e recusa o parâmetro com um erro claro.
+- Retomar com `--continue` herda o `effort` e o `model` do job anterior, a menos que sejam sobrescritos. Em `crossreview`, `effort` se aplica somente ao implementador. Em `split`, aplica-se ao planejador e às partes executadas pelo mesmo agente.
+
+### Modelos e validação
+
+Passe `model` / `--model <id>` para sobrescrever o modelo. Inspecione os modelos e esforços aceitos com `mate_models` ou `npx -y agentmate jobs models [provider] [--refresh]`:
+
+- **agy** consulta `agy models`, com cache em disco por 6 horas em `~/.agentmate/cache/models-agy.json` (ignore com `refresh` / `--refresh`).
+- **Codex** lê `$CODEX_HOME/models_cache.json` da conta do job, listando os níveis de raciocínio suportados.
+- **Claude e Gemini** não são verificados (seus CLIs não oferecem catálogo legível por máquina).
+- Modelos desconhecidos e esforços não aceitos falham antes do despacho com sugestões dos nomes mais próximos. Defina `AGENTMATE_SKIP_MODEL_CHECK=1` para ignorar essa verificação.
+
+### Contas do Codex
+
+Para o Codex, passe `account` / `--account <nome>` para escolher o perfil ativo:
+
+- `principal` (ou `default`): usa o `CODEX_HOME` padrão (`~/.codex`).
+- Nome de perfil: diretório em `~/.codex-profiles/<nome>` (sobrescreva o diretório base com `AGENTMATE_CODEX_PROFILES`), executando com seu próprio `CODEX_HOME`.
+- `auto`: executa `limites --json` (sobrescreva o binário com `AGENTMATE_LIMITES_BIN`) e escolhe a conta com mais folga, recorrendo a `principal` com uma nota se o `limites` falhar ou não der sugestão.
+- Jobs retomados (`--continue`) herdam e mantêm a conta original. Em `crossreview`, `account` aplica-se ao implementador; em `split`, ao planejador, às partes do mesmo agente e aos revisores no Codex.
+
+### Revisão com execução de comandos
+
+`mate_review` e `jobs start --role review` usam inspeção estritamente somente leitura por padrão. Passe `allowCommands: true` ou `--allow-commands` para ampliar o sandbox para que o revisor possa executar testes, builds e comandos de verificação:
+
+- **Codex** amplia o `--sandbox` de `read-only` para `workspace-write` para que caches e sockets locais funcionem.
+- **Claude** permite `Bash` irrestrito; as ferramentas `Edit`, `Write` e `NotebookEdit` continuam negadas.
+- Nos dois casos o revisor **consegue** alterar arquivos (pelo shell ou pelo sandbox gravável); só o briefing proíbe. Use apenas quando aceitar isso e confira o `git status` depois. O cabeçalho do resultado mostra `commands allowed`.
+- **Gemini e agy** recusam `allowCommands` porque não possuem capacidade de shell no modo headless/somente leitura.
+- O prompt de revisão orienta o revisor a reportar verificações concretas sob `3. **Verified**` (`verified: <cmd> passed/failed`) e `4. **Not verified**`.
+
+### Cabeçalho de resultado e listagem
+
+Os resultados de jobs (`mate_wait`, `mate_result`, `jobs result`) começam com um cabeçalho resumido estruturado:
+`job <id> · provider/mode [· role] [· <model> · <effort>] [· account <name>] [· commands allowed] [· in/out/reasoning tok] [· $cost] · <status> · <duration>s`
+
+Quando o CLI informa o modelo efetivo executado, o cabeçalho exibe `ran <modelo efetivo> (asked <modelo pedido>)`. As listagens de jobs (`mate_list`, `jobs list`) exibem `model·effort` (por exemplo `default·high` ou `gpt-5·medium`) em cada linha.
+
 ## Modelo de segurança
 
 - **Somente leitura por padrão.** `ask`, `review`, `plan` e `research` sempre rodam em modo somente leitura, e `teamlead` é somente leitura, a menos que você passe `mode: write`. `implement` sempre roda em modo de escrita: `--role implement` e `mate_implement` usam escrita por padrão e rejeitam `read-only`. Use-o somente depois que a pessoa autorizar edições.
@@ -394,6 +440,7 @@ npx -y agentmate jobs start codex "Resolva o achado de maior prioridade." --cont
   | Papel e modo                                                  | Sandbox do Codex     | Permissões do Claude                                                                         | Gemini (experimental)       | agy (experimental)                       |
   | ------------------------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------- | --------------------------- | ---------------------------------------- |
   | somente leitura (`ask`, `review`, `plan`, `teamlead` leitura) | `read-only`          | lista (abaixo) e negação explícita de `Edit`, `Write` e `NotebookEdit`                       | `--approval-mode default`   | sem flag de permissão (perfil do agy)    |
+  | `review` (`allowCommands: true`)                              | `workspace-write`    | lista com `Bash` irrestrito, negação explícita de `Edit`, `Write`, `NotebookEdit`             | não suportado (sem shell)   | não suportado (sem shell)                |
   | `research`                                                    | `read-only`          | a lista de somente leitura mais `WebSearch` e `WebFetch`, com a mesma negação explícita      | `--approval-mode default`   | sem flag de permissão (perfil do agy)    |
   | `implement`, `teamlead` em escrita                            | `workspace-write`    | modo de permissão `acceptEdits` mais a lista de verificação (abaixo)                         | `--approval-mode auto_edit` | `--dangerously-skip-permissions`         |
   | `teamlead` (líder Codex, leitura ou escrita)                  | `danger-full-access` | não se aplica                                                                                | não se aplica               | não se aplica                            |
@@ -401,7 +448,7 @@ npx -y agentmate jobs start codex "Resolva o achado de maior prioridade." --cont
   | `teamlead` (líder Gemini, só em escrita)                      | não se aplica        | não se aplica                                                                                | `--approval-mode yolo`      | não se aplica                            |
   | `teamlead` (líder agy, só em escrita)                         | não se aplica        | não se aplica                                                                                | não se aplica               | `--dangerously-skip-permissions`         |
 
-  A lista de somente leitura é `Read`, `Grep`, `Glob`, `git diff`, `git log`, `git show` e `git status`. A lista do modo de escrita acrescenta `pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add` e `git commit`, para que o worker rode comandos de verificação. Amplie-a com a variável de ambiente `AGENTMATE_CLAUDE_WRITE_TOOLS`, uma lista separada por vírgulas de padrões de permissão do Claude. Um team lead no Claude não pode executar `install`, apenas `agentmate jobs *`. Os workers do Claude iniciam com `--strict-mcp-config`, então nenhum dos seus servidores MCP (conectores do claude.ai e plugins incluídos) é carregado num job: eles iniciam mais rápido e só têm as ferramentas acima. Defina `AGENTMATE_CLAUDE_INHERIT_MCP=1` para dar aos workers os seus servidores MCP.
+  A lista de somente leitura é `Read`, `Grep`, `Glob`, `git diff`, `git log`, `git show` e `git status`. A lista do modo de escrita acrescenta `pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add` e `git commit`, para que o worker rode comandos de verificação. Amplie-a com a variável de ambiente `AGENTMATE_CLAUDE_WRITE_TOOLS`, uma lista separada por vírgulas de padrões de permissão do Claude. Um team lead no Claude não pode executar `install`, apenas `agentmate jobs *`. Os workers do Claude iniciam com `--strict-mcp-config`, então nenhum dos seus servidores MCP (conectores do claude.ai e plugins incluídos) é carregado num job: eles iniciam mais rápido e só têm as ferramentas acima. Defina `AGENTMATE_CLAUDE_INHERIT_MCP=1` para dar aos workers os seus servidores MCP. Passar `allowCommands` em `review` amplia o sandbox (workspace-write no Codex, `Bash` geral no Claude) para que revisores rodem testes e comandos de verificação que exigem escrita em caches ou sockets, o que também permite alterar arquivos, proibido apenas pelo briefing; o Gemini e o agy não têm capacidade de shell em modo somente leitura e rejeitam `allowCommands`.
 
 - **O Gemini roda com a menor aprovação que serve ao papel (experimental).** `--approval-mode default` nega, no modo headless, toda ferramenta que pede aprovação; por isso jobs somente leitura e `research` leem, mas não executam shell nem pesquisam na web. `auto_edit` aprova edições de arquivo, mas continua negando o shell, então um job `implement` não roda os testes. Um team lead no Gemini precisa do shell, que só o `--approval-mode yolo` permite: ele é aceito somente com `mode: write` e aprova toda chamada de ferramenta sem perguntar, ficando tão irrestrito quanto o líder Codex abaixo. O `--sandbox` e a flag antiga `--yolo` nunca são usados.
 - **O agy não pede nada em somente leitura e pula tudo no modo de escrita (experimental).** Jobs somente leitura não passam flag de permissão, então o agy headless nega as chamadas de ferramenta que o próprio perfil não permite; um job somente leitura pode, por isso, devolver resultados rasos até você instalar a allowlist do agy-staff ou usar o modo de escrita. O `--dangerously-skip-permissions` vai em todo job `mode: write`, inclusive `implement` e o team lead, e aprova toda chamada de ferramenta sem perguntar, ficando tão irrestrito quanto o líder Codex abaixo. Um team lead no agy só é aceito com `mode: write`. Aqui também não há `--sandbox` no agy.
@@ -412,7 +459,7 @@ npx -y agentmate jobs start codex "Resolva o achado de maior prioridade." --cont
 - **Um job `write` por worktree por vez.** Dois escritores na mesma árvore colidem. As skills e o prompt do team lead seguem essa regra; use git worktrees separados para edições em paralelo (o `split` faz isso para as suas partes).
 - **Uma cota esgotada é um status, não uma falha.** Quando um provedor informa que o limite de uso, a cota ou os créditos acabaram, o job termina como `quota_exhausted` (terminal; `wait` e `ask` saem com `1`). O `error` diz `<provedor> quota exhausted: <linha>. Retry after the reset or start the job on <outro agente>.`, e o `result` acrescenta `Hand off: start the same job with provider <outro>.`; o outro agente é o primeiro instalado e, se nenhum estiver instalado, as duas linhas mandam apenas tentar de novo depois da renovação. A detecção olha apenas o final do stderr e os erros já interpretados, então um 429 sozinho não é esgotamento, e o job não é repetido depois que uma linha de cota aparece. Amplie a detecção com `AGENTMATE_QUOTA_PATTERNS`, expressões regulares sem distinção de maiúsculas separadas por `|`; as inválidas são ignoradas. Os padrões cobrem o status `RESOURCE_EXHAUSTED` do agy e as frases `Individual quota reached` e `quota exceeded`; o `code 429` solto é amplo demais para ser padrão, então adicione `AGENTMATE_QUOTA_PATTERNS='\bcode\s*429\b'` se quiser (um 429 de uma ferramenta que o agente chamou também passa a contar como esgotamento).
 - **Quem delegou é quem aceita.** A saída do job é um insumo para o seu julgamento. Verifique as afirmações e rode os testes antes de integrar qualquer coisa produzida por um worker.
-- **Sem alterações ocultas de configuração.** O plugin registra o próprio servidor MCP. O fallback executa o CLI e nunca edita a configuração do host. Não coloque segredos em briefings: prompts e resultados ficam em texto simples em `~/.agentmate`, em arquivos criados com permissões exclusivas do dono (`0600` para arquivos e `0700` para diretórios).
+- **Sem alterações ocultas de configuração.** O plugin registra o próprio servidor MCP. O fallback executa o CLI e nunca edita a configuração do host. Não coloque segredos em briefings: prompts e resultados ficam em texto simples em `~/.agentmate`, em arquivos criados com permissões exclusivas do dono (`0600` para arquivos e `0700` para diretórios). Variáveis de ambiente que configuram controles de job: `AGENTMATE_CODEX_PROFILES` sobrescreve o diretório de perfis do Codex (`~/.codex-profiles`), `AGENTMATE_LIMITES_BIN` sobrescreve o binário usado para resolver `account: "auto"` (`limites`), e `AGENTMATE_SKIP_MODEL_CHECK=1` pula a validação de modelo e esforço antes do despacho.
 
 ## Solução de problemas
 

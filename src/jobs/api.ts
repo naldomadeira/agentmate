@@ -19,7 +19,10 @@ import {
   buildSplitPrompt,
   buildTeamleadPrompt,
 } from "../lib/prompt-builder.js";
+import { DEFAULT_ACCOUNT, effectiveCodexHome, resolveAccount, sameAccount } from "./accounts.js";
+import { agyModelId } from "../agents/agy.js";
 import { readEvents } from "./events.js";
+import { assertKnownModel } from "./models.js";
 import { getSession, withSessionNotes } from "./sessions.js";
 import {
   DEFAULT_MAX_PARTS,
@@ -39,6 +42,7 @@ import {
   writeJob,
   type Job,
   type JobMode,
+  type Effort,
   type JobRole,
   type Provider,
   type RoleFields,
@@ -67,6 +71,12 @@ export interface StartOptions {
   fields?: RoleFields;
   cwd?: string;
   model?: string;
+  /** Reasoning effort; validated against the provider's adapter before the job is written. */
+  effort?: Effort;
+  /** review only: widens the sandbox so the reviewer can run commands to verify. */
+  allowCommands?: boolean;
+  /** Codex profile account name, or 'auto' to resolve the recommended account. */
+  account?: string;
   mode?: JobMode;
   timeoutMinutes?: number;
   continueJob?: string;
@@ -143,6 +153,7 @@ function renderPrompt(
         focus: fields.focus,
         context,
         shell: getAgent(provider).capabilities.shell,
+        commandsAllowed: options.allowCommands,
       });
     case "research":
       return buildResearchPrompt({
@@ -267,12 +278,23 @@ export function startJob(options: StartOptions): Job {
         `partner must differ from the provider (both are ${options.provider}). Pick another agent.`,
       );
   }
+  if (options.allowCommands) {
+    if (role !== "review")
+      throw new Error(
+        "allowCommands applies only to the review role. Drop allowCommands or set role to review.",
+      );
+  }
   // Validated up front so an unknown session never leaves a half-started job behind.
   if (options.sessionId) getSession(options.sessionId);
   const parentJob = process.env["AGENTMATE_JOB_ID"] || undefined;
 
   let provider = options.provider;
   let sessionNote: string | undefined;
+  // A continued job keeps the effort it ran with unless the caller names another.
+  let effort = options.effort;
+  let model = options.model;
+  let account = options.account;
+  let accountNote: string | undefined;
   if (options.continueJob) {
     if (!getAgent(provider).capabilities.resume)
       throw new Error(
@@ -295,11 +317,38 @@ export function startJob(options: StartOptions): Job {
       throw new Error(
         `Job ${prior.id} ran on ${prior.provider}, not ${provider}. Start the follow-up with \`agentmate jobs start ${prior.provider}\`.`,
       );
+    if (options.account && !sameAccount(options.account, prior.account))
+      throw new Error(
+        `Job ${prior.id} ran on Codex account ${prior.account ?? DEFAULT_ACCOUNT}, and its thread lives there. Drop account to continue it, or start a new job on ${options.account}.`,
+      );
     provider = prior.provider;
     sessionNote = prior.id;
+    effort ??= prior.effort;
+    model ??= prior.model;
+    account ??= prior.account;
   }
   const cwd = options.cwd ?? process.cwd();
   assertAgentAvailable(provider, cwd);
+  if (account && provider !== "codex")
+    throw new Error(`account applies only to codex (its CODEX_HOME profiles). Drop account.`);
+  if (account) {
+    const resolved = resolveAccount(account);
+    account = resolved.account;
+    accountNote = resolved.note;
+  }
+  if (effort) {
+    const adapter = getAgent(provider);
+    const refusal = adapter.effortError
+      ? adapter.effortError({ effort, model })
+      : `${provider} cannot apply a reasoning effort. Drop effort.`;
+    if (refusal) throw new Error(refusal);
+  }
+  if (options.allowCommands && !getAgent(provider).capabilities.shell)
+    throw new Error(
+      `${provider} has no shell capability: allowCommands cannot be used. Run without allowCommands or pick another provider.`,
+    );
+  // A misspelled id would otherwise run on the CLI's fallback model, or fail only after the start.
+  if (model) assertKnownModel(provider, model, effort, effectiveCodexHome(account));
   // The partner is settled before anything is spawned: a default pointing at an agent that is not
   // installed would otherwise fail only after the implementer had already edited files.
   const needsPartner = role === "teamlead" || role === "crossreview" || role === "split";
@@ -339,7 +388,11 @@ export function startJob(options: StartOptions): Job {
     ...(parentJob ? { parentJob } : {}),
     prompt,
     cwd,
-    ...(options.model ? { model: options.model } : {}),
+    ...(model ? { model } : {}),
+    ...(effort ? { effort } : {}),
+    ...(options.allowCommands ? { allowCommands: true } : {}),
+    ...(account ? { account } : {}),
+    ...(accountNote ? { accountNote } : {}),
     timeoutMs,
     status: "queued",
     createdAt: new Date().toISOString(),
@@ -543,11 +596,48 @@ export function elapsedSeconds(job: Job): number {
   return Math.max(0, Math.round((end - start) / 1000));
 }
 
+const kilo = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
+/** `gpt-6.1-sol · high`, or what actually ran when the CLI reported it: `ran X (asked Y) · high`. */
+function modelSegment(job: Job): string | undefined {
+  const ran = job.usage?.model;
+  // agy runs the id with the effort folded in, which is what was asked, not a substitute.
+  const asked = job.model && job.provider === "agy" ? agyModelId(job.model, job.effort) : job.model;
+  const model = ran
+    ? `ran ${ran}${job.model && asked !== ran ? ` (asked ${job.model})` : ""}`
+    : (job.model ?? (job.effort ? "default model" : undefined));
+  return model ? [model, job.effort].filter(Boolean).join(" · ") : undefined;
+}
+
+/** `in 12.3k / out 2.1k / reasoning 1.0k tok · $0.04`, with only what the CLI reported. */
+function usageSegments(job: Job): string[] {
+  const usage = job.usage;
+  if (!usage) return [];
+  const tokens = [
+    usage.inputTokens ? `in ${kilo(usage.inputTokens)}` : "",
+    usage.outputTokens ? `out ${kilo(usage.outputTokens)}` : "",
+    usage.reasoningTokens ? `reasoning ${kilo(usage.reasoningTokens)}` : "",
+  ].filter(Boolean);
+  return [
+    ...(tokens.length > 0 ? [`${tokens.join(" / ")} tok`] : []),
+    ...(usage.costUsd ? [`$${usage.costUsd.toFixed(2)}`] : []),
+  ];
+}
+
 export function summarize(job: Job): string {
+  const model = modelSegment(job);
+  const account =
+    job.account && (job.account !== DEFAULT_ACCOUNT || job.accountNote)
+      ? `account ${job.account}${job.accountNote ? ` (${job.accountNote})` : ""}`
+      : undefined;
   const parts = [
     `job ${job.id}`,
     `${job.provider}/${job.mode}`,
     ...(job.role === "custom" ? [] : [job.role]),
+    ...(model ? [model] : []),
+    ...(account ? [account] : []),
+    ...(job.allowCommands ? ["commands allowed"] : []),
+    ...usageSegments(job),
     job.status,
     `${elapsedSeconds(job)}s`,
   ];

@@ -241,6 +241,8 @@ export async function runCrossreview(id: string): Promise<void> {
               mode: "write",
               cwd: job.cwd,
               model: job.model,
+              effort: job.effort,
+              ...(implementer === "codex" && job.account ? { account: job.account } : {}),
             }
           : {
               provider: implementer,
@@ -256,6 +258,8 @@ export async function runCrossreview(id: string): Promise<void> {
               mode: "write",
               cwd: job.cwd,
               model: job.model,
+              effort: job.effort,
+              ...(implementer === "codex" && job.account ? { account: job.account } : {}),
               ...(canResume ? { continueJob: previousImplement.id } : {}),
             };
       const implement = await step(`round ${round}: implement`, implementOptions);
@@ -279,6 +283,7 @@ export async function runCrossreview(id: string): Promise<void> {
             },
             mode: "read-only",
             cwd: job.cwd,
+            ...(reviewer === "codex" && job.account ? { account: job.account } : {}),
           },
           (childId) => {
             reviewId = childId;

@@ -10,3 +10,7 @@ for (const key of Object.keys(process.env)) {
     delete process.env[key];
   }
 }
+
+// Model ids in tests are placeholders; the real catalogs (~/.codex, `agy models`) must not decide
+// whether a job starts. test/models.test.ts turns the check back on with its own catalogs.
+process.env["AGENTMATE_SKIP_MODEL_CHECK"] = "1";

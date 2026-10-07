@@ -10,11 +10,11 @@ Two modes, chosen by the arguments. After the provider: a goal means "write a pl
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_plan` with `provider` and `goal`. Add `constraints` (deadlines, compatibility, things not to touch) and `context`. For a critique, also pass the full text in `existingPlan`; the worker then critiques instead of creating. The call returns a job id; collect it with `mate_wait`.
+1. **MCP (preferred)** — call `mate_plan` with `provider` and `goal`. Add `constraints`, `effort`, `model`, `account` (Codex only) and `context`. For a critique, also pass the full text in `existingPlan`; the worker then critiques instead of creating. The call returns a job id; collect it with `mate_wait`.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agentmate jobs start <provider> "<planning briefing>" --role plan
+   npx -y agentmate jobs start <provider> "<planning briefing>" --role plan [--effort <effort>]
    npx -y agentmate jobs wait <id> --timeout 10m
    ```
 

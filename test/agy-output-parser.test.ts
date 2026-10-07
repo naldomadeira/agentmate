@@ -53,6 +53,7 @@ describe("parseAgyOutput", () => {
       sessionId: "c-7",
       errors: [],
       completed: true,
+      usage: { model: "gemini-test" },
     });
   });
 

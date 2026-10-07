@@ -85,6 +85,7 @@ export async function runWorker(id: string): Promise<void> {
       command: resolveBinary(command, job.cwd),
       args,
       cwd: job.cwd,
+      env: adapter.env?.(job),
       timeoutMs: job.timeoutMs,
       signal: controller.signal,
       // A quota line can look like a transient 429; retrying it only burns the reset window.
@@ -102,6 +103,7 @@ export async function runWorker(id: string): Promise<void> {
     const outcome = parseOutcome(job.provider, result.stdout, result.stderr, result.exitCode);
     fields.exitCode = result.exitCode;
     if (outcome.sessionId) fields.sessionId = outcome.sessionId;
+    if (outcome.usage) fields.usage = outcome.usage;
     if (outcome.text) writeResult(id, outcome.text);
     if (!streaming && outcome.text)
       emit("important", "message", outcome.text.slice(0, MAX_MESSAGE_CHARS));

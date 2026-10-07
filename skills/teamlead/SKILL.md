@@ -14,11 +14,11 @@ your session -> teamlead job (depth 0, started by you) -> child jobs (depth 1, c
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_teamlead` with `provider` (who leads), `objective`, optional `partner` (the agent it delegates to; default: the first installed other agent, which must be installed), `constraints` and `context`. Read-only by default; pass `mode: write` only if the user authorized edits. It returns the lead's job id.
+1. **MCP (preferred)** — call `mate_teamlead` with `provider` (who leads), `objective`, optional `partner` (the agent it delegates to; default: the first installed other agent, which must be installed), `constraints`, `effort`, `model`, `account` (Codex only) and `context`. Read-only by default; pass `mode: write` only if the user authorized edits. It returns the lead's job id.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agentmate jobs start <provider> "<objective briefing>" --role teamlead
+   npx -y agentmate jobs start <provider> "<objective briefing>" --role teamlead [--effort <e>] [--account <acc>]
    ```
 
 3. **Follow it** — `mate_observe <id>` (CLI `jobs observe <id>`) shows the lead's output and its child jobs with status; `mate_list` with `parent` set to the id lists only the children. Collect the final report with `mate_wait` / `mate_result`.

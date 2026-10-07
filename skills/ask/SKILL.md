@@ -10,11 +10,11 @@ Get a direct answer from the other model without leaving the session. The first 
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_ask` with `provider` and `question`. It waits up to 120 seconds (`waitSeconds`, max 300) and returns the answer in the same call. Add `context` for background and `cwd` if the question is about another repository. Inside Codex, MCP tool calls time out after about 60 seconds by default: pass `waitSeconds: 45` and continue with `mate_wait` if the answer has not arrived.
+1. **MCP (preferred)** — call `mate_ask` with `provider` and `question`. It waits up to 120 seconds (`waitSeconds`, max 300) and returns the answer in the same call. Pass `effort` (`low`, `medium`, `high`, `xhigh`), `model`, `account` (Codex profile or `auto`), `context` for background and `cwd` for another repository. Inside Codex, MCP tool calls time out after about 60 seconds by default: pass `waitSeconds: 45` and continue with `mate_wait` if the answer has not arrived.
 2. **CLI fallback** — when the `mate_*` tools are not loaded, run the same thing from a shell:
 
    ```bash
-   npx -y agentmate jobs ask <provider> "<question>" --wait 120s
+   npx -y agentmate jobs ask <provider> "<question>" --wait 120s [--effort <effort>] [--account <acc>]
    ```
 
    Exit code `0` means the answer was printed, `1` means the job failed or was canceled, `2` means it is still running. Do not pipe the output: a pipe loses the exit code.

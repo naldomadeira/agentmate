@@ -18,10 +18,12 @@ import {
   type StartOptions,
 } from "./jobs/api.js";
 import { readEvents } from "./jobs/events.js";
+import { listModels } from "./jobs/models.js";
 import { ackTerminalJob, inboxToolText } from "./jobs/inbox.js";
 import {
   renderEvents,
   renderList,
+  renderModels,
   renderObservation,
   renderResult,
   renderSession,
@@ -32,11 +34,13 @@ import {
   createSession,
   getSession,
   listSessions,
+  readContext,
   readNotes,
   sessionJobCounts,
   sessionJobs,
+  setContext,
 } from "./jobs/sessions.js";
-import { JOB_ROLES, type JobMode, type Provider } from "./jobs/store.js";
+import { EFFORTS, JOB_ROLES, type Effort, type JobMode, type Provider } from "./jobs/store.js";
 import { logger } from "./lib/logger.js";
 import { VERSION } from "./lib/version.js";
 
@@ -66,8 +70,10 @@ const jobId = z.string().describe("Job id returned by any mate_* tool that start
  */
 async function startAndMaybeWait(options: StartOptions, waitSeconds: number): Promise<string> {
   const job = startJob(options);
-  if (waitSeconds <= 0)
-    return `Started job ${job.id} (${job.provider}/${job.mode}${job.role === "custom" ? "" : `, ${job.role}`}). Call mate_wait with this id to collect the result.`;
+  if (waitSeconds <= 0) {
+    const acc = job.account && job.account !== "principal" ? `, account ${job.account}` : "";
+    return `Started job ${job.id} (${job.provider}/${job.mode}${job.role === "custom" ? "" : `, ${job.role}`}${acc}). Call mate_wait with this id to collect the result.`;
+  }
   const settled = await waitJob(job.id, waitSeconds * 1000);
   if (!isTerminal(settled))
     return `Job ${job.id} is still running after ${waitSeconds}s; call mate_wait with id ${job.id} to keep waiting.`;
@@ -78,7 +84,7 @@ const sessionArg = z
   .string()
   .optional()
   .describe(
-    "Id of a session (mate_session_start): its short shared notes prefix the worker's briefing and the job is recorded in it",
+    "Id of a session (mate_session_start): its short shared notes and fixed context prefix the worker's briefing; put the fixed briefing (spec, decisions, how to test) in the session context once; each job then passes only its focus",
   );
 
 const provider = z
@@ -93,11 +99,25 @@ const partnerArg = z
     "The agent that works with the provider (reviewer, delegate); must differ from it. Defaults to the first installed other agent (codex, claude, gemini, agy); it must be installed",
   );
 const context = z.string().optional().describe("Background the worker needs; it sees nothing else");
+const effortArg = (who = "") =>
+  z
+    .enum(EFFORTS)
+    .optional()
+    .describe(
+      `Reasoning effort${who}: codex -c model_reasoning_effort, claude --effort, agy folds it into the model id (needs model; low/medium/high). gemini refuses it. Default: the agent's own configured effort`,
+    );
 
 /** Optional arguments shared by every job-starting tool. */
 const common = {
   cwd: z.string().optional().describe("Working directory (defaults to the server cwd)"),
   model: z.string().optional().describe("Model override passed to the CLI"),
+  effort: effortArg(),
+  account: z
+    .string()
+    .optional()
+    .describe(
+      "Codex profile account name (e.g. 'zeus', 'kratos'), or 'auto' to resolve the recommended account",
+    ),
   timeoutMinutes: z
     .number()
     .positive()
@@ -116,6 +136,8 @@ const common = {
 interface Common {
   cwd?: string | undefined;
   model?: string | undefined;
+  effort?: Effort | undefined;
+  account?: string | undefined;
   timeoutMinutes?: number | undefined;
   waitSeconds?: number | undefined;
   session?: string | undefined;
@@ -130,6 +152,7 @@ function runRole(
     maxRounds?: number | undefined;
     maxParts?: number | undefined;
     partner?: Provider | undefined;
+    allowCommands?: boolean | undefined;
   },
   fields: RoleFields,
   defaultWaitSeconds = 0,
@@ -140,8 +163,11 @@ function runRole(
     maxRounds,
     maxParts,
     partner,
+    allowCommands,
     cwd,
     model,
+    effort,
+    account,
     timeoutMinutes,
     waitSeconds,
     session,
@@ -155,8 +181,11 @@ function runRole(
       maxRounds,
       maxParts,
       partner,
+      allowCommands,
       cwd,
       model,
+      effort,
+      account,
       timeoutMinutes,
       sessionId: session,
     },
@@ -184,9 +213,9 @@ server.registerTool(
       ...common,
     },
   },
-  guard(({ continue: continueJob, prompt, role, provider, mode, session, ...rest }) =>
+  guard(({ continue: continueJob, prompt, role, provider, mode, session, account, ...rest }) =>
     startAndMaybeWait(
-      { provider, prompt, role, mode, continueJob, sessionId: session, ...rest },
+      { provider, prompt, role, mode, account, continueJob, sessionId: session, ...rest },
       rest.waitSeconds ?? 0,
     ),
   ),
@@ -221,6 +250,12 @@ server.registerTool(
         .describe("Diff range (e.g. main..HEAD), files or a description of the change"),
       focus: z.string().optional().describe("What to scrutinize most"),
       context,
+      allowCommands: z
+        .boolean()
+        .optional()
+        .describe(
+          "Let the reviewer run commands (tests, builds) to verify its claims. This gives it write access in practice (codex runs workspace-write, claude gets Bash): only its briefing forbids editing files. Not available for gemini or agy. Use it only when the user accepts that",
+        ),
       ...common,
     },
   },
@@ -334,6 +369,8 @@ server.registerTool(
         .describe("Most implement-and-review rounds, default 2"),
       cwd: common.cwd,
       model: z.string().optional().describe("Model override for the implementer only"),
+      effort: effortArg(" for the implementer only"),
+      account: z.string().optional().describe("Codex account for the implementer only"),
       timeoutMinutes: z
         .number()
         .positive()
@@ -374,6 +411,8 @@ server.registerTool(
       cwd: common.cwd,
       session: sessionArg,
       model: z.string().optional().describe("Model override for the planner and same-agent parts"),
+      effort: effortArg(" for the planner and same-agent parts"),
+      account: z.string().optional().describe("Codex account for the planner and same-agent parts"),
       timeoutMinutes: z
         .number()
         .positive()
@@ -388,24 +427,53 @@ server.registerTool(
 
 const sessionId = z.string().describe("Session id returned by mate_session_start");
 const SESSION_HINT =
-  "A session is shared context across jobs and agents. Pass its id as `session` to any mate_* job tool; every worker in the session reads the notes in its briefing, so keep notes short and factual.";
+  "A session is shared context across jobs and agents. Pass its id as `session` to any mate_* job tool; put the fixed briefing (spec, decisions, how to test) in the session context once; each job then passes only its focus. Every worker in the session reads the context and shared notes in its briefing.";
 
 server.registerTool(
   "mate_session_start",
   {
     title: "Start a session",
-    description: `Create a session: shared context across jobs and agents. Its notes (mate_session_notes) are read by every worker started with that session, so keep them short and factual. ${SESSION_HINT}`,
+    description: `Create a session: shared context across jobs and agents. Put the fixed briefing (spec, decisions, how to test) in the session context once; each job then passes only its focus. Notes (mate_session_notes) are read by every worker started with that session, so keep them short and factual. ${SESSION_HINT}`,
     inputSchema: {
       title: z.string().min(1).describe("A short name for the work, e.g. the feature or bug"),
       cwd: z
         .string()
         .optional()
         .describe("Working directory the session is about (defaults to the server cwd)"),
+      context: z
+        .string()
+        .optional()
+        .describe(
+          "Fixed briefing (spec, decisions, how to test, max ~16 KB) that every worker in the session receives in full",
+        ),
     },
   },
-  guard(({ title, cwd }) => {
-    const session = createSession({ title, cwd: cwd ?? process.cwd() });
+  guard(({ title, cwd, context }) => {
+    const session = createSession({ title, cwd: cwd ?? process.cwd(), context });
     return `Started session ${session.id} (${session.title}). Pass session=${session.id} to the mate_* job tools and add notes with mate_session_notes. Notes are read by every worker in the session, so keep them short and factual.`;
+  }),
+);
+
+server.registerTool(
+  "mate_session_context",
+  {
+    title: "Set or extend session context",
+    description:
+      "Set or append to the fixed context of a session (max ~16 KB). Every worker started in the session receives this context in full ahead of notes, so jobs only need to pass their own focus.",
+    inputSchema: {
+      session: z.string().describe("Session id returned by mate_session_start"),
+      context: z
+        .string()
+        .describe("The fixed context text (spec, decisions, how to test, max ~16 KB)"),
+      mode: z
+        .enum(["replace", "append"])
+        .optional()
+        .describe("replace (default) or append to existing context"),
+    },
+  },
+  guard(({ session, context, mode }) => {
+    setContext(session, context, mode ?? "replace");
+    return `${mode === "append" ? "Appended to" : "Set"} context for session ${session}.`;
   }),
 );
 
@@ -414,10 +482,10 @@ server.registerTool(
   {
     title: "Show a session",
     description:
-      "Show a session: its title, the tail of its shared notes (what workers read) and the jobs started in it.",
+      "Show a session: its title, its fixed context, the tail of its shared notes (what workers read) and the jobs started in it.",
     inputSchema: { id: sessionId },
   },
-  guard(({ id }) => renderSession(getSession(id), readNotes(id), sessionJobs(id))),
+  guard(({ id }) => renderSession(getSession(id), readNotes(id), sessionJobs(id), readContext(id))),
 );
 
 server.registerTool(
@@ -560,6 +628,23 @@ server.registerTool(
     },
   },
   guard(({ cwd, limit, parent }) => renderList(listJobs({ cwd, limit, parent }))),
+);
+
+server.registerTool(
+  "mate_models",
+  {
+    title: "List available models",
+    description:
+      "List the model ids each agent CLI accepts, and their reasoning efforts, so a job's model can be checked before dispatch.",
+    inputSchema: {
+      provider: provider.optional().describe("Only list models for this agent"),
+      refresh: z.boolean().optional().describe("Bypass cache and fetch a fresh list"),
+    },
+  },
+  guard(({ provider, refresh }) => {
+    const providers = provider ? [provider] : AGENT_IDS;
+    return providers.map((p) => renderModels(listModels(p, { refresh }))).join("\n\n");
+  }),
 );
 
 server.registerTool(
