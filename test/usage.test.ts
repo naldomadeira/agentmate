@@ -106,14 +106,14 @@ describe("Usage extraction", () => {
       );
     });
 
-    it("renders default model mismatch", () => {
+    it("shows the model that ran when none was asked for", () => {
       const job = {
         ...baseJob,
         effort: "medium",
         usage: { model: "gpt-6.1-sol", inputTokens: 500 },
       } as Job;
       expect(summarize(job)).toBe(
-        "job j-123 · codex/read-only · review · ran gpt-6.1-sol (asked default model) · medium · in 500 tok · done · 152s",
+        "job j-123 · codex/read-only · review · ran gpt-6.1-sol · medium · in 500 tok · done · 152s",
       );
     });
   });

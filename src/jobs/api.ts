@@ -595,40 +595,49 @@ export function elapsedSeconds(job: Job): number {
   return Math.max(0, Math.round((end - start) / 1000));
 }
 
-export function summarize(job: Job): string {
-  const k = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
-  let modelStr = job.model;
-  if (job.usage?.model) {
-    modelStr =
-      job.usage.model === job.model
-        ? `ran ${job.usage.model}`
-        : `ran ${job.usage.model} (asked ${job.model ?? "default model"})`;
-  } else if (!job.model && job.effort) {
-    modelStr = "default model";
-  }
+const kilo = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
+/** `gpt-6.1-sol · high`, or what actually ran when the CLI reported it: `ran X (asked Y) · high`. */
+function modelSegment(job: Job): string | undefined {
+  const ran = job.usage?.model;
+  const model = ran
+    ? `ran ${ran}${job.model && job.model !== ran ? ` (asked ${job.model})` : ""}`
+    : (job.model ?? (job.effort ? "default model" : undefined));
+  return model ? [model, job.effort].filter(Boolean).join(" · ") : undefined;
+}
+
+/** `in 12.3k / out 2.1k / reasoning 1.0k tok · $0.04`, with only what the CLI reported. */
+function usageSegments(job: Job): string[] {
+  const usage = job.usage;
+  if (!usage) return [];
+  const tokens = [
+    usage.inputTokens ? `in ${kilo(usage.inputTokens)}` : "",
+    usage.outputTokens ? `out ${kilo(usage.outputTokens)}` : "",
+    usage.reasoningTokens ? `reasoning ${kilo(usage.reasoningTokens)}` : "",
+  ].filter(Boolean);
+  return [
+    ...(tokens.length > 0 ? [`${tokens.join(" / ")} tok`] : []),
+    ...(usage.costUsd ? [`$${usage.costUsd.toFixed(2)}`] : []),
+  ];
+}
+
+export function summarize(job: Job): string {
+  const model = modelSegment(job);
+  const account =
+    job.account && (job.account !== DEFAULT_ACCOUNT || job.accountNote)
+      ? `account ${job.account}${job.accountNote ? ` (${job.accountNote})` : ""}`
+      : undefined;
   const parts = [
     `job ${job.id}`,
     `${job.provider}/${job.mode}`,
     ...(job.role === "custom" ? [] : [job.role]),
-    ...(modelStr || job.effort ? [[modelStr, job.effort].filter(Boolean).join(" · ")] : []),
+    ...(model ? [model] : []),
+    ...(account ? [account] : []),
     ...(job.allowCommands ? ["commands allowed"] : []),
-    ...(job.account && job.account !== "principal" ? [`account ${job.account}`] : []),
+    ...usageSegments(job),
+    job.status,
+    `${elapsedSeconds(job)}s`,
   ];
-
-  if (job.usage) {
-    const toks = [
-      job.usage.inputTokens ? `in ${k(job.usage.inputTokens)}` : "",
-      job.usage.outputTokens ? `out ${k(job.usage.outputTokens)}` : "",
-      job.usage.reasoningTokens ? `reasoning ${k(job.usage.reasoningTokens)}` : "",
-    ]
-      .filter(Boolean)
-      .join(" / ");
-    if (toks) parts.push(`${toks} tok`);
-    if (job.usage.costUsd) parts.push(`$${job.usage.costUsd.toFixed(2)}`);
-  }
-
-  parts.push(job.status, `${elapsedSeconds(job)}s`);
   if (job.parentJob) parts.push(`parent ${job.parentJob}`);
   if (job.session) parts.push(`session ${job.session}`);
   if (job.error) parts.push(`error: ${job.error}`);
