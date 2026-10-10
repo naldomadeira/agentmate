@@ -67,6 +67,134 @@ describe("cli", () => {
     expect(result.stdout).toContain("events");
   });
 
+  it("renders a non-destructive status line and JSON for jobs in a directory tree", async () => {
+    const base = mkdtempSync(join(tmpdir(), "abm-cli-status-"));
+    const home = join(base, "state");
+    const repo = join(base, "repo");
+    const child = join(repo, "packages", "web");
+    const elsewhere = join(base, "elsewhere");
+    const now = Date.now();
+    const at = (ms: number) => new Date(ms).toISOString();
+    const writeJob = (
+      id: string,
+      cwd: string,
+      status: string,
+      extra: Record<string, unknown> = {},
+    ) => {
+      mkdirSync(join(home, "jobs", id), { recursive: true });
+      writeFileSync(
+        join(home, "jobs", id, "job.json"),
+        JSON.stringify({
+          id,
+          provider: "codex",
+          mode: "read-only",
+          role: "ask",
+          depth: 0,
+          prompt: "p",
+          cwd,
+          timeoutMs: 1_000,
+          status,
+          createdAt: at(now - 5 * 60_000),
+          ...extra,
+        }),
+      );
+    };
+    mkdirSync(child, { recursive: true });
+    mkdirSync(elsewhere, { recursive: true });
+    writeJob("root", repo, "running", {
+      startedAt: at(now - 4 * 60_000 - 10_000),
+      usage: { model: "gpt-5.6-terra" },
+    });
+    writeJob("child", child, "queued", {
+      provider: "claude",
+      model: "claude-sonnet-4-6",
+      createdAt: at(now - 70_000),
+    });
+    writeJob("outside", elsewhere, "running", { model: "gpt-5.6-terra" });
+    writeJob("done", repo, "done", { finishedAt: at(now - 1_000) });
+    writeJob("quota", child, "quota_exhausted", { finishedAt: at(now - 1_000) });
+    mkdirSync(join(home, "jobs", "corrupt"), { recursive: true });
+    writeFileSync(join(home, "jobs", "corrupt", "job.json"), "{");
+    const inbox = (job: string, cwd: string, kind: string) =>
+      `${JSON.stringify({ ts: at(now - 1_000), job, cwd, provider: "codex", role: "ask", kind, text: "x" })}\n`;
+    appendFileSync(
+      join(home, "inbox.jsonl"),
+      inbox("done", repo, "message") +
+        inbox("done", repo, "finished") +
+        inbox("quota", child, "error") +
+        inbox("quota", child, "finished") +
+        inbox("outside", elsewhere, "finished"),
+    );
+    const env = { AGENTMATE_HOME: home };
+    try {
+      const first = await runCli(["jobs", "list", "--line", "--cwd", repo], env);
+      const second = await runCli(["jobs", "list", "--line", "--cwd", repo], env);
+      expect(first.exitCode).toBe(0);
+      expect(first.stdout).toContain("mate ▶2");
+      expect(first.stdout).toContain("codex/terra 4m");
+      expect(first.stdout).toContain("claude/sonnet 1m");
+      expect(first.stdout).toContain("✓2 unread ✗1");
+      expect(first.stdout).not.toContain("outside");
+      expect(second.stdout).toBe(first.stdout);
+
+      const json = await runCli(["jobs", "list", "--json", "--cwd", repo], env);
+      const status = JSON.parse(json.stdout) as {
+        running: Array<{
+          id: string;
+          provider: string;
+          model: string;
+          elapsed_seconds: number;
+          cwd: string;
+        }>;
+        unread: { total: number; failed: number };
+        line: string;
+      };
+      expect(status.running).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "root", provider: "codex", model: "terra", cwd: repo }),
+          expect.objectContaining({ id: "child", provider: "claude", model: "sonnet", cwd: child }),
+        ]),
+      );
+      expect(status.running).toHaveLength(2);
+      expect(status.running[0]!.elapsed_seconds).toBeGreaterThanOrEqual(60);
+      expect(status.unread).toEqual({ total: 2, failed: 1 });
+      expect(status.line).toContain("mate ▶2");
+
+      const unread = await runCli(["inbox", "--cwd", repo], env);
+      expect(unread.stdout).toContain("done");
+      expect(unread.stdout).toContain("quota");
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("is silent when the status bar is idle and rejects incompatible list flags", async () => {
+    const base = mkdtempSync(join(tmpdir(), "abm-cli-status-idle-"));
+    const env = { AGENTMATE_HOME: join(base, "state") };
+    try {
+      const line = await runCli(["jobs", "list", "--line", "--cwd", base], env);
+      expect(line.exitCode).toBe(0);
+      expect(line.stdout).toBe("");
+      const json = await runCli(["jobs", "list", "--json", "--cwd", base], env);
+      expect(JSON.parse(json.stdout)).toEqual({
+        running: [],
+        unread: { total: 0, failed: 0 },
+        line: "",
+      });
+      for (const args of [
+        ["jobs", "list", "--line", "--json"],
+        ["jobs", "list", "--line", "--parent", "parent"],
+        ["jobs", "list", "--json", "--parent", "parent"],
+      ]) {
+        const result = await runCli(args, env);
+        expect(result.exitCode).not.toBe(0);
+        expect(result.stderr).toContain("cannot be combined");
+      }
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it("lists max-rounds among the jobs start options and validates it", async () => {
     const help = await runCli(["jobs", "start", "--help"]);
     expect(help.stdout).toContain("max-rounds");

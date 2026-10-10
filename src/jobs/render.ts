@@ -92,6 +92,72 @@ export function renderList(jobs: Job[]): string {
   return lines.join("\n");
 }
 
+export interface StatusRunning {
+  id: string;
+  provider: string;
+  model: string;
+  elapsed_seconds: number;
+  cwd: string;
+}
+
+export interface StatusUnread {
+  total: number;
+  failed: number;
+}
+
+/** Keeps the status bar legible: the family name a person recognizes, not the full id
+ *  (`gpt-5.6-terra` → `terra`, `claude-sonnet-4-6` → `sonnet`, `gemini-3.1-pro-high` → `3.1-pro`). */
+export function shortModel(model: string | undefined): string {
+  const value = model ?? "default";
+  const gpt = /^gpt-[\d.]+-([a-z]+)$/.exec(value);
+  if (gpt?.[1]) return gpt[1];
+  const claude = /^claude-([a-z]+)-/.exec(value);
+  if (claude?.[1]) return claude[1];
+  const gemini = /^gemini-([\d.]+-[a-z]+)/.exec(value);
+  if (gemini?.[1]) return gemini[1];
+  return value.length <= 10 ? value : `${value.slice(0, 9)}…`;
+}
+
+/** Terminal states that mean the work did not land: shown apart from the plain unread count. */
+export function isFailedStatus(status: Job["status"] | undefined): boolean {
+  return status === "error" || status === "timeout" || status === "quota_exhausted";
+}
+
+export function statusRunning(job: Job): StatusRunning {
+  return {
+    id: job.id,
+    provider: job.provider,
+    model: shortModel(job.usage?.model ?? job.model),
+    elapsed_seconds: elapsedSeconds(job),
+    cwd: job.cwd,
+  };
+}
+
+function statusElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h${rest}m` : `${hours}h`;
+}
+
+/** One compact status-bar line, or the empty string while this directory is idle. */
+export function renderStatusLine(running: StatusRunning[], unread: StatusUnread): string {
+  if (running.length === 0 && unread.total === 0) return "";
+  let line = "mate";
+  if (running.length > 0) {
+    const shown = running
+      .slice(0, 3)
+      .map((job) => `${job.provider}/${job.model} ${statusElapsed(job.elapsed_seconds)}`)
+      .join(" · ");
+    line += ` ▶${running.length} ${shown}`;
+  }
+  if (unread.total > 0) line += `${running.length > 0 ? " ·" : ""} ✓${unread.total} unread`;
+  if (unread.failed > 0) line += ` ✗${unread.failed}`;
+  return line;
+}
+
 /** One provider's catalog as a small table, or why it has none. */
 export function renderModels(catalog: ModelCatalog): string {
   const lines = [`Provider: ${catalog.provider}`];

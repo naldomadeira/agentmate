@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EventLevel, JobEvent } from "../agents/types.js";
 import {
@@ -570,11 +571,29 @@ export function childJobs(id: string): Job[] {
     .map((job) => getJob(job.id));
 }
 
-export function listJobs(options: { cwd?: string; limit?: number; parent?: string } = {}): Job[] {
+/** Symlinks resolved where the directory exists; the plain absolute path otherwise. */
+function realDir(dir: string): string {
+  try {
+    return fs.realpathSync(dir);
+  } catch {
+    return path.resolve(dir);
+  }
+}
+
+/** True when `dir` is `root` or lies below it (a sibling sharing a name prefix does not). */
+function within(root: string, dir: string): boolean {
+  const real = realDir(dir);
+  return real === root || real.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+}
+
+export function listJobs(
+  options: { cwd?: string; limit?: number; parent?: string; recursiveCwd?: boolean } = {},
+): Job[] {
+  const root = options.cwd && options.recursiveCwd ? realDir(options.cwd) : undefined;
   const jobs = listJobIds()
     .map((id) => readJob(id))
     .filter((job): job is Job => job !== null)
-    .filter((job) => !options.cwd || job.cwd === options.cwd)
+    .filter((job) => !options.cwd || (root ? within(root, job.cwd) : job.cwd === options.cwd))
     .filter((job) => !options.parent || job.parentJob === options.parent)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return jobs.slice(0, options.limit ?? 20);

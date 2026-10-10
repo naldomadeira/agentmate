@@ -25,7 +25,7 @@ Prefer the MCP tool when it is loaded; use the CLI otherwise.
 
 ## How to use each
 
-- **list** — `mate_list` accepts `cwd`, `limit` and `parent` (only children of that team lead job). The CLI takes `--cwd` and `--parent <id>`. Children of a team lead appear indented under it. Use it to recover an id after a restart.
+- **list** — `mate_list` accepts `cwd`, `limit` and `parent` (only children of that team lead job). The CLI takes `--cwd` and `--parent <id>`. Children of a team lead appear indented under it. Use it to recover an id after a restart. For a Claude Code `statusLine`, `agentmate jobs list --line [--cwd <dir>]` returns one compact non-empty line for that directory tree (or nothing when idle); `--json` returns the same status data. Neither status mode accepts `--parent`, and they cannot be combined.
 - **observe** — non-blocking snapshot of status and recent events (`important` and `status` only, so it stays small); for a team lead it also lists child jobs. Add `raw` / `--raw` for the stdout/stderr tails, or `levels` / `--level fyi` for command-level detail. Run it when the user asks for progress, not on a timer.
 - **events** — the job's event log, one line per event (`important`, `status`, `fyi`). Filter with `levels` / `--level`, read only what is new with `since` / `--since`, or stream with `--follow` until the job ends.
 - **result** — the stored final output, without waiting. Use it after an interrupted `wait`.
