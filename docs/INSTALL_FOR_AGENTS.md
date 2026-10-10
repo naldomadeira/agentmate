@@ -117,7 +117,7 @@ npx -y agentmate doctor
 1. Run `npx -y agentmate doctor` and follow its hints.
 2. Run `claude plugin list` or `codex plugin list` and confirm that `mate@agentmate` is enabled.
 3. Restart the host after any install or update; a running session does not reload skills or tools.
-4. Run `npx -y agentmate jobs list` to confirm the CLI fallback is available.
+4. Run `npx -y agentmate jobs list` to confirm the CLI fallback is available. For a Claude Code `statusLine`, use `npx -y agentmate jobs list --line`; `--json` returns the same status data for scripts.
 5. If a job fails, confirm that the destination CLI is reachable on `PATH` (`doctor` checks this) and authenticated (`doctor` does not check this).
 6. If MCP is unavailable while the CLI works, use the fallback. Do not register an MCP server automatically.
 

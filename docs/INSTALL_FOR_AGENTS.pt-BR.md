@@ -122,7 +122,7 @@ O `doctor` verifica se o Node.js é 18 ou superior, se `codex`, `claude`, `gemin
 1. Rode `npx -y agentmate doctor` e siga as dicas.
 2. Rode `claude plugin list` ou `codex plugin list` para conferir se `mate@agentmate` está habilitado e qual versão foi instalada.
 3. Reinicie o host após instalar ou atualizar; a sessão atual não recarrega skills e ferramentas já registradas.
-4. Rode `npx -y agentmate jobs list` para verificar se o fallback CLI está funcional.
+4. Rode `npx -y agentmate jobs list` para verificar se o fallback CLI está funcional. Para uma `statusLine` do Claude Code, use `npx -y agentmate jobs list --line`; `--json` retorna os mesmos dados de status para scripts.
 5. Se o job falhar, confirme que o CLI de destino está disponível no `PATH` do host que iniciou o job (o `doctor` verifica) e autenticado (o `doctor` não verifica).
 6. Se MCP estiver ausente mas o CLI funcionar, use o fallback; não registre automaticamente nenhum servidor na configuração pessoal do usuário.
 

@@ -15,7 +15,7 @@ import { AGENT_IDS, isAgentId } from "../agents/registry.js";
 import { listModels } from "../jobs/models.js";
 import type { EventLevel } from "../agents/types.js";
 import { readEvents } from "../jobs/events.js";
-import { ackTerminalJob } from "../jobs/inbox.js";
+import { ackTerminalJob, unreadInbox } from "../jobs/inbox.js";
 import { userFacing } from "../lib/errors.js";
 import {
   renderEvent,
@@ -24,6 +24,9 @@ import {
   renderModels,
   renderObservation,
   renderResult,
+  isFailedStatus,
+  renderStatusLine,
+  statusRunning,
 } from "../jobs/render.js";
 import {
   EFFORTS,
@@ -345,8 +348,39 @@ export default defineCommand({
       args: {
         cwd: { type: "string", description: "Only jobs from this directory" },
         parent: { type: "string", description: "Only jobs started by this job's worker" },
+        line: { type: "boolean", description: "Print one status-bar line for this directory tree" },
+        json: { type: "boolean", description: "Print the status-bar data as JSON" },
       },
       run: userFacing(({ args }) => {
+        if (args.line && args.json) throw new Error("--line cannot be combined with --json");
+        if ((args.line || args.json) && args.parent)
+          throw new Error("--line and --json cannot be combined with --parent");
+        if (args.line || args.json) {
+          // A status bar must never become an error source. This path reads only local state.
+          try {
+            const cwd = args.cwd ?? process.cwd();
+            const jobs = listJobs({ cwd, recursiveCwd: true, limit: Infinity });
+            const running = jobs
+              .filter((job) => job.status === "queued" || job.status === "running")
+              .map(statusRunning);
+            const jobsById = new Map(jobs.map((job) => [job.id, job]));
+            const terminalUnread = unreadInbox(cwd).entries.filter(
+              (entry) => entry.kind === "finished",
+            );
+            const unread = {
+              total: terminalUnread.length,
+              failed: terminalUnread.filter((entry) =>
+                isFailedStatus(jobsById.get(entry.job)?.status),
+              ).length,
+            };
+            const line = renderStatusLine(running, unread);
+            if (args.json) console.log(JSON.stringify({ running, unread, line }));
+            else if (line) console.log(line);
+          } catch {
+            // The caller redraws shortly; a damaged state file must not break its status bar.
+          }
+          return;
+        }
         console.log(renderList(listJobs({ cwd: args.cwd, parent: args.parent })));
       }),
     }),

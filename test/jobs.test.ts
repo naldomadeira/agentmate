@@ -34,6 +34,10 @@ else if (prompt === "quota-429" || prompt === "plain-429") {
   process.exit(1);
 }
 else if (prompt === "quota") { console.error("You've hit your usage limit. Try again at 6pm."); process.exit(1); }
+else if (prompt === "quota-turn-failed") {
+  emit({ type: "turn.failed", error: "You've hit your usage limit" });
+  process.exit(1);
+}
 else {
   emit({ type: "thread.started", thread_id: "t-1" });
   emit({ type: "item.completed", item: { type: "command_execution", command: "ls", exit_code: 0 } });
@@ -326,6 +330,12 @@ describe("jobs", () => {
       "Hand off: start the same job with provider claude.",
     );
     expect(renderResult(read, text)).toContain("quota_exhausted");
+  }, 30_000);
+
+  it("ends a Codex turn.failed usage-limit response as quota_exhausted", async () => {
+    const done = await waitJob(start("quota-turn-failed").id, 20_000);
+    expect(done.status).toBe("quota_exhausted");
+    expect(done.error).toContain("You've hit your usage limit");
   }, 30_000);
 
   it("names no agent in the quota hand-off when no other agent is installed", async () => {

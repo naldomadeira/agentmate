@@ -48,7 +48,7 @@ Roles (`ask`, `review`, `research`, `plan`, `implement`, `teamlead`, `crossrevie
 
 **Model catalog and validation (`src/jobs/models.ts`).** `listModels(provider, options)` queries supported models and reasoning efforts: agy runs `agy models` cached on disk for 6 hours in `~/.agentmate/cache/models-agy.json`; Codex reads `$CODEX_HOME/models_cache.json` for the job's account including supported reasoning levels; Claude, Gemini, and Copilot have no list command and are reported unavailable. `assertKnownModel` validates models and efforts before job dispatch, offering closest suggestions via edit distance; set `AGENTMATE_SKIP_MODEL_CHECK=1` to bypass validation.
 
-**Result header and usage metrics.** `summarize(job)` formats the job result header with `model · effort`, effective model (`ran <effective> (asked <requested>)`), account name and note, `commands allowed`, token usage (`in / out / reasoning tok`), USD cost, status and elapsed duration. In `mate_list` and `jobs list`, each line displays `model·effort`.
+**Result header and usage metrics.** `summarize(job)` formats the job result header with `model · effort`, effective model (`ran <effective> (asked <requested>)`), account name and note, `commands allowed`, token usage (`in / out / reasoning tok`), USD cost, status and elapsed duration. In `mate_list` and `jobs list`, each line displays `model·effort`. `jobs list --line` is the non-mutating Claude Code `statusLine` view for a directory tree, while `--json` exposes the same running and unread summary to scripts.
 
 ## Events and context filtering
 

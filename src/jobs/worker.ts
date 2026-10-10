@@ -108,24 +108,22 @@ export async function runWorker(id: string): Promise<void> {
     if (!streaming && outcome.text)
       emit("important", "message", outcome.text.slice(0, MAX_MESSAGE_CHARS));
 
+    const quotaLine = detectQuotaExhaustion(result.stderr, outcome.errors, outcome.text);
     if (result.aborted) status = "canceled";
     else if (result.timedOut) {
       status = "timeout";
       fields.error = `Exceeded the ${Math.round(job.timeoutMs / 60_000)} minute job deadline.`;
+    } else if (quotaLine) {
+      status = "quota_exhausted";
+      const other = installedOther(job.provider, AGENT_IDS, job.cwd);
+      fields.error = `${job.provider} quota exhausted: ${quotaLine.replace(/\.+$/, "")}. ${other ? `Retry after the reset or start the job on ${other}.` : "Retry after the reset."}`;
     } else if (!outcome.text || outcome.partial) {
-      const quotaLine = detectQuotaExhaustion(result.stderr, outcome.errors, outcome.text);
-      if (quotaLine) {
-        status = "quota_exhausted";
-        const other = installedOther(job.provider, AGENT_IDS, job.cwd);
-        fields.error = `${job.provider} quota exhausted: ${quotaLine.replace(/\.+$/, "")}. ${other ? `Retry after the reset or start the job on ${other}.` : "Retry after the reset."}`;
-      } else {
-        status = "error";
-        fields.error =
-          outcome.errors.join("; ") ||
-          (outcome.partial
-            ? `${job.provider} ended without a final result (exit ${result.exitCode}); the partial output is kept.`
-            : `${job.provider} exited ${result.exitCode} with no output.`);
-      }
+      status = "error";
+      fields.error =
+        outcome.errors.join("; ") ||
+        (outcome.partial
+          ? `${job.provider} ended without a final result (exit ${result.exitCode}); the partial output is kept.`
+          : `${job.provider} exited ${result.exitCode} with no output.`);
     } else status = "done";
   } catch (error) {
     fields.error = error instanceof Error ? error.message : String(error);
