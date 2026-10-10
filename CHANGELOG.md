@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-10
+
+### Added
+
+- Status-bar line for jobs: `agentmate jobs list --line [--cwd <dir>]` prints one line for a Claude Code `statusLine`, e.g. `mate ▶2 codex/terra 4m · claude/sonnet 1m · ✓1 unread ✗1`. It covers that directory and everything below it (realpath), shows up to three running or queued jobs as `provider/model elapsed`, and counts terminal inbox entries not yet read — failures (`error`, `timeout`, `quota_exhausted`) apart — without advancing the inbox cursor. It prints nothing when idle and never fails (it runs every few seconds). `--json` returns the same data (`running`, `unread`, `line`). Model ids are shortened by family (`gpt-5.6-terra` → `terra`, `claude-sonnet-4-6` → `sonnet`, `gemini-3.1-pro-high` → `3.1-pro`).
+
+### Fixed
+
+- A Codex job whose turn failed with "You've hit your usage limit" ended `done`; quota exhaustion was only checked when the job had no output. It now ends `quota_exhausted` with the hand-off hint. Detection still reads only stderr and provider errors, never the answer text.
+
 ## [0.8.0] - 2026-10-07
 
 ### Added
