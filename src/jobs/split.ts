@@ -560,7 +560,7 @@ export async function runSplit(id: string): Promise<void> {
       cwd: job.cwd,
       model: job.model,
       effort: job.effort,
-      ...(planner === "codex" && job.account ? { account: job.account } : {}),
+      ...(planner === job.provider && job.account ? { account: job.account } : {}),
       partner,
     });
     const [planDone] = await settle("plan", [planChild]);
@@ -666,7 +666,7 @@ export async function runSplit(id: string): Promise<void> {
             cwd: part.worktree!,
             model: sameProvider ? job.model : undefined,
             effort: sameProvider ? job.effort : undefined,
-            ...(part.agent === "codex" && job.account ? { account: job.account } : {}),
+            ...(part.agent === job.provider && job.account ? { account: job.account } : {}),
           })
         : begin(`part ${part.id}: research`, {
             provider: part.agent,
@@ -676,7 +676,7 @@ export async function runSplit(id: string): Promise<void> {
             cwd: job.cwd,
             model: sameProvider ? job.model : undefined,
             effort: sameProvider ? job.effort : undefined,
-            ...(part.agent === "codex" && job.account ? { account: job.account } : {}),
+            ...(part.agent === job.provider && job.account ? { account: job.account } : {}),
           });
       part.partJob = child.id;
       return child;
@@ -733,7 +733,7 @@ export async function runSplit(id: string): Promise<void> {
           },
           mode: "read-only",
           cwd: part.worktree ?? job.cwd,
-          ...(provider === "codex" && job.account ? { account: job.account } : {}),
+          ...(provider === job.provider && job.account ? { account: job.account } : {}),
         });
         part.reviewJob = child.id;
         return child;

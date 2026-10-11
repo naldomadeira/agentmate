@@ -10,7 +10,7 @@ This is the one skill that lets the worker **edit files**. Use it only when the 
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_implement` with `provider`, `task`, optional `acceptance` (how to tell it is done), `effort`, `model`, `account` (Codex only) and `context`. It always runs in write mode (read-only is rejected) and returns a job id; collect it with `mate_wait`.
+1. **MCP (preferred)** — call `mate_implement` with `provider`, `task`, optional `acceptance` (how to tell it is done), `effort`, `model`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account) and `context`. It always runs in write mode (read-only is rejected) and returns a job id; collect it with `mate_wait`.
 2. **CLI fallback**:
 
    ```bash

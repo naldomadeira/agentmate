@@ -85,11 +85,12 @@ function execOnce(options: ExecOptions): Promise<ExecResult> {
   const timeoutMs = options.timeoutMs ?? getTimeoutMs();
   const currentDepth = parseInt(process.env["AGENTMATE_SYNC_DEPTH"] ?? "0", 10);
 
-  const env: Record<string, string | undefined> = {
-    ...process.env,
-    ...options.env,
-    AGENTMATE_SYNC_DEPTH: String(currentDepth + 1),
-  };
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const [key, value] of Object.entries(options.env ?? {})) {
+    if (value === undefined) delete env[key];
+    else env[key] = value;
+  }
+  env["AGENTMATE_SYNC_DEPTH"] = String(currentDepth + 1);
 
   return new Promise((resolve, reject) => {
     logger.debug(

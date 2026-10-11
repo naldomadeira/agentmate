@@ -4,7 +4,8 @@ export interface ExecOptions {
   command: string;
   args: string[];
   cwd?: string;
-  env?: Record<string, string>;
+  /** Extra child environment variables; an undefined value removes an inherited variable. */
+  env?: Record<string, string | undefined>;
   timeoutMs?: number;
   maxRetries?: number;
   /** Consulted before a transient retry; return false to hand the failed result back instead. */

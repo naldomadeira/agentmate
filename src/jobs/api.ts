@@ -20,7 +20,14 @@ import {
   buildSplitPrompt,
   buildTeamleadPrompt,
 } from "../lib/prompt-builder.js";
-import { DEFAULT_ACCOUNT, effectiveCodexHome, resolveAccount, sameAccount } from "./accounts.js";
+import {
+  DEFAULT_ACCOUNT,
+  effectiveCodexHome,
+  resolveAccount,
+  resolveClaudeAccount,
+  sameAccount,
+  sameClaudeAccount,
+} from "./accounts.js";
 import { agyModelId } from "../agents/agy.js";
 import { readEvents } from "./events.js";
 import { assertKnownModel } from "./models.js";
@@ -76,7 +83,7 @@ export interface StartOptions {
   effort?: Effort;
   /** review only: widens the sandbox so the reviewer can run commands to verify. */
   allowCommands?: boolean;
-  /** Codex profile account name, or 'auto' to resolve the recommended account. */
+  /** Codex profile or Claude config account name; Codex also accepts 'auto'. */
   account?: string;
   mode?: JobMode;
   timeoutMinutes?: number;
@@ -318,10 +325,23 @@ export function startJob(options: StartOptions): Job {
       throw new Error(
         `Job ${prior.id} ran on ${prior.provider}, not ${provider}. Start the follow-up with \`agentmate jobs start ${prior.provider}\`.`,
       );
-    if (options.account && !sameAccount(options.account, prior.account))
-      throw new Error(
-        `Job ${prior.id} ran on Codex account ${prior.account ?? DEFAULT_ACCOUNT}, and its thread lives there. Drop account to continue it, or start a new job on ${options.account}.`,
-      );
+    if (options.account) {
+      // Validate Claude's requested account before comparing it with a session's config directory.
+      const requestedAccount =
+        provider === "claude" ? resolveClaudeAccount(options.account).account : options.account;
+      const same =
+        provider === "codex"
+          ? sameAccount(requestedAccount, prior.account)
+          : provider === "claude"
+            ? sameClaudeAccount(requestedAccount, prior.account)
+            : true;
+      if (!same)
+        throw new Error(
+          provider === "claude"
+            ? `Job ${prior.id} ran on Claude account ${prior.account ?? "the inherited environment"}, and its session lives there. Drop account to continue it, or start a new job on ${requestedAccount}.`
+            : `Job ${prior.id} ran on Codex account ${prior.account ?? DEFAULT_ACCOUNT}, and its thread lives there. Drop account to continue it, or start a new job on ${requestedAccount}.`,
+        );
+    }
     provider = prior.provider;
     sessionNote = prior.id;
     effort ??= prior.effort;
@@ -330,12 +350,18 @@ export function startJob(options: StartOptions): Job {
   }
   const cwd = options.cwd ?? process.cwd();
   assertAgentAvailable(provider, cwd);
-  if (account && provider !== "codex")
-    throw new Error(`account applies only to codex (its CODEX_HOME profiles). Drop account.`);
+  if (account && provider !== "codex" && provider !== "claude")
+    throw new Error(
+      "account applies only to codex and claude (their isolated account directories). Drop account.",
+    );
   if (account) {
-    const resolved = resolveAccount(account);
-    account = resolved.account;
-    accountNote = resolved.note;
+    if (provider === "codex") {
+      const resolved = resolveAccount(account);
+      account = resolved.account;
+      accountNote = resolved.note;
+    } else {
+      account = resolveClaudeAccount(account).account;
+    }
   }
   if (effort) {
     const adapter = getAgent(provider);
@@ -349,7 +375,13 @@ export function startJob(options: StartOptions): Job {
       `${provider} has no shell capability: allowCommands cannot be used. Run without allowCommands or pick another provider.`,
     );
   // A misspelled id would otherwise run on the CLI's fallback model, or fail only after the start.
-  if (model) assertKnownModel(provider, model, effort, effectiveCodexHome(account));
+  if (model)
+    assertKnownModel(
+      provider,
+      model,
+      effort,
+      provider === "codex" ? effectiveCodexHome(account) : undefined,
+    );
   // The partner is settled before anything is spawned: a default pointing at an agent that is not
   // installed would otherwise fail only after the implementer had already edited files.
   const needsPartner = role === "teamlead" || role === "crossreview" || role === "split";

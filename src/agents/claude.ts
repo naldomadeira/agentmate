@@ -1,5 +1,6 @@
 import { parseClaudeOutput } from "../lib/claude-output-parser.js";
 import { VERSION } from "../lib/version.js";
+import { claudeConfigDirFor } from "../jobs/accounts.js";
 import type { Job } from "../jobs/store.js";
 import type { AgentAdapter, Invocation, JobEvent, Outcome } from "./types.js";
 
@@ -121,6 +122,13 @@ export const claudeAdapter: AgentAdapter = {
   versionArgs: ["--version"],
 
   effortError: () => null,
+
+  /** A named Claude account has its own config; principal must remove any inherited config directory. */
+  env(job: Job): Record<string, string | undefined> | undefined {
+    if (job.account === undefined) return undefined;
+    const configDir = claudeConfigDirFor(job.account);
+    return { CLAUDE_CONFIG_DIR: configDir };
+  },
 
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {
     const args = ["-p", "--output-format", "stream-json", "--verbose"];

@@ -105,7 +105,8 @@ export default defineCommand({
         effort: { type: "string", description: `Reasoning effort: ${EFFORTS.join(", ")}` },
         account: {
           type: "string",
-          description: "Codex account name, or 'auto' to resolve the recommended one",
+          description:
+            "Codex profile name (or 'auto'), or Claude principal / ~/.claude-<name> / AGENTMATE_CLAUDE_ACCOUNTS name",
         },
         mode: { type: "string", description: "read-only (default) or write" },
         role: {
@@ -213,7 +214,8 @@ export default defineCommand({
         effort: { type: "string", description: `Reasoning effort: ${EFFORTS.join(", ")}` },
         account: {
           type: "string",
-          description: "Codex account name, or 'auto' to resolve the recommended one",
+          description:
+            "Codex profile name (or 'auto'), or Claude principal / ~/.claude-<name> / AGENTMATE_CLAUDE_ACCOUNTS name",
         },
       },
       run: userFacing(async ({ args }) => {

@@ -20,6 +20,8 @@ const isProfile = (dir: string) =>
 const isDefault = (account: string | undefined) =>
   !account || account === DEFAULT_ACCOUNT || account === "default";
 
+const isAccountName = (account: string) => /^[a-z0-9_-]+$/i.test(account);
+
 /** The `CODEX_HOME` a job on `account` runs with; undefined keeps the inherited one. */
 export function codexHomeFor(account: string | undefined): string | undefined {
   return isDefault(account) ? undefined : path.join(codexProfilesDir(), account!);
@@ -61,7 +63,7 @@ function suggestedAccount(): { account: string; note?: string } {
 export function resolveAccount(requested: string): { account: string; note?: string } {
   const { account, note } = requested === "auto" ? suggestedAccount() : { account: requested };
   if (isDefault(account)) return { account: DEFAULT_ACCOUNT, ...(note ? { note } : {}) };
-  if (!/^[a-z0-9_-]+$/i.test(account))
+  if (!isAccountName(account))
     throw new Error(`Invalid Codex account name: ${account}. Use a profile directory name.`);
   const home = codexHomeFor(account)!;
   if (!isProfile(home)) {
@@ -85,3 +87,71 @@ export function resolveAccount(requested: string): { account: string; note?: str
 /** True when two stored accounts name the same `CODEX_HOME`. */
 export const sameAccount = (a: string | undefined, b: string | undefined) =>
   codexHomeFor(a) === codexHomeFor(b);
+
+/** Explicit Claude account directories, preserving their strings for the Keychain-derived identity. */
+function claudeAccountMap(): Map<string, string> {
+  const accounts = new Map<string, string>();
+  for (const item of (process.env["AGENTMATE_CLAUDE_ACCOUNTS"] ?? "").split(",")) {
+    const separator = item.indexOf("=");
+    if (separator <= 0) continue;
+    accounts.set(item.slice(0, separator).trim(), item.slice(separator + 1));
+  }
+  return accounts;
+}
+
+/** A Claude config directory contains either its top-level state or its settings. */
+const isClaudeConfig = (dir: string) =>
+  fs.existsSync(path.join(dir, ".claude.json")) || fs.existsSync(path.join(dir, "settings.json"));
+
+function availableClaudeAccounts(): string[] {
+  const mapped = [...claudeAccountMap().keys()].filter(isAccountName);
+  let conventional: string[] = [];
+  try {
+    conventional = fs
+      .readdirSync(os.homedir(), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith(".claude-"))
+      .map((entry) => entry.name.slice(".claude-".length))
+      .filter(
+        (name) => isAccountName(name) && isClaudeConfig(path.join(os.homedir(), `.claude-${name}`)),
+      );
+  } catch {
+    // A missing home directory means only explicitly mapped accounts may be available.
+  }
+  return [DEFAULT_ACCOUNT, ...new Set([...mapped, ...conventional])];
+}
+
+/** The exact `CLAUDE_CONFIG_DIR` for a named account; undefined is the main Claude account. */
+export function claudeConfigDirFor(account: string | undefined): string | undefined {
+  if (isDefault(account)) return undefined;
+  return claudeAccountMap().get(account!) ?? path.join(os.homedir(), `.claude-${account}`);
+}
+
+/** Resolves a Claude account name and verifies that its isolated config directory is usable. */
+export function resolveClaudeAccount(requested: string): { account: string } {
+  if (requested === "auto")
+    throw new Error(
+      "auto applies only to codex accounts. Use principal or a named Claude account.",
+    );
+  if (isDefault(requested)) return { account: DEFAULT_ACCOUNT };
+  if (!isAccountName(requested))
+    throw new Error(`Invalid Claude account name: ${requested}. Use a config directory name.`);
+
+  const mapped = claudeAccountMap().get(requested);
+  if (mapped !== undefined && !path.isAbsolute(mapped))
+    throw new Error(
+      `Claude account "${requested}" in AGENTMATE_CLAUDE_ACCOUNTS must use an absolute directory: ${mapped}.`,
+    );
+  const dir = claudeConfigDirFor(requested)!;
+  if (!isClaudeConfig(dir))
+    throw new Error(
+      `Claude account "${requested}" is not a config directory (no .claude.json or settings.json in ${dir}). Available: ${availableClaudeAccounts().join(", ")}.`,
+    );
+  return { account: requested };
+}
+
+/** True when two stored accounts resolve to the same Claude config directory. */
+export const sameClaudeAccount = (a: string | undefined, b: string | undefined) => {
+  // An omitted account inherits the server environment, so it cannot safely stand for `principal`.
+  if (a === undefined || b === undefined) return a === b;
+  return claudeConfigDirFor(a) === claudeConfigDirFor(b);
+};
