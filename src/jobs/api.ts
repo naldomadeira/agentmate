@@ -90,6 +90,8 @@ export interface StartOptions {
   verify?: string;
   timeoutMinutes?: number;
   continueJob?: string;
+  /** review only: an earlier review whose findings this job checks after a fix. */
+  followUp?: string;
   /** crossreview only: review rounds before it stops, 1 to 5 (default 2). */
   maxRounds?: number;
   /** split only: most parts the plan may have, 2 to 4 (default 3). */
@@ -139,6 +141,7 @@ function renderPrompt(
   maxRounds: number,
   maxParts: number,
   partner: Provider | undefined,
+  followUp?: { id: string; result: string },
 ) {
   if (role === "custom") {
     if (!options.prompt)
@@ -164,6 +167,7 @@ function renderPrompt(
         context,
         shell: getAgent(provider).capabilities.shell,
         commandsAllowed: options.allowCommands,
+        followUp,
       });
     case "research":
       return buildResearchPrompt({
@@ -245,6 +249,8 @@ function splitFields(options: StartOptions): RoleFields {
 
 export function startJob(options: StartOptions): Job {
   const role = options.role ?? "custom";
+  if (options.followUp !== undefined && role !== "review")
+    throw new Error("followUp applies only to role review. Use role review or remove followUp.");
   if (
     options.verify !== undefined &&
     (role === "ask" || role === "review" || role === "research" || role === "plan")
@@ -298,6 +304,26 @@ export function startJob(options: StartOptions): Job {
       throw new Error(
         "allowCommands applies only to the review role. Drop allowCommands or set role to review.",
       );
+  }
+  let followUp: { id: string; result: string } | undefined;
+  if (options.followUp) {
+    const prior = readJob(options.followUp);
+    if (!prior)
+      throw new Error(
+        `Cannot follow up unknown job: ${options.followUp}. Run \`agentmate jobs list\`.`,
+      );
+    if (prior.role !== "review")
+      throw new Error(`Job ${prior.id} is not a review. Start a new review job instead.`);
+    if (!isTerminal(prior))
+      throw new Error(
+        `Job ${prior.id} is still ${prior.status}; wait for it before following up. Run \`agentmate jobs wait ${prior.id}\`.`,
+      );
+    const priorResult = readResult(prior.id).text;
+    if (!priorResult)
+      throw new Error(
+        `Job ${prior.id} has no result to follow up. Run \`agentmate jobs result ${prior.id}\`.`,
+      );
+    followUp = { id: prior.id, result: priorResult };
   }
   // Validated up front so an unknown session never leaves a half-started job behind.
   if (options.sessionId) getSession(options.sessionId);
@@ -419,7 +445,16 @@ export function startJob(options: StartOptions): Job {
     );
   const maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS;
   const maxParts = options.maxParts ?? DEFAULT_MAX_PARTS;
-  const rendered = renderPrompt(options, role, provider, mode, maxRounds, maxParts, partner);
+  const rendered = renderPrompt(
+    options,
+    role,
+    provider,
+    mode,
+    maxRounds,
+    maxParts,
+    partner,
+    followUp,
+  );
   const prompt = options.sessionId ? withSessionNotes(options.sessionId, rendered) : rendered;
   const job: Job = {
     id: newJobId(),
@@ -440,6 +475,7 @@ export function startJob(options: StartOptions): Job {
     status: "queued",
     createdAt: new Date().toISOString(),
     ...(sessionNote ? { continuesJob: sessionNote } : {}),
+    ...(followUp ? { followUpOf: followUp.id } : {}),
     ...(partner ? { partner } : {}),
     ...(options.sessionId ? { session: options.sessionId } : {}),
     ...(role === "crossreview"
@@ -701,6 +737,7 @@ export function summarize(job: Job): string {
     ...(model ? [model] : []),
     ...(account ? [account] : []),
     ...(job.allowCommands ? ["commands allowed"] : []),
+    ...(job.followUpOf ? [`follow-up of ${job.followUpOf}`] : []),
     ...usageSegments(job),
     job.status,
     `${elapsedSeconds(job)}s`,

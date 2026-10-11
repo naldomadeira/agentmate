@@ -10,11 +10,11 @@ Ask the other model to review work you or the user produced. The first argument 
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_review` with `provider`, `target`, optional `focus` (for example "concurrency", "security", "public API compatibility"), `allowCommands` (widen sandbox so the reviewer can run tests/commands to verify claims; denied on Gemini/agy), `effort`, `model`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account) and `context`. It returns a job id immediately; collect the result with `mate_wait`. Pass `waitSeconds` to wait inside the same call.
+1. **MCP (preferred)** — call `mate_review` with `provider`, `target`, optional `focus` (for example "concurrency", "security", "public API compatibility"), `followUp` (a terminal earlier review id of the same change; it checks the previous findings and regressions from the fix), `allowCommands` (widen sandbox so the reviewer can run tests/commands to verify claims; denied on Gemini/agy), `effort`, `model`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account) and `context`. It returns a job id immediately; collect the result with `mate_wait`. Pass `waitSeconds` to wait inside the same call.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agentmate jobs start <provider> "<review briefing>" --role review [--allow-commands] [--effort <effort>]
+   npx -y agentmate jobs start <provider> "<review briefing>" --role review [--follow-up <previous-review-id>] [--allow-commands] [--effort <effort>]
    npx -y agentmate jobs wait <id> --timeout 10m
    ```
 
@@ -39,4 +39,4 @@ The reviewer sees the repository, not your conversation. State:
 
 - Review is read-only; the reviewer never edits files. To apply a fix, use the `implement` skill separately.
 - For a large change, start one review per area (in parallel) instead of one giant prompt.
-- A second review of your fixes is a new job; do not reuse an old result for new code.
+- A second review of your fixes is a new job. Pass the prior job as `followUp` / `--follow-up` to check its findings and only regressions from the fix.

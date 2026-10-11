@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Follow-up reviews: `mate_review(followUp)` and `agentmate jobs start --role review --follow-up <id>` check an earlier terminal review's findings and regressions from the fix instead of restarting the audit. Jobs record `followUpOf`, review prompts retain the tail of the earlier result, and crossreview uses this mode from round 2.
 - Post-run verification for write jobs: `mate_implement(verify)` and `agentmate jobs start --verify <command>` run a shell command after a provider reports success. Its command, exit code, timeout flag and output tail are retained as `verifyResult`; a failed or timed-out check leaves the agent result intact but ends terminal `needs_attention`, visible under **Verify** in results and counted as failed work. Cross-review and write split implementer children inherit `verify`.
 
 ## [0.9.0] - 2026-10-11
@@ -136,7 +137,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed / Breaking
 
-- The project is renamed from Agents Bridge to **AgentMate** — *AI agents work better together.* AgentMate connects AI coding agents so they can collaborate, delegate, review, and help each other complete tasks.
+- The project is renamed from Agents Bridge to **AgentMate** — _AI agents work better together._ AgentMate connects AI coding agents so they can collaborate, delegate, review, and help each other complete tasks.
 - npm package `agents-bridge-mcp` → `agentmate` (`npx -y agentmate doctor`); the legacy synchronous-server bins `abm-claude` / `abm-codex` → `agentmate-claude` / `agentmate-codex`.
 - Marketplace `agents-bridge` → `agentmate`, plugin `bridge` → `mate`: the install id is `mate@agentmate` and the commands are `/mate:<skill>` in Claude Code and `$mate:<skill>` in Codex. Agents are `mate:codex-reviewer` and so on.
 - MCP server key `agents-bridge` → `agentmate`, tools `bridge_*` → `mate_*`.

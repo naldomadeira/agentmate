@@ -6,7 +6,7 @@ argument-hint: "<codex|claude|gemini|agy|copilot> <task>"
 
 # Cross-review
 
-A crossreview job is a workflow: the provider you name **implements** (write mode), the **partner** (default: the first installed other agent) **reviews** the uncommitted diff read-only, and when the reviewer asks for changes the implementer continues its own session with the findings. You start it once and read one report.
+A crossreview job is a workflow: the provider you name **implements** (write mode), the **partner** (default: the first installed other agent) **reviews** the uncommitted diff read-only, and when the reviewer asks for changes the implementer continues its own session with the findings. From round 2, the reviewer follows up its prior review, checking each finding and only regressions from the fix. You start it once and read one report.
 
 ```
 implement (A, write) -> review (B, read-only) -> Verdict: approve          -> done

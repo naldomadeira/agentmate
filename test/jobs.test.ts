@@ -19,7 +19,7 @@ import { VERSION } from "../src/lib/version.js";
 import { readEvents } from "../src/jobs/events.js";
 import { readInbox } from "../src/jobs/inbox.js";
 import { isFailedStatus, renderObservation, renderResult } from "../src/jobs/render.js";
-import { stdoutFile, updateJob, type Job } from "../src/jobs/store.js";
+import { resultFile, stdoutFile, updateJob, type Job } from "../src/jobs/store.js";
 
 // A stand-in for the codex CLI. The prompt (last argument) selects the behavior.
 const FAKE_CODEX = `#!/usr/bin/env node
@@ -264,6 +264,47 @@ describe("jobs", () => {
   it("rejects verify on a read-only role with the next action", () => {
     expect(() => start("src/a.ts", { role: "review", verify: "pnpm test" })).toThrow(
       "verify applies only to write jobs. Use role implement or remove verify.",
+    );
+  });
+
+  it("validates a review follow-up and stores it on the new job", async () => {
+    expect(() => start("src/a.ts", { role: "review", followUp: "unknown" })).toThrow(
+      "Cannot follow up unknown job: unknown. Run `agentmate jobs list`.",
+    );
+
+    const notReview = start("hello");
+    await waitJob(notReview.id, 20_000);
+    expect(() => start("src/a.ts", { role: "review", followUp: notReview.id })).toThrow(
+      `Job ${notReview.id} is not a review. Start a new review job instead.`,
+    );
+
+    const running = start("sleep", { role: "review" });
+    expect(() => start("src/a.ts", { role: "review", followUp: running.id })).toThrow(
+      `Job ${running.id} is still queued; wait for it before following up. Run \`agentmate jobs wait ${running.id}\`.`,
+    );
+    await cancelJob(running.id);
+
+    const noResult = start("src/a.ts", { role: "review" });
+    await waitJob(noResult.id, 20_000);
+    fs.unlinkSync(resultFile(noResult.id));
+    expect(() => start("src/b.ts", { role: "review", followUp: noResult.id })).toThrow(
+      `Job ${noResult.id} has no result to follow up. Run \`agentmate jobs result ${noResult.id}\`.`,
+    );
+
+    const prior = start("src/a.ts", { role: "review" });
+    await waitJob(prior.id, 20_000);
+    const followUp = start("src/b.ts", { role: "review", followUp: prior.id });
+    expect(followUp.followUpOf).toBe(prior.id);
+    expect(followUp.prompt).toContain("## Follow-up review");
+    expect(followUp.prompt).toContain(
+      `args=exec --json --skip-git-repo-check --sandbox read-only ${prior.prompt}`,
+    );
+    expect(renderResult(followUp, null)).toContain(`follow-up of ${prior.id}`);
+  }, 80_000);
+
+  it("rejects a review follow-up on another role", () => {
+    expect(() => start("do it", { role: "implement", followUp: "prior-review" })).toThrow(
+      "followUp applies only to role review. Use role review or remove followUp.",
     );
   });
 

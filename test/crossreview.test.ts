@@ -280,6 +280,11 @@ describe("crossreview workflow", () => {
     const secondText = readResult(secondImplement!.id).text ?? "";
     expect(secondText).toContain("exec resume t-impl");
 
+    const firstReview = children[1]!;
+    const secondReview = children[3]!;
+    expect(secondReview.followUpOf).toBe(firstReview.id);
+    expect(secondReview.prompt).toContain("## Follow-up review");
+
     expect(report).toMatch(/\| 1 \|.*\| request-changes \|/);
     expect(report).toMatch(/\| 2 \|.*\| approve \|/);
     const texts = eventTexts(job.id);
