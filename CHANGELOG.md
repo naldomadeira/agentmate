@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-11
+
 ### Added
 
 - Claude accounts: `account` now also selects the Claude Code account of a `claude` job, in both directions. `principal` (or `default`) runs the job with `CLAUDE_CONFIG_DIR` removed from its environment, so a server started from another account's session can still reach the main one; any other name resolves to an `AGENTMATE_CLAUDE_ACCOUNTS` entry (`name=/abs/dir,...`) or to `~/.claude-<name>`, which must hold `.claude.json` or `settings.json`. The directory string is passed unchanged, because Claude Code derives the Keychain entry from it. `auto` stays Codex-only; gemini, agy and copilot still refuse `account`. Continuing a job on another account is refused, as for Codex, since the session lives under that account's config directory. Omitting `account` keeps the inherited environment.
