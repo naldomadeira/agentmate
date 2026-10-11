@@ -229,6 +229,7 @@ export async function runCrossreview(id: string): Promise<void> {
 
   try {
     let previousImplement: Job | undefined;
+    let previousReview: Job | undefined;
     let findings = "";
     for (let round = 1; round <= maxRounds; round++) {
       const addressFindings = `Address these review findings, then summarize what changed.\n\nReview findings:\n${briefFindings(findings)}`;
@@ -286,6 +287,7 @@ export async function runCrossreview(id: string): Promise<void> {
             mode: "read-only",
             cwd: job.cwd,
             ...(reviewer === job.provider && job.account ? { account: job.account } : {}),
+            ...(previousReview ? { followUp: previousReview.id } : {}),
           },
           (childId) => {
             reviewId = childId;
@@ -299,6 +301,7 @@ export async function runCrossreview(id: string): Promise<void> {
         throw failure;
       }
       finalReview = review.text;
+      previousReview = review.job;
       const verdict = parseVerdict(review.text);
       rounds.push({ implementJob: implement.job.id, reviewJob: review.job.id, verdict });
       saveRounds();

@@ -9,6 +9,15 @@ import { VERSION } from "./version.js";
 
 const withContext = (context?: string) => (context ? `\n\nContext:\n${context}` : "");
 const READ_ONLY_RULE = "Do not modify any files; inspect only.";
+const MAX_FOLLOW_UP_RESULT_CHARS = 12_000;
+
+function followUpReview(result: string): string {
+  const previous =
+    result.length > MAX_FOLLOW_UP_RESULT_CHARS
+      ? `…[earlier follow-up review text truncated]\n${result.slice(-MAX_FOLLOW_UP_RESULT_CHARS)}`
+      : result;
+  return `\n\n## Follow-up review\n\nThe earlier review's findings are below. Check the fix against them instead of starting a fresh review.\n\nPrevious review:\n${previous}\n\nFor each finding of the previous review, report its state: resolved / not resolved / partially resolved, with evidence (file:line, what changed).\n\nThen report only regressions or new defects introduced by the changes made since that review (the fix), at any severity. Do not raise new findings about code the fix did not touch; if you notice a pre-existing high-severity defect, list it once under **Out of scope (pre-existing)** without letting it affect the verdict. Approve when every previous finding is resolved and no regression was introduced.`;
+}
 
 /** Direct question: a short answer backed by evidence from the code. */
 export function buildAskPrompt(options: { question: string; context?: string }): string {
@@ -31,6 +40,8 @@ export function buildReviewPrompt(options: {
   shell?: boolean;
   /** When true, reviewer may run commands/tests to verify claims, but must not edit files. */
   commandsAllowed?: boolean;
+  /** An earlier review and its stored result, used to keep a repeated review focused on the fix. */
+  followUp?: { id: string; result: string };
 }): string {
   const focus = options.focus ? `\n\nFocus especially on: ${options.focus}` : "";
   const inspect =
@@ -44,17 +55,25 @@ export function buildReviewPrompt(options: {
     ? `3. **Verified** - For each claim verified by running something, report the command and its result ("verified: <cmd> passed/failed")
 4. **Not verified** - What you did not verify`
     : `3. **Not verified** - What you could not verify and why (sandbox vs. other)`;
-  const verdictIndex = options.commandsAllowed ? 5 : 4;
+  // A follow-up answers the previous findings first and limits new ones to the fix, so rounds converge.
+  const shift = options.followUp ? 1 : 0;
+  const previousSection = options.followUp
+    ? "1. **Previous findings** - Each finding of the previous review: resolved / not resolved / partially resolved, with evidence (file:line, what changed)\n"
+    : "";
+  const findingsScope = options.followUp
+    ? "Only regressions or new defects introduced by the fix, ordered by severity"
+    : "Ordered by severity";
+  const verdictIndex = (options.commandsAllowed ? 5 : 4) + shift;
   return `Review the following change as a rigorous, skeptical code reviewer. ${READ_ONLY_RULE} ${inspect} ${commandsPolicy}
 
-Review target: ${options.target}${focus}${withContext(options.context)}
+Review target: ${options.target}${focus}${withContext(options.context)}${options.followUp ? followUpReview(options.followUp.result) : ""}
 
 Report only real problems: correctness bugs, security issues, data loss, race conditions, missing error handling, and tests that do not prove what they claim. Skip pure style preferences.
 
 Structure your response with:
-1. **Findings** - Ordered by severity (critical, high, medium, low). For each: severity, file:line, what is wrong, and the **Failure scenario** (the concrete input or sequence that breaks it)
-2. **Suggested fixes** - One line per finding
-${verificationSection}
+${previousSection}${1 + shift}. **Findings** - ${findingsScope} (critical, high, medium, low). For each: severity, file:line, what is wrong, and the **Failure scenario** (the concrete input or sequence that breaks it)
+${2 + shift}. **Suggested fixes** - One line per finding
+${shift ? verificationSection.replace(/^(\d)\./gm, (_, n: string) => `${Number(n) + shift}.`) : verificationSection}
 ${verdictIndex}. **Verdict** - A one-sentence reason, then, as the very last line of your response, exactly one of these two lines and nothing after it:
 Verdict: approve
 Verdict: request-changes`;

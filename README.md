@@ -215,7 +215,7 @@ implement (provider, write)  ->  review (other agent, read-only)  ->  verdict
                               Verdict: approve  ->  done
 ```
 
-Each round has two child jobs on the same working directory (`depth` 1, `parentJob` = the workflow id). The implementer runs in write mode; from round 2 it continues its own session with the reviewer's findings (an implementer that cannot continue, such as Gemini, starts a fresh implement job with the findings instead). The reviewer reads the uncommitted `git diff` (and `git status` for new files) read-only, or receives the diff in its briefing when it cannot run the shell (Gemini, agy), with the implementer's report as context, and must end its review with the line `Verdict: approve` or `Verdict: request-changes`.
+Each round has two child jobs on the same working directory (`depth` 1, `parentJob` = the workflow id). The implementer runs in write mode; from round 2 it continues its own session with the reviewer's findings (an implementer that cannot continue, such as Gemini, starts a fresh implement job with the findings instead). The reviewer reads the uncommitted `git diff` (and `git status` for new files) read-only, or receives the diff in its briefing when it cannot run the shell (Gemini, agy), with the implementer's report as context, and must end its review with the line `Verdict: approve` or `Verdict: request-changes`. From round 2 the reviewer follows up the prior review: it reports each prior finding as resolved, not resolved or partially resolved, then checks only regressions introduced by the fix.
 
 Stop rules:
 
@@ -323,6 +323,12 @@ Start with a read-only request. Give the receiving CLI enough context to produce
 npx -y agentmate jobs start codex "Review the current diff. Report only actionable findings." --role review
 # retain the job ID printed by start
 npx -y agentmate jobs wait <job-id>
+```
+
+To re-review a fix without reopening the whole change, start another review with `--follow-up <previous-review-id>`. It checks every previous finding and only regressions introduced by the fix:
+
+```bash
+npx -y agentmate jobs start codex "Review the fix" --role review --follow-up <previous-review-id>
 ```
 
 After a plugin restart, the same workflow can be requested through the installed `review` skill or the `delegate` skill. The skill selects MCP when it is available and otherwise runs the CLI commands above.

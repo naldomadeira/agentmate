@@ -154,6 +154,7 @@ function runRole(
     partner?: Provider | undefined;
     allowCommands?: boolean | undefined;
     verify?: string | undefined;
+    followUp?: string | undefined;
   },
   fields: RoleFields,
   defaultWaitSeconds = 0,
@@ -166,6 +167,7 @@ function runRole(
     partner,
     allowCommands,
     verify,
+    followUp,
     cwd,
     model,
     effort,
@@ -185,6 +187,7 @@ function runRole(
       partner,
       allowCommands,
       verify,
+      followUp,
       cwd,
       model,
       effort,
@@ -253,6 +256,11 @@ server.registerTool(
         .describe("Diff range (e.g. main..HEAD), files or a description of the change"),
       focus: z.string().optional().describe("What to scrutinize most"),
       context,
+      followUp: jobId
+        .optional()
+        .describe(
+          "Id of an earlier review job of the same change: this review then only checks whether that review's findings were resolved and whether the fix introduced regressions, so rounds converge",
+        ),
       allowCommands: z
         .boolean()
         .optional()
@@ -262,8 +270,8 @@ server.registerTool(
       ...common,
     },
   },
-  guard(({ target, focus, context, ...args }) =>
-    runRole("review", args, { target, focus, context }),
+  guard(({ target, focus, context, followUp, ...args }) =>
+    runRole("review", { ...args, followUp }, { target, focus, context }),
   ),
 );
 

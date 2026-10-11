@@ -162,6 +162,8 @@ export interface Job {
   exitCode?: number;
   /** The provider's own conversation id, used to continue the job. Not an AgentMate session. */
   sessionId?: string;
+  /** review only: earlier review whose findings this job checks after a fix. */
+  followUpOf?: string;
   /** Id of the AgentMate session (shared notes) this job belongs to; see `sessions.ts`. */
   session?: string;
   continuesJob?: string;

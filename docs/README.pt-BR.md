@@ -210,7 +210,7 @@ implement (provider, escrita)  ->  review (outro agente, somente leitura)  ->  v
                               Verdict: approve  ->  done
 ```
 
-Cada rodada tem dois jobs filhos no mesmo diretório de trabalho (`depth` 1, `parentJob` = o id do workflow). O implementador roda em modo de escrita; a partir da rodada 2 ele continua a própria sessão com os achados do revisor (um implementador que não pode continuar, como o Gemini, inicia um novo job de implementação com os achados). O revisor lê, somente leitura, o `git diff` não commitado (e `git status` para arquivos novos) ou recebe o diff no próprio briefing quando não pode usar o shell (Gemini, agy), com o relatório do implementador como contexto, e deve terminar a revisão com a linha `Verdict: approve` ou `Verdict: request-changes`.
+Cada rodada tem dois jobs filhos no mesmo diretório de trabalho (`depth` 1, `parentJob` = o id do workflow). O implementador roda em modo de escrita; a partir da rodada 2 ele continua a própria sessão com os achados do revisor (um implementador que não pode continuar, como o Gemini, inicia um novo job de implementação com os achados). O revisor lê, somente leitura, o `git diff` não commitado (e `git status` para arquivos novos) ou recebe o diff no próprio briefing quando não pode usar o shell (Gemini, agy), com o relatório do implementador como contexto, e deve terminar a revisão com a linha `Verdict: approve` ou `Verdict: request-changes`. A partir da rodada 2 o revisor faz o follow-up da revisão anterior: informa cada achado anterior como resolvido, não resolvido ou parcialmente resolvido e depois verifica só as regressões introduzidas pela correção.
 
 Regras de parada:
 
@@ -322,6 +322,12 @@ Comece com uma solicitação somente de leitura. Dê ao outro CLI o objetivo, os
 npx -y agentmate jobs start codex "Revise o diff atual e reporte apenas achados acionáveis." --role review
 # guarde o ID impresso pelo comando
 npx -y agentmate jobs wait <job-id>
+```
+
+Para revisar uma correção sem reabrir toda a alteração, inicie outra revisão com `--follow-up <id-da-revisão-anterior>`. Ela verifica cada achado anterior e somente regressões introduzidas pela correção:
+
+```bash
+npx -y agentmate jobs start codex "Revise a correção" --role review --follow-up <id-da-revisão-anterior>
 ```
 
 Depois de reiniciar o plugin, você também pode pedir a mesma tarefa pela skill `review` ou pela skill `delegate`. Elas escolhem MCP quando está disponível e usam o CLI como fallback.

@@ -45,6 +45,55 @@ describe("buildReviewPrompt", () => {
     expect(prompt).toContain("very last line");
     expect(prompt.trimEnd().endsWith("Verdict: request-changes")).toBe(true);
   });
+
+  it("follows up the prior findings while preserving the parsed verdict format", () => {
+    const prompt = buildReviewPrompt({
+      target: "the diff",
+      followUp: { id: "prior-review", result: "High: src/a.ts:1 loses data." },
+    });
+    expect(prompt).toContain("## Follow-up review");
+    expect(prompt).toContain("High: src/a.ts:1 loses data.");
+    expect(prompt).toContain("resolved / not resolved / partially resolved");
+    expect(prompt).toContain("only regressions or new defects introduced");
+    expect(prompt).toContain("Out of scope (pre-existing)");
+    // The answer structure itself starts from the previous findings and scopes new ones to the fix.
+    expect(prompt).toContain("1. **Previous findings**");
+    expect(prompt).toContain(
+      "2. **Findings** - Only regressions or new defects introduced by the fix",
+    );
+    expect(prompt).toContain("4. **Not verified**");
+    expect(prompt).toContain("5. **Verdict**");
+    expect(prompt).toContain("Verdict: approve");
+    expect(prompt.trimEnd().endsWith("Verdict: request-changes")).toBe(true);
+  });
+
+  it("renumbers the verified sections of a follow-up that may run commands", () => {
+    const prompt = buildReviewPrompt({
+      target: "the diff",
+      commandsAllowed: true,
+      followUp: { id: "prior-review", result: "Medium: src/b.ts:2." },
+    });
+    expect(prompt).toContain("4. **Verified**");
+    expect(prompt).toContain("5. **Not verified**");
+    expect(prompt).toContain("6. **Verdict**");
+  });
+
+  it("leaves a normal review's structure unchanged", () => {
+    const prompt = buildReviewPrompt({ target: "the diff" });
+    expect(prompt).not.toContain("Previous findings");
+    expect(prompt).toContain("1. **Findings** - Ordered by severity");
+    expect(prompt).toContain("4. **Verdict**");
+  });
+
+  it("keeps the end of an oversized prior review with a truncation marker", () => {
+    const prompt = buildReviewPrompt({
+      target: "the diff",
+      followUp: { id: "prior-review", result: `START${"x".repeat(12_100)}END` },
+    });
+    expect(prompt).toContain("…[earlier follow-up review text truncated]");
+    expect(prompt).not.toContain("START");
+    expect(prompt).toContain(`${"x".repeat(100)}END`);
+  });
 });
 
 describe("buildReviewPrompt without a shell", () => {

@@ -120,6 +120,11 @@ export default defineCommand({
             "write jobs only: shell command run after the agent finishes; a non-zero exit needs attention",
         },
         continue: { type: "string", description: "Finished job id whose session to resume" },
+        "follow-up": {
+          type: "string",
+          description:
+            "review only: earlier review id whose findings this review checks after a fix",
+        },
         "max-rounds": {
           type: "string",
           description: "crossreview only: most implement-and-review rounds, 1 to 5 (default 2)",
@@ -197,6 +202,7 @@ export default defineCommand({
           verify: args.verify,
           timeoutMinutes,
           continueJob: args.continue,
+          followUp: args["follow-up"],
         });
         console.log(job.id);
       }),
