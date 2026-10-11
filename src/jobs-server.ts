@@ -116,7 +116,7 @@ const common = {
     .string()
     .optional()
     .describe(
-      "Codex profile account name (e.g. 'zeus', 'kratos'), or 'auto' to resolve the recommended account",
+      "Codex profile account name (e.g. 'zeus', 'kratos') or 'auto'; Claude principal/default or a ~/.claude-<name> / AGENTMATE_CLAUDE_ACCOUNTS account",
     ),
   timeoutMinutes: z
     .number()
@@ -370,7 +370,10 @@ server.registerTool(
       cwd: common.cwd,
       model: z.string().optional().describe("Model override for the implementer only"),
       effort: effortArg(" for the implementer only"),
-      account: z.string().optional().describe("Codex account for the implementer only"),
+      account: z
+        .string()
+        .optional()
+        .describe("Codex or Claude account for the implementer only (Codex also accepts auto)"),
       timeoutMinutes: z
         .number()
         .positive()
@@ -412,7 +415,12 @@ server.registerTool(
       session: sessionArg,
       model: z.string().optional().describe("Model override for the planner and same-agent parts"),
       effort: effortArg(" for the planner and same-agent parts"),
-      account: z.string().optional().describe("Codex account for the planner and same-agent parts"),
+      account: z
+        .string()
+        .optional()
+        .describe(
+          "Codex or Claude account for the planner, same-agent parts and same-agent reviewers (Codex also accepts auto)",
+        ),
       timeoutMinutes: z
         .number()
         .positive()

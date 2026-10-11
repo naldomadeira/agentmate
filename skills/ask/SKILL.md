@@ -10,7 +10,7 @@ Get a direct answer from the other model without leaving the session. The first 
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_ask` with `provider` and `question`. It waits up to 120 seconds (`waitSeconds`, max 300) and returns the answer in the same call. Pass `effort` (`low`, `medium`, `high`, `xhigh`), `model`, `account` (Codex profile or `auto`), `context` for background and `cwd` for another repository. Inside Codex, MCP tool calls time out after about 60 seconds by default: pass `waitSeconds: 45` and continue with `mate_wait` if the answer has not arrived.
+1. **MCP (preferred)** — call `mate_ask` with `provider` and `question`. It waits up to 120 seconds (`waitSeconds`, max 300) and returns the answer in the same call. Pass `effort` (`low`, `medium`, `high`, `xhigh`), `model`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account), `context` for background and `cwd` for another repository. Inside Codex, MCP tool calls time out after about 60 seconds by default: pass `waitSeconds: 45` and continue with `mate_wait` if the answer has not arrived.
 2. **CLI fallback** — when the `mate_*` tools are not loaded, run the same thing from a shell:
 
    ```bash

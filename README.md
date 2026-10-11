@@ -411,14 +411,13 @@ Pass `model` / `--model <id>` to override the model. Inspect supported models an
 - **Claude, Gemini and Copilot** are not checked (their CLIs do not provide a machine-readable model catalog; Copilot models depend on plan/policies, `auto` always works).
 - Unknown models and unsupported efforts fail before dispatch with closest matches suggested. Set `AGENTMATE_SKIP_MODEL_CHECK=1` to skip this check.
 
-### Codex accounts
+### Accounts
 
-For Codex, pass `account` / `--account <name>` to choose the active profile:
+For Codex or Claude, pass `account` / `--account <name>` to choose the account for that job:
 
-- `principal` (or `default`): uses the default `CODEX_HOME` (`~/.codex`).
-- Profile name: directory under `~/.codex-profiles/<name>` (override base directory with `AGENTMATE_CODEX_PROFILES`), running with its own `CODEX_HOME`.
-- `auto`: runs `limites --json` (override binary with `AGENTMATE_LIMITES_BIN`) and selects the account with the most headroom, falling back to `principal` with a note if `limites` fails or returns no suggestion.
-- Resumed jobs (`--continue`) enforce and inherit the original account. In `crossreview`, `account` applies to the implementer; in `split`, to the planner, same-agent parts, and Codex reviewers.
+- **Codex**: `principal` (or `default`) uses the default `CODEX_HOME` (`~/.codex`); a profile name uses `~/.codex-profiles/<name>` (override with `AGENTMATE_CODEX_PROFILES`); `auto` runs `limites --json` (override binary with `AGENTMATE_LIMITES_BIN`) and picks the suggested account, falling back to `principal` with a note.
+- **Claude**: `principal` (or `default`) uses the main account and removes `CLAUDE_CONFIG_DIR` from the child environment. A name uses an exact `AGENTMATE_CLAUDE_ACCOUNTS` entry (`name=/absolute/dir`) when present, otherwise `~/.claude-<name>`; the directory must contain `.claude.json` or `settings.json`. `auto` is Codex-only.
+- Resumed jobs (`--continue`) enforce and inherit the original account. In `crossreview`, `account` applies to the same-provider implementer and reviewer; in `split`, to the planner, same-provider parts and reviewers.
 
 ### Review with command execution
 
@@ -465,7 +464,7 @@ When the CLI reports the effective model executed, the header displays `ran <eff
 - **One `write` job per working tree at a time.** Two writers in one tree collide. The skills and the team lead prompt follow this rule; use separate git worktrees for parallel edits (`split` does this for its parts).
 - **A spent plan is a status, not a crash.** When a provider reports that its usage limit, quota or credits are used up, the job ends `quota_exhausted` (terminal; `wait` and `ask` exit `1`). Its `error` reads `<provider> quota exhausted: <line>. Retry after the reset or start the job on <other agent>.`, and `result` adds `Hand off: start the same job with provider <other>.`; the other agent is the first installed one, and when none is installed both lines say to retry after the reset instead. Detection reads the stderr tail and parsed errors only, so a 429 alone is not exhaustion, and the job is not retried once a quota line is seen. Extend the detection with `AGENTMATE_QUOTA_PATTERNS`, case-insensitive regular expressions separated by `|`; invalid ones are ignored. The defaults cover agy's `RESOURCE_EXHAUSTED` status and its `Individual quota reached` and `quota exceeded` wording, as well as GitHub Copilot's `premium requests` and plan allowance lines; its bare `code 429` is too loose to be a default, so add `AGENTMATE_QUOTA_PATTERNS='\bcode\s*429\b'` if you want it (a 429 caused by a tool the agent called then counts as exhaustion too).
 - **The delegator owns acceptance.** Job output is an input to your judgment. Verify claims and run the tests before you merge anything a worker produced.
-- **No hidden configuration changes.** The plugin registers its own MCP server. The fallback path runs the CLI and never edits host configuration. Do not put secrets in briefings: prompts and results are stored in plain text under `~/.agentmate`, in files created with owner-only permissions (`0600` for files, `0700` for directories). Environment variables that configure job controls: `AGENTMATE_CODEX_PROFILES` overrides the Codex profiles directory (`~/.codex-profiles`), `AGENTMATE_LIMITES_BIN` overrides the binary used to resolve `account: "auto"` (`limites`), and `AGENTMATE_SKIP_MODEL_CHECK=1` skips model and effort catalog validation before dispatch, `AGENTMATE_COPILOT_BIN` overrides the Copilot binary, `AGENTMATE_COPILOT_WRITE_TOOLS` extends Copilot's write-mode tools, and `AGENTMATE_COPILOT_INHERIT=1` keeps the user's built-in MCPs and skills in Copilot.
+- **No hidden configuration changes.** The plugin registers its own MCP server. The fallback path runs the CLI and never edits host configuration. Do not put secrets in briefings: prompts and results are stored in plain text under `~/.agentmate`, in files created with owner-only permissions (`0600` for files, `0700` for directories). Environment variables that configure job controls: `AGENTMATE_CODEX_PROFILES` overrides the Codex profiles directory (`~/.codex-profiles`), `AGENTMATE_LIMITES_BIN` overrides the binary used to resolve `account: "auto"` (`limites`), `AGENTMATE_CLAUDE_ACCOUNTS` maps Claude account names to absolute config directories, `AGENTMATE_SKIP_MODEL_CHECK=1` skips model and effort catalog validation before dispatch, `AGENTMATE_COPILOT_BIN` overrides the Copilot binary, `AGENTMATE_COPILOT_WRITE_TOOLS` extends Copilot's write-mode tools, and `AGENTMATE_COPILOT_INHERIT=1` keeps the user's built-in MCPs and skills in Copilot.
 
 ## Troubleshooting
 

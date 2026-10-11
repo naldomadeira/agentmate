@@ -14,7 +14,7 @@ your session -> teamlead job (depth 0, started by you) -> child jobs (depth 1, c
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_teamlead` with `provider` (who leads), `objective`, optional `partner` (the agent it delegates to; default: the first installed other agent, which must be installed), `constraints`, `effort`, `model`, `account` (Codex only) and `context`. Read-only by default; pass `mode: write` only if the user authorized edits. It returns the lead's job id.
+1. **MCP (preferred)** — call `mate_teamlead` with `provider` (who leads), `objective`, optional `partner` (the agent it delegates to; default: the first installed other agent, which must be installed), `constraints`, `effort`, `model`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account) and `context`. Read-only by default; pass `mode: write` only if the user authorized edits. It returns the lead's job id.
 2. **CLI fallback**:
 
    ```bash
