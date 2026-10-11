@@ -114,6 +114,11 @@ export default defineCommand({
           description: `Job role: ${JOB_ROLES.join(", ")} (default custom, the prompt is sent as is)`,
         },
         timeout: { type: "string", description: "Job deadline in minutes (max 120)" },
+        verify: {
+          type: "string",
+          description:
+            "write jobs only: shell command run after the agent finishes; a non-zero exit needs attention",
+        },
         continue: { type: "string", description: "Finished job id whose session to resume" },
         "max-rounds": {
           type: "string",
@@ -189,6 +194,7 @@ export default defineCommand({
           allowCommands: args["allow-commands"] ? true : undefined,
           account: args.account,
           mode: args.mode as JobMode | undefined,
+          verify: args.verify,
           timeoutMinutes,
           continueJob: args.continue,
         });

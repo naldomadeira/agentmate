@@ -113,6 +113,7 @@ describe("cli", () => {
     writeJob("outside", elsewhere, "running", { model: "gpt-5.6-terra" });
     writeJob("done", repo, "done", { finishedAt: at(now - 1_000) });
     writeJob("quota", child, "quota_exhausted", { finishedAt: at(now - 1_000) });
+    writeJob("attention", repo, "needs_attention", { finishedAt: at(now - 1_000) });
     mkdirSync(join(home, "jobs", "corrupt"), { recursive: true });
     writeFileSync(join(home, "jobs", "corrupt", "job.json"), "{");
     const inbox = (job: string, cwd: string, kind: string) =>
@@ -123,6 +124,7 @@ describe("cli", () => {
         inbox("done", repo, "finished") +
         inbox("quota", child, "error") +
         inbox("quota", child, "finished") +
+        inbox("attention", repo, "finished") +
         inbox("outside", elsewhere, "finished"),
     );
     const env = { AGENTMATE_HOME: home };
@@ -133,7 +135,7 @@ describe("cli", () => {
       expect(first.stdout).toContain("mate ▶2");
       expect(first.stdout).toContain("codex/terra 4m");
       expect(first.stdout).toContain("claude/sonnet 1m");
-      expect(first.stdout).toContain("✓2 unread ✗1");
+      expect(first.stdout).toContain("✓3 unread ✗2");
       expect(first.stdout).not.toContain("outside");
       expect(second.stdout).toBe(first.stdout);
 
@@ -157,7 +159,7 @@ describe("cli", () => {
       );
       expect(status.running).toHaveLength(2);
       expect(status.running[0]!.elapsed_seconds).toBeGreaterThanOrEqual(60);
-      expect(status.unread).toEqual({ total: 2, failed: 1 });
+      expect(status.unread).toEqual({ total: 3, failed: 2 });
       expect(status.line).toContain("mate ▶2");
 
       const unread = await runCli(["inbox", "--cwd", repo], env);

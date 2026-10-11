@@ -18,6 +18,14 @@ import {
 } from "./store.js";
 
 const MAX_MESSAGE_CHARS = 500;
+const MAX_VERIFY_OUTPUT_CHARS = 4_000;
+const MAX_VERIFY_TIMEOUT_MS = 15 * 60_000;
+
+const tail = (text: string, max: number): string =>
+  text.length > max ? text.slice(text.length - max) : text;
+
+const lastLine = (text: string): string =>
+  text.trim().split(/\r?\n/).filter(Boolean).at(-1) ?? "(no output)";
 
 /** Runs one job to completion. Invoked in a detached process so the job outlives the caller. */
 export async function runWorker(id: string): Promise<void> {
@@ -124,12 +132,46 @@ export async function runWorker(id: string): Promise<void> {
         (outcome.partial
           ? `${job.provider} ended without a final result (exit ${result.exitCode}); the partial output is kept.`
           : `${job.provider} exited ${result.exitCode} with no output.`);
-    } else status = "done";
+    } else {
+      status = "done";
+      if (job.verify) {
+        const verify = await execCommand({
+          command: "sh",
+          args: ["-c", job.verify],
+          cwd: job.cwd,
+          timeoutMs: Math.min(
+            MAX_VERIFY_TIMEOUT_MS,
+            Math.max(1, job.timeoutMs - (Date.now() - startedAt)),
+          ),
+          signal: controller.signal,
+          maxRetries: 0,
+        });
+        const output = tail(verify.stdout + verify.stderr, MAX_VERIFY_OUTPUT_CHARS);
+        fields.verifyResult = {
+          command: job.verify,
+          exitCode: verify.exitCode,
+          timedOut: verify.timedOut,
+          output,
+        };
+        if (verify.aborted) {
+          status = "canceled";
+        } else if (verify.exitCode === 0 && !verify.timedOut) {
+          emit("important", "message", "verify passed");
+        } else {
+          status = "needs_attention";
+          fields.error = `verify failed (exit ${verify.exitCode}): ${job.verify}. ${lastLine(output)}`;
+          emit("important", "message", `verify failed (exit ${verify.exitCode})`);
+        }
+      }
+    }
   } catch (error) {
     fields.error = error instanceof Error ? error.message : String(error);
   } finally {
     await Promise.all([closed(out), closed(err)]);
-    if ((status === "error" || status === "quota_exhausted") && fields.error)
+    if (
+      (status === "error" || status === "quota_exhausted" || status === "needs_attention") &&
+      fields.error
+    )
       emit("important", "error", fields.error);
     const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
     emit(

@@ -19,7 +19,14 @@ const COOLDOWN_MS = 120_000;
 const FIRST_RUN_WINDOW_MS = 24 * 3_600_000;
 const MAX_CHARS = 400;
 // Keep in sync with TERMINAL in src/jobs/store.ts (test/hook.test.ts enforces it).
-const TERMINAL = new Set(["done", "error", "canceled", "timeout", "quota_exhausted"]);
+const TERMINAL = new Set([
+  "done",
+  "error",
+  "needs_attention",
+  "canceled",
+  "timeout",
+  "quota_exhausted",
+]);
 
 function readStdin() {
   return new Promise((resolve) => {

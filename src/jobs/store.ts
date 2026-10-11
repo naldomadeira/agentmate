@@ -15,6 +15,8 @@ export type JobStatus =
   | "running"
   | "done"
   | "error"
+  /** The provider reported success, but the requested post-run verification failed. */
+  | "needs_attention"
   | "canceled"
   | "timeout"
   /** The provider refused to continue because its usage allowance is spent; see `quota.ts`. */
@@ -46,6 +48,7 @@ export const JOB_ROLES = [
 export const TERMINAL: readonly JobStatus[] = [
   "done",
   "error",
+  "needs_attention",
   "canceled",
   "timeout",
   "quota_exhausted",
@@ -142,6 +145,15 @@ export interface Job {
   /** Note on account resolution, e.g. when 'auto' fell back to principal. */
   accountNote?: string;
   timeoutMs: number;
+  /** Shell command run after a successful write job to confirm its work landed. */
+  verify?: string;
+  /** Result of `verify`, kept with the job so callers can diagnose an unverified result. */
+  verifyResult?: {
+    command: string;
+    exitCode: number;
+    timedOut: boolean;
+    output: string;
+  };
   status: JobStatus;
   createdAt: string;
   startedAt?: string;

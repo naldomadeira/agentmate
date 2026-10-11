@@ -18,7 +18,7 @@ import { buildInvocation } from "../src/jobs/providers.js";
 import { VERSION } from "../src/lib/version.js";
 import { readEvents } from "../src/jobs/events.js";
 import { readInbox } from "../src/jobs/inbox.js";
-import { renderObservation, renderResult } from "../src/jobs/render.js";
+import { isFailedStatus, renderObservation, renderResult } from "../src/jobs/render.js";
 import { stdoutFile, updateJob, type Job } from "../src/jobs/store.js";
 
 // A stand-in for the codex CLI. The prompt (last argument) selects the behavior.
@@ -27,7 +27,7 @@ const args = process.argv.slice(2);
 const prompt = args[args.length - 1];
 const emit = (e) => console.log(JSON.stringify(e));
 if (prompt === "sleep") { emit({ type: "thread.started", thread_id: "t-sleep" }); setInterval(() => {}, 1000); }
-else if (prompt === "fail") { console.error("boom"); process.exit(1); }
+else if (prompt === "fail" || prompt.includes("PROVIDER-FAIL")) { console.error("boom"); process.exit(1); }
 else if (prompt === "quota-429" || prompt === "plain-429") {
   require("node:fs").appendFileSync(process.env.FAKE_COUNT_FILE, "x");
   console.error(prompt === "quota-429" ? "429 rate limit, try again at 6pm" : "429 rate limit exceeded, slow down");
@@ -261,6 +261,12 @@ describe("jobs", () => {
     expect(start("hello").mode).toBe("read-only");
   });
 
+  it("rejects verify on a read-only role with the next action", () => {
+    expect(() => start("src/a.ts", { role: "review", verify: "pnpm test" })).toThrow(
+      "verify applies only to write jobs. Use role implement or remove verify.",
+    );
+  });
+
   it("hands the job mode to the worker and blocks write children of a read-only parent", () => {
     const parent = start("hello", { mode: "read-only" });
     withEnv({ AGENTMATE_DEPTH: "1", AGENTMATE_JOB_ID: parent.id }, () => {
@@ -314,6 +320,58 @@ describe("jobs", () => {
     expect(done.status).toBe("error");
     expect(done.error).toContain("boom");
   }, 30_000);
+
+  it("keeps done when verification passes and renders its result", async () => {
+    const job = start("hello", { role: "implement", verify: "printf verified" });
+    const done = await waitJob(job.id, 20_000);
+    expect(done.status).toBe("done");
+    expect(done.verifyResult).toEqual({
+      command: "printf verified",
+      exitCode: 0,
+      timedOut: false,
+      output: "verified",
+    });
+    expect(renderResult(done, readResult(job.id).text)).toContain(
+      "Verify:\npassed: printf verified\nverified",
+    );
+  }, 30_000);
+
+  it("ends needs_attention when verification fails and keeps the provider result", async () => {
+    const command = "printf 'first\\nverify tail\\n' >&2; exit 7";
+    const job = start("hello", { role: "implement", verify: command });
+    const done = await waitJob(job.id, 20_000);
+    expect(done.status).toBe("needs_attention");
+    expect(done.error).toBe(`verify failed (exit 7): ${command}. verify tail`);
+    expect(done.verifyResult).toEqual({
+      command,
+      exitCode: 7,
+      timedOut: false,
+      output: "first\nverify tail\n",
+    });
+    expect(readResult(job.id).text).toContain("args=exec");
+    const rendered = renderResult(done, readResult(job.id).text);
+    expect(rendered).toContain("Verify:\nfailed (exit 7): " + command + "\nfirst\nverify tail");
+    // The answer was complete; only the check failed.
+    expect(rendered).toContain("\n\nOutput:\n");
+    expect(rendered).not.toContain("Partial output");
+    expect(readEvents(job.id).map((event) => event.text)).toContain("verify failed (exit 7)");
+  }, 30_000);
+
+  it("does not run verification when the provider fails", async () => {
+    const marker = path.join(home, "verify-ran");
+    const job = start("PROVIDER-FAIL", {
+      role: "implement",
+      verify: `echo ran > ${JSON.stringify(marker)}`,
+    });
+    const done = await waitJob(job.id, 20_000);
+    expect(done.status).toBe("error");
+    expect(done.verifyResult).toBeUndefined();
+    expect(fs.existsSync(marker)).toBe(false);
+  }, 30_000);
+
+  it("counts needs_attention as failed work", () => {
+    expect(isFailedStatus("needs_attention")).toBe(true);
+  });
 
   it("ends a job as quota_exhausted with a hand-off hint when the provider is out of usage", async () => {
     const job = start("quota");
