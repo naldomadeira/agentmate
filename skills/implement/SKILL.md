@@ -10,15 +10,15 @@ This is the one skill that lets the worker **edit files**. Use it only when the 
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_implement` with `provider`, `task`, optional `acceptance` (how to tell it is done), `effort`, `model`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account) and `context`. It always runs in write mode (read-only is rejected) and returns a job id; collect it with `mate_wait`.
+1. **MCP (preferred)** — call `mate_implement` with `provider`, `task`, optional `acceptance` (how to tell it is done), `verify` (one shell command to run after provider success), `effort`, `model`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account) and `context`. It always runs in write mode (read-only is rejected) and returns a job id; collect it with `mate_wait`.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agentmate jobs start <provider> "<implementation briefing>" --role implement --mode write --cwd <dir> [--effort <effort>]
+   npx -y agentmate jobs start <provider> "<implementation briefing>" --role implement --mode write --cwd <dir> [--verify "pnpm test"] [--effort <effort>]
    npx -y agentmate jobs wait <id> --timeout 10m
    ```
 
-   `wait` exits `0` done, `1` failed or canceled, `2` still running (repeat it, do not start a duplicate). Read the output with `jobs result <id>`.
+   `wait` exits `0` done, `1` failed, canceled or `needs_attention`, `2` still running (repeat it, do not start a duplicate). A failed `verify` keeps the agent result and adds a **Verify** section to `jobs result <id>`.
 
 ## Write the briefing
 

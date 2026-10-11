@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Post-run verification for write jobs: `mate_implement(verify)` and `agentmate jobs start --verify <command>` run a shell command after a provider reports success. Its command, exit code, timeout flag and output tail are retained as `verifyResult`; a failed or timed-out check leaves the agent result intact but ends terminal `needs_attention`, visible under **Verify** in results and counted as failed work. Cross-review and write split implementer children inherit `verify`.
+
 ## [0.9.0] - 2026-10-11
 
 ### Added

@@ -86,6 +86,8 @@ export interface StartOptions {
   /** Codex profile or Claude config account name; Codex also accepts 'auto'. */
   account?: string;
   mode?: JobMode;
+  /** Shell command run after a successful write job; a failure leaves the job needing attention. */
+  verify?: string;
   timeoutMinutes?: number;
   continueJob?: string;
   /** crossreview only: review rounds before it stops, 1 to 5 (default 2). */
@@ -243,6 +245,11 @@ function splitFields(options: StartOptions): RoleFields {
 
 export function startJob(options: StartOptions): Job {
   const role = options.role ?? "custom";
+  if (
+    options.verify !== undefined &&
+    (role === "ask" || role === "review" || role === "research" || role === "plan")
+  )
+    throw new Error("verify applies only to write jobs. Use role implement or remove verify.");
   const depth = currentDepth();
   if (depth >= MAX_DELEGATION_DEPTH)
     throw new Error(
@@ -398,6 +405,8 @@ export function startJob(options: StartOptions): Job {
   if (writes && options.mode === "read-only")
     throw new Error(`Role ${role} needs mode write. Drop --mode or pass --mode write.`);
   const mode = options.mode ?? (writes ? "write" : "read-only");
+  if (options.verify !== undefined && mode !== "write")
+    throw new Error("verify applies only to write jobs. Use role implement or remove verify.");
   const leadAdapter = getAgent(provider);
   if (role === "teamlead" && leadAdapter.teamleadNeedsWrite && mode !== "write")
     throw new Error(
@@ -426,6 +435,7 @@ export function startJob(options: StartOptions): Job {
     ...(options.allowCommands ? { allowCommands: true } : {}),
     ...(account ? { account } : {}),
     ...(accountNote ? { accountNote } : {}),
+    ...(options.verify ? { verify: options.verify } : {}),
     timeoutMs,
     status: "queued",
     createdAt: new Date().toISOString(),

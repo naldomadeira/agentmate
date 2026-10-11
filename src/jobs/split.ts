@@ -663,6 +663,7 @@ export async function runSplit(id: string): Promise<void> {
               task: `${brief}\n\nYou work in your own git worktree (${part.worktree}) on branch ${part.branch}, created from commit ${part.base}. Stay on that branch and leave your changes uncommitted: AgentMate commits them on the branch after you finish.`,
             },
             mode: "write",
+            ...(job.verify ? { verify: job.verify } : {}),
             cwd: part.worktree!,
             model: sameProvider ? job.model : undefined,
             effort: sameProvider ? job.effort : undefined,

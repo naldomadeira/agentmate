@@ -204,6 +204,15 @@ describe("crossreview start rules", () => {
 });
 
 describe("crossreview workflow", () => {
+  it("treats an implementer needing attention as a failed child", async () => {
+    const { job, children } = await runCrossreview("Add a flag", { verify: "exit 9" });
+    const implement = children.find((child) => child.role === "implement")!;
+    expect(implement.status).toBe("needs_attention");
+    expect(job.status).toBe("error");
+    expect(job.error).toContain(`implement job ${implement.id} ended needs_attention`);
+    expect(job.error).toContain("verify failed (exit 9): exit 9");
+  }, 80_000);
+
   it("ends in one round when the reviewer approves", async () => {
     const { job, report, children } = await runCrossreview("ship it ROUND1-APPROVE", {
       fields: { acceptance: "tests pass" },

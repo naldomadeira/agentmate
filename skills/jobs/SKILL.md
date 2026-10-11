@@ -40,5 +40,6 @@ Prefer the MCP tool when it is loaded; use the CLI otherwise.
 - Do not substitute the result of one job for another; match ids exactly.
 - `mate_cancel` on a workflow or team lead cancels its running children too.
 - A job with status `timeout` and a saved session can be resumed with a new job that continues it (`continue` / `--continue <id>`).
+- `needs_attention` is terminal: the provider finished, but its post-run `verify` check failed. Read the **Verify** section in `mate_result` / `jobs result`, fix or assess the working tree, then start a new job if needed.
 - A session (`mate_session_start` with `context`, CLI `sessions start [--context/--context-file]`) shares notes and fixed context across jobs: update context with `mate_session_context` / `sessions context <id> [text|--file] [--append]` (max 16 KB) and notes with `mate_session_notes`. Workers receive fixed context in full before shared notes. `mate_session_show` / `sessions show <id>` lists context, notes and jobs; `mate_session_list` / `sessions list` finds ids.
 - Report job state to the user briefly: id, role, provider, status, and what you will do next.

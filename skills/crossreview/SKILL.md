@@ -15,11 +15,11 @@ implement (A, write) -> review (B, read-only) -> Verdict: approve          -> do
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_crossreview` with `provider` (who implements), `task`, optional `partner`, `acceptance`, `maxRounds` (1 to 5, default 2), `cwd`, `model`, `effort`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account, for same-provider implementer and reviewer), `timeoutMinutes`. It returns the workflow's job id; follow it with `mate_observe`, collect it with `mate_wait` / `mate_result`. `mate_start` with `role: crossreview` works too.
+1. **MCP (preferred)** — call `mate_crossreview` with `provider` (who implements), `task`, optional `partner`, `acceptance`, `maxRounds` (1 to 5, default 2), `cwd`, `model`, `effort`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account, for same-provider implementer and reviewer), `timeoutMinutes`. It returns the workflow's job id; follow it with `mate_observe`, collect it with `mate_wait` / `mate_result`. `mate_start` with `role: crossreview` works too, and may pass `verify` to each implementer round.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agentmate jobs start <provider> "<task briefing>" --role crossreview [--max-rounds 3] [--effort <e>] [--account <acc>] --cwd .
+   npx -y agentmate jobs start <provider> "<task briefing>" --role crossreview [--max-rounds 3] [--verify "pnpm test"] [--effort <e>] [--account <acc>] --cwd .
    npx -y agentmate jobs wait <id> --timeout 10m
    ```
 

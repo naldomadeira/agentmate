@@ -10,6 +10,17 @@ const NOTES_MARKER = "\n\n---\n## Shared session notes (";
 const CONTEXT_MARKER = "\n\n---\n## Session context (";
 const MAX_CONTEXT_DISPLAY_CHARS = 2_000;
 
+function renderVerify(job: Job): string {
+  const verify = job.verifyResult;
+  if (!verify) return "";
+  const outcome = verify.timedOut
+    ? "timed out"
+    : verify.exitCode === 0
+      ? "passed"
+      : `failed (exit ${verify.exitCode})`;
+  return `Verify:\n${outcome}: ${verify.command}${verify.output ? `\n${verify.output.trimEnd()}` : ""}`;
+}
+
 export function renderResult(job: Job, text: string | null): string {
   const head = summarize(job);
   if (!TERMINAL.includes(job.status)) {
@@ -25,10 +36,12 @@ export function renderResult(job: Job, text: string | null): string {
             ? `\nHand off: start the same job with provider ${other}.`
             : "\nHand off: no other agent CLI is installed; retry after the quota resets."
           : "";
-    return `${head}${text ? `\n\nPartial output:\n${text}` : ""}${hint}`;
+    // A job that needs attention finished its answer; only the verify command failed.
+    const label = job.status === "needs_attention" ? "Output" : "Partial output";
+    return `${head}${text ? `\n\n${label}:\n${text}` : ""}${renderVerify(job) ? `\n\n${renderVerify(job)}` : ""}${hint}`;
   }
   const body = text ?? "(no output)";
-  return `${head}\n\n${body.length > MAX_RESULT_CHARS ? `${body.slice(0, MAX_RESULT_CHARS)}\n\n…[truncated]` : body}`;
+  return `${head}\n\n${body.length > MAX_RESULT_CHARS ? `${body.slice(0, MAX_RESULT_CHARS)}\n\n…[truncated]` : body}${renderVerify(job) ? `\n\n${renderVerify(job)}` : ""}`;
 }
 
 /** `HH:MM:SS  level     kind     text`, one event per line (time is UTC, from the ISO stamp). */
@@ -120,7 +133,12 @@ export function shortModel(model: string | undefined): string {
 
 /** Terminal states that mean the work did not land: shown apart from the plain unread count. */
 export function isFailedStatus(status: Job["status"] | undefined): boolean {
-  return status === "error" || status === "timeout" || status === "quota_exhausted";
+  return (
+    status === "error" ||
+    status === "needs_attention" ||
+    status === "timeout" ||
+    status === "quota_exhausted"
+  );
 }
 
 export function statusRunning(job: Job): StatusRunning {

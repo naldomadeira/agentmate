@@ -153,6 +153,7 @@ function runRole(
     maxParts?: number | undefined;
     partner?: Provider | undefined;
     allowCommands?: boolean | undefined;
+    verify?: string | undefined;
   },
   fields: RoleFields,
   defaultWaitSeconds = 0,
@@ -164,6 +165,7 @@ function runRole(
     maxParts,
     partner,
     allowCommands,
+    verify,
     cwd,
     model,
     effort,
@@ -182,6 +184,7 @@ function runRole(
       maxParts,
       partner,
       allowCommands,
+      verify,
       cwd,
       model,
       effort,
@@ -314,12 +317,18 @@ server.registerTool(
       provider,
       task: z.string().describe("A complete, scoped description of the change"),
       acceptance: z.string().optional().describe("Criteria that define done"),
+      verify: z
+        .string()
+        .optional()
+        .describe(
+          "Shell command run in the job's directory after the agent finishes, e.g. `pnpm test`; if it exits non-zero the job ends needs_attention instead of done",
+        ),
       context,
       ...common,
     },
   },
-  guard(({ task, acceptance, context, ...args }) =>
-    runRole("implement", { ...args, mode: "write" }, { task, acceptance, context }),
+  guard(({ task, acceptance, verify, context, ...args }) =>
+    runRole("implement", { ...args, mode: "write", verify }, { task, acceptance, context }),
   ),
 );
 
