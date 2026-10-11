@@ -50,12 +50,13 @@ jobs:
         run: |
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
-          for attempt in 1 2 3 4 5; do
+          # The registry takes about 75 s to serve a fresh version; 20 tries cover 5 minutes.
+          for attempt in $(seq 1 20); do
             if [ "$(npm view "${NAME}@${VERSION}" version 2>/dev/null)" = "${VERSION}" ]; then
               echo "${NAME}@${VERSION} is on the registry"
               exit 0
             fi
-            echo "${NAME}@${VERSION} not visible yet (attempt ${attempt}/5)"
+            echo "${NAME}@${VERSION} not visible yet (attempt ${attempt}/20)"
             sleep 15
           done
           echo "${NAME}@${VERSION} never appeared on the registry" >&2
