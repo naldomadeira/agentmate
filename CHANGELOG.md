@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-11
+
 ### Added
 
 - Per-job `allowPush` / `--allow-push` opt-in for Claude and Copilot write jobs. It adds narrowly scoped non-force `git push` permission, disables interactive credential prompts, denies force variants, and is exposed by `mate_implement` and `mate_teamlead`; Codex, Gemini and agy explain why the coordinator must push instead.
