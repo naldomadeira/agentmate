@@ -18,6 +18,7 @@ describe("detectQuotaExhaustion", () => {
     "Rate limit reached for requests; it will reset at 14:00",
     "rate limit hit, try again at 6pm",
     "Monthly quota exceeded",
+    "You have exceeded your monthly quota (Request ID: F11B:DFA15)",
     "weekly limit reached",
     // agy: its 429 reports a gRPC status and its own phrasing.
     "RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 4h1m13s",

@@ -217,6 +217,26 @@ describe("copilot quota", () => {
     ).not.toBeNull();
   });
 
+  it("recognizes the monthly quota error a real run streamed as session.error", () => {
+    // Shape and text from a real copilot run (2026-10-10): stderr was empty, exit code 1.
+    const stdout = [
+      {
+        type: "session.error",
+        data: {
+          errorType: "quota",
+          message: "You have exceeded your monthly quota (Request ID: F11B:DFA15:3C2B50)",
+          statusCode: 402,
+          errorCode: "quota_exceeded",
+        },
+      },
+      { type: "result", sessionId: "s-quota", exitCode: 1, usage: { premiumRequests: 0 } },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
+    const outcome = copilotAdapter.parseOutcome(stdout, "", 1);
+    expect(detectQuotaExhaustion("", outcome.errors, "")).toMatch(/monthly quota/);
+  });
+
   it("still ignores a GitHub API rate limit", () => {
     expect(
       detectQuotaExhaustion("GitHub API rate limit exceeded, resets at 6pm", [], ""),
