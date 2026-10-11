@@ -1028,6 +1028,32 @@ describe("claude buildInvocation", () => {
     expect(flag(args, "--disallowedTools")).toEqual([]);
   });
 
+  it("allows a non-force push only when the write job opts in", () => {
+    const regular = build({ mode: "write" });
+    expect(flag(regular, "--allowedTools")).not.toContain("Bash(git push)");
+
+    const optedIn = build({ mode: "write", allowPush: true });
+    expect(flag(optedIn, "--allowedTools")).toEqual(
+      expect.arrayContaining(["Bash(git push)", "Bash(git push origin *)", "Bash(git push -u *)"]),
+    );
+    expect(flag(optedIn, "--disallowedTools")).toEqual(
+      expect.arrayContaining([
+        "Bash(git push *--force*)",
+        "Bash(git push *-f *)",
+        "Bash(git push *-f)",
+        "Bash(git push *+*)",
+      ]),
+    );
+  });
+
+  it("merges the no-prompt git environment with a Claude account environment", () => {
+    expect(
+      claude.env?.(
+        job({ provider: "claude", mode: "write", account: "principal", allowPush: true }),
+      ),
+    ).toEqual({ CLAUDE_CONFIG_DIR: undefined, GIT_TERMINAL_PROMPT: "0" });
+  });
+
   it("research adds web tools; teamlead adds the CLI patterns", () => {
     expect(flag(build({ role: "research" }), "--allowedTools")).toEqual(
       expect.arrayContaining(["WebSearch", "WebFetch"]),

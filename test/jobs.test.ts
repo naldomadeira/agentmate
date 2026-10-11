@@ -267,6 +267,40 @@ describe("jobs", () => {
     );
   });
 
+  it("validates allowPush and stores it only for supported write jobs", () => {
+    expect(() => start("q", { allowPush: true })).toThrow(
+      "allowPush applies only to write jobs. Pass mode write or drop allowPush.",
+    );
+    expect(() => start("q", { mode: "write", allowPush: true })).toThrow(
+      "allowPush is not available for codex: its sandbox keeps .git read-only and has no network, so a push cannot succeed — push from the coordinator after the job.",
+    );
+    for (const provider of ["gemini", "agy"] as const)
+      expect(() =>
+        startJob({ provider, prompt: "q", cwd: home, mode: "write", allowPush: true }),
+      ).toThrow(
+        `allowPush is not available for ${provider}: agentmate has no per-command allowlist for this provider. Push from the coordinator after the job.`,
+      );
+
+    const allowed = startJob({
+      provider: "claude",
+      prompt: "q",
+      cwd: home,
+      mode: "write",
+      allowPush: true,
+    });
+    expect(allowed.allowPush).toBe(true);
+  });
+
+  it("adds the push safety rule only to opted-in implement prompts", () => {
+    const pushRule =
+      "Pushing is allowed for this job: push only the branch you worked on, never force-push (--force, -f, or --force-with-lease), and report the pushed ref.";
+    expect(start("q", { role: "implement" }).prompt).not.toContain(pushRule);
+    expect(
+      startJob({ provider: "claude", prompt: "q", cwd: home, role: "implement", allowPush: true })
+        .prompt,
+    ).toContain(pushRule);
+  });
+
   it("validates a review follow-up and stores it on the new job", async () => {
     expect(() => start("src/a.ts", { role: "review", followUp: "unknown" })).toThrow(
       "Cannot follow up unknown job: unknown. Run `agentmate jobs list`.",

@@ -154,6 +154,7 @@ function runRole(
     partner?: Provider | undefined;
     allowCommands?: boolean | undefined;
     verify?: string | undefined;
+    allowPush?: boolean | undefined;
     followUp?: string | undefined;
   },
   fields: RoleFields,
@@ -167,6 +168,7 @@ function runRole(
     partner,
     allowCommands,
     verify,
+    allowPush,
     followUp,
     cwd,
     model,
@@ -187,6 +189,7 @@ function runRole(
       partner,
       allowCommands,
       verify,
+      allowPush,
       followUp,
       cwd,
       model,
@@ -331,12 +334,20 @@ server.registerTool(
         .describe(
           "Shell command run in the job's directory after the agent finishes, e.g. `pnpm test`; if it exits non-zero the job ends needs_attention instead of done",
         ),
+      allowPush: z
+        .boolean()
+        .optional()
+        .describe("Allow `git push` in this write job (claude and copilot only); off by default"),
       context,
       ...common,
     },
   },
-  guard(({ task, acceptance, verify, context, ...args }) =>
-    runRole("implement", { ...args, mode: "write", verify }, { task, acceptance, context }),
+  guard(({ task, acceptance, verify, allowPush, context, ...args }) =>
+    runRole(
+      "implement",
+      { ...args, mode: "write", verify, allowPush },
+      { task, acceptance, context },
+    ),
   ),
 );
 
@@ -356,11 +367,15 @@ server.registerTool(
         .enum(["read-only", "write"])
         .optional()
         .describe("read-only (default) forbids write delegations; write allows one at a time"),
+      allowPush: z
+        .boolean()
+        .optional()
+        .describe("Allow `git push` in this write job (claude and copilot only); off by default"),
       ...common,
     },
   },
-  guard(({ objective, constraints, context, ...args }) =>
-    runRole("teamlead", args, { objective, constraints, context }),
+  guard(({ objective, constraints, allowPush, context, ...args }) =>
+    runRole("teamlead", { ...args, allowPush }, { objective, constraints, context }),
   ),
 );
 

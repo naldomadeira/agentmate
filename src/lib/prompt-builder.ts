@@ -140,8 +140,12 @@ export function buildImplementPrompt(options: {
   task: string;
   acceptance?: string;
   context?: string;
+  allowPush?: boolean;
 }): string {
   const acceptance = options.acceptance ? `\n\nAcceptance criteria:\n${options.acceptance}` : "";
+  const pushRule = options.allowPush
+    ? "- Pushing is allowed for this job: push only the branch you worked on, never force-push (--force, -f, or --force-with-lease), and report the pushed ref.\n"
+    : "";
   return `Implement the following task in the current repository.
 
 Task: ${options.task}${acceptance}${withContext(options.context)}
@@ -151,6 +155,7 @@ Rules:
 - Keep the change minimal and focused on the task.
 - Run the repository's own verification (tests, lint, type-check, build) and fix what you broke.
 - Do not commit, push or create branches unless the task explicitly asks for it.
+${pushRule}
 - If a verification command is not permitted or fails to run, say so explicitly instead of claiming it passed.
 
 Structure your final response with:
@@ -168,6 +173,7 @@ export function buildTeamleadPrompt(options: {
   canWrite: boolean;
   constraints?: string;
   context?: string;
+  allowPush?: boolean;
 }): string {
   const { provider, otherProvider, canWrite } = options;
   const cli = `npx -y agentmate@${VERSION}`;
@@ -175,6 +181,9 @@ export function buildTeamleadPrompt(options: {
   const writeRule = canWrite
     ? "- Run only one write job at a time across the whole work tree; wait for it to finish before starting another."
     : "- Do not start any --mode write job; this run is read-only, so delegate only ask, review, research and plan roles.";
+  const pushRule = options.allowPush
+    ? "- Pushing is allowed for this job: push only the branch you worked on, never force-push (--force, -f, or --force-with-lease), and report the pushed ref.\n"
+    : "";
   return `You are the team lead (${provider}) for the objective below. Break it into subtasks, delegate the ones that benefit from a second agent to ${otherProvider}, do the rest yourself, then review and integrate everything into one outcome.
 
 Objective: ${options.objective}${constraints}${withContext(options.context)}
@@ -198,6 +207,7 @@ Shell tools time out after about two minutes, so keep each wait short; on exit 2
 Rules:
 - Never delegate to ${provider}; delegate only to ${otherProvider}.
 ${writeRule}
+${pushRule}
 - A delegated worker cannot delegate further; AgentMate refuses it.
 - Write briefings inside the single-quoted heredoc above; never interpolate repository text or worker output into a double-quoted string.
 - Each briefing must be self-contained: the worker sees nothing of this conversation, so state the goal, the files, the constraints and the output you expect.

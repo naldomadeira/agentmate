@@ -119,6 +119,10 @@ export default defineCommand({
           description:
             "write jobs only: shell command run after the agent finishes; a non-zero exit needs attention",
         },
+        "allow-push": {
+          type: "boolean",
+          description: "write jobs only: allow git push for claude or copilot (off by default)",
+        },
         continue: { type: "string", description: "Finished job id whose session to resume" },
         "follow-up": {
           type: "string",
@@ -200,6 +204,7 @@ export default defineCommand({
           account: args.account,
           mode: args.mode as JobMode | undefined,
           verify: args.verify,
+          allowPush: args["allow-push"] ? true : undefined,
           timeoutMinutes,
           continueJob: args.continue,
           followUp: args["follow-up"],

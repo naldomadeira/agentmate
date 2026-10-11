@@ -31,6 +31,16 @@ const WRITE_CLAUDE_TOOLS = [
   "Bash(git add *)",
   "Bash(git commit *)",
 ];
+/** Deliberately avoids `Bash(git push *)`, which would also permit force-pushes. */
+const PUSH_CLAUDE_TOOLS = ["Bash(git push)", "Bash(git push origin *)", "Bash(git push -u *)"];
+/** Claude's write jobs support --disallowedTools, whose denials override the allow-list. */
+const FORCE_PUSH_DENIED_CLAUDE_TOOLS = [
+  "Bash(git push *--force*)",
+  "Bash(git push *-f *)",
+  "Bash(git push *-f)",
+  // A `+` refspec (`git push origin +main`) forces the update without any flag.
+  "Bash(git push *+*)",
+];
 /** Never reachable by a read-only job, whatever the user's own settings allow. */
 export const READ_ONLY_DENIED_CLAUDE_TOOLS = ["Edit", "Write", "NotebookEdit"];
 /** Lets a claude team lead run the AgentMate CLI's `jobs` subcommand, pinned to this version, to delegate to codex. */
@@ -60,6 +70,7 @@ export function claudeAllowedTools(job: Job): string[] {
     job.mode === "write"
       ? [...WRITE_CLAUDE_TOOLS, ...extraWriteTools()]
       : [...READ_ONLY_CLAUDE_TOOLS];
+  if (job.allowPush) tools.push(...PUSH_CLAUDE_TOOLS);
   if (job.role === "research") tools.push(...RESEARCH_CLAUDE_TOOLS);
   if (job.role === "teamlead") tools.push(...TEAMLEAD_CLAUDE_TOOLS);
   return tools;
@@ -125,9 +136,10 @@ export const claudeAdapter: AgentAdapter = {
 
   /** A named Claude account has its own config; principal must remove any inherited config directory. */
   env(job: Job): Record<string, string | undefined> | undefined {
-    if (job.account === undefined) return undefined;
-    const configDir = claudeConfigDirFor(job.account);
-    return { CLAUDE_CONFIG_DIR: configDir };
+    const env: Record<string, string | undefined> = {};
+    if (job.account !== undefined) env.CLAUDE_CONFIG_DIR = claudeConfigDirFor(job.account);
+    if (job.allowPush) env.GIT_TERMINAL_PROMPT = "0";
+    return Object.keys(env).length ? env : undefined;
   },
 
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {
@@ -142,8 +154,13 @@ export const claudeAdapter: AgentAdapter = {
     // `--allowedTools <tool>` is variadic and would swallow the positional prompt, so each is `=`-joined.
     for (const tool of claudeAllowedTools(job)) args.push(`--allowedTools=${tool}`);
     // Allow-lists only add; the user's own settings may still allow edits, so a read-only job denies them.
-    if (job.mode === "read-only")
-      for (const tool of READ_ONLY_DENIED_CLAUDE_TOOLS) args.push(`--disallowedTools=${tool}`);
+    const deniedTools =
+      job.mode === "read-only"
+        ? READ_ONLY_DENIED_CLAUDE_TOOLS
+        : job.allowPush
+          ? FORCE_PUSH_DENIED_CLAUDE_TOOLS
+          : [];
+    for (const tool of deniedTools) args.push(`--disallowedTools=${tool}`);
     args.push(job.prompt);
     return { command: claudeAdapter.binary(), args };
   },

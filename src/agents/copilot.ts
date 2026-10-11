@@ -32,6 +32,15 @@ const WRITE_COPILOT_TOOLS = [
   "shell(git add)",
   "shell(git commit)",
 ];
+const PUSH_COPILOT_TOOLS = ["shell(git push)"];
+// `copilot help permissions` documents that denials win over allows, including shell patterns.
+// Shell patterns match a command prefix, so these block a force flag right after `push`, not
+// `git push origin main --force` or a `+` refspec; the prompt rule and branch protection cover those.
+const FORCE_PUSH_DENIED_COPILOT_TOOLS = [
+  "shell(git push --force)",
+  "shell(git push -f)",
+  "shell(git push --force-with-lease)",
+];
 /** A team lead delegates through the AgentMate CLI, run directly or through npx. */
 const TEAMLEAD_COPILOT_TOOLS = ["shell(agentmate:*)", "shell(npx:*)"];
 /** Tools whose use changes a file; their `path` argument becomes a `file` event. */
@@ -52,6 +61,7 @@ export function copilotAllowedTools(job: Job): string[] {
     job.mode === "write"
       ? [...WRITE_COPILOT_TOOLS, ...extraWriteTools()]
       : [...READ_ONLY_COPILOT_TOOLS];
+  if (job.allowPush) tools.push(...PUSH_COPILOT_TOOLS);
   if (job.role === "teamlead") tools.push(...TEAMLEAD_COPILOT_TOOLS);
   return tools;
 }
@@ -87,6 +97,8 @@ export const copilotAdapter: AgentAdapter = {
       ? `copilot's auto model takes no reasoning effort, so effort ${effort} needs a model. Pass model too (one your Copilot plan enables), or drop effort.`
       : null,
 
+  env: (job) => (job.allowPush ? { GIT_TERMINAL_PROMPT: "0" } : undefined),
+
   buildInvocation(job: Job, resumeSessionId?: string): Invocation {
     // `-p` takes the prompt as its value, but a prompt that starts with `-` could still be read as a
     // flag, so it is prefixed with a space (the model does not care).
@@ -103,6 +115,8 @@ export const copilotAdapter: AgentAdapter = {
     for (const tool of copilotAllowedTools(job)) args.push(`--allow-tool=${tool}`);
     // Denials win over every allow, so a read-only job never edits, whatever the user configured.
     if (job.mode === "read-only") args.push("--deny-tool=write");
+    if (job.allowPush)
+      for (const tool of FORCE_PUSH_DENIED_COPILOT_TOOLS) args.push(`--deny-tool=${tool}`);
     return { command: copilotAdapter.binary(), args };
   },
 

@@ -128,7 +128,27 @@ describe("copilot buildInvocation", () => {
     expect(args).toContain("--allow-tool=write");
     expect(args).toContain("--allow-tool=shell(pnpm:*)");
     expect(args).toContain("--allow-tool=shell(git commit)");
+    expect(args).not.toContain("--allow-tool=shell(git push)");
     expect(args).not.toContain("--deny-tool=write");
+  });
+
+  it("allows a push only when the write job opts in, while denying force variants", () => {
+    const args = flags(job({ mode: "write", role: "implement", allowPush: true }));
+    expect(args).toContain("--allow-tool=shell(git push)");
+    expect(args).toEqual(
+      expect.arrayContaining([
+        "--deny-tool=shell(git push --force)",
+        "--deny-tool=shell(git push -f)",
+        "--deny-tool=shell(git push --force-with-lease)",
+      ]),
+    );
+  });
+
+  it("sets no-prompt git credentials only for a push-enabled job", () => {
+    expect(copilotAdapter.env?.(job({ mode: "write" }))).toBeUndefined();
+    expect(copilotAdapter.env?.(job({ mode: "write", allowPush: true }))).toEqual({
+      GIT_TERMINAL_PROMPT: "0",
+    });
   });
 
   it("extends the write tools with AGENTMATE_COPILOT_WRITE_TOOLS", () => {

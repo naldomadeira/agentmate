@@ -182,6 +182,14 @@ describe("buildImplementPrompt", () => {
     expect(prompt).toContain("Files changed");
     expect(prompt).toContain("Verification");
   });
+
+  it("adds the constrained push rule only when allowed", () => {
+    const rule = "Pushing is allowed for this job";
+    expect(buildImplementPrompt({ task: "Fix the bug" })).not.toContain(rule);
+    expect(buildImplementPrompt({ task: "Fix the bug", allowPush: true })).toContain(
+      "never force-push (--force, -f, or --force-with-lease)",
+    );
+  });
 });
 
 describe("buildImplementPrompt verification rule", () => {
@@ -230,5 +238,12 @@ describe("buildTeamleadPrompt", () => {
   it("forbids write jobs when the lead cannot write", () => {
     expect(buildTeamleadPrompt({ ...base, canWrite: false })).toContain("Do not start any");
     expect(buildTeamleadPrompt(base)).toContain("only one write job");
+  });
+
+  it("adds the constrained push rule only when allowed", () => {
+    expect(buildTeamleadPrompt(base)).not.toContain("Pushing is allowed for this job");
+    expect(buildTeamleadPrompt({ ...base, allowPush: true })).toContain(
+      "Pushing is allowed for this job: push only the branch you worked on",
+    );
   });
 });

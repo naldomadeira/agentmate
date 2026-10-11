@@ -147,6 +147,8 @@ export interface Job {
   timeoutMs: number;
   /** Shell command run after a successful write job to confirm its work landed. */
   verify?: string;
+  /** Write job only: permits a non-force git push for adapters with a command allowlist. */
+  allowPush?: boolean;
   /** Result of `verify`, kept with the job so callers can diagnose an unverified result. */
   verifyResult?: {
     command: string;

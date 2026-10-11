@@ -88,6 +88,8 @@ export interface StartOptions {
   mode?: JobMode;
   /** Shell command run after a successful write job; a failure leaves the job needing attention. */
   verify?: string;
+  /** Write job only: permits a non-force git push for Claude or Copilot. */
+  allowPush?: boolean;
   timeoutMinutes?: number;
   continueJob?: string;
   /** review only: an earlier review whose findings this job checks after a fix. */
@@ -192,7 +194,12 @@ function renderPrompt(
         context,
       });
     case "implement":
-      return buildImplementPrompt({ task: required, acceptance: fields.acceptance, context });
+      return buildImplementPrompt({
+        task: required,
+        acceptance: fields.acceptance,
+        context,
+        allowPush: options.allowPush,
+      });
     case "teamlead":
       return buildTeamleadPrompt({
         objective: required,
@@ -201,6 +208,7 @@ function renderPrompt(
         canWrite: mode === "write",
         constraints,
         context,
+        allowPush: options.allowPush,
       });
     case "crossreview":
       return buildCrossreviewPrompt({
@@ -249,6 +257,8 @@ function splitFields(options: StartOptions): RoleFields {
 
 export function startJob(options: StartOptions): Job {
   const role = options.role ?? "custom";
+  const writes = role === "implement" || role === "crossreview";
+  const requestedMode = options.mode ?? (writes ? "write" : "read-only");
   if (options.followUp !== undefined && role !== "review")
     throw new Error("followUp applies only to role review. Use role review or remove followUp.");
   if (
@@ -256,6 +266,16 @@ export function startJob(options: StartOptions): Job {
     (role === "ask" || role === "review" || role === "research" || role === "plan")
   )
     throw new Error("verify applies only to write jobs. Use role implement or remove verify.");
+  if (options.allowPush && requestedMode !== "write")
+    throw new Error("allowPush applies only to write jobs. Pass mode write or drop allowPush.");
+  if (options.allowPush && options.provider === "codex")
+    throw new Error(
+      "allowPush is not available for codex: its sandbox keeps .git read-only and has no network, so a push cannot succeed — push from the coordinator after the job.",
+    );
+  if (options.allowPush && (options.provider === "gemini" || options.provider === "agy"))
+    throw new Error(
+      `allowPush is not available for ${options.provider}: agentmate has no per-command allowlist for this provider. Push from the coordinator after the job.`,
+    );
   const depth = currentDepth();
   if (depth >= MAX_DELEGATION_DEPTH)
     throw new Error(
@@ -427,10 +447,9 @@ export function startJob(options: StartOptions): Job {
     (options.timeoutMinutes ?? DEFAULT_TIMEOUT_MS / 60_000) * 60_000,
     MAX_TIMEOUT_MS,
   );
-  const writes = role === "implement" || role === "crossreview";
   if (writes && options.mode === "read-only")
     throw new Error(`Role ${role} needs mode write. Drop --mode or pass --mode write.`);
-  const mode = options.mode ?? (writes ? "write" : "read-only");
+  const mode = requestedMode;
   if (options.verify !== undefined && mode !== "write")
     throw new Error("verify applies only to write jobs. Use role implement or remove verify.");
   const leadAdapter = getAgent(provider);
@@ -471,6 +490,7 @@ export function startJob(options: StartOptions): Job {
     ...(account ? { account } : {}),
     ...(accountNote ? { accountNote } : {}),
     ...(options.verify ? { verify: options.verify } : {}),
+    ...(options.allowPush ? { allowPush: true } : {}),
     timeoutMs,
     status: "queued",
     createdAt: new Date().toISOString(),
