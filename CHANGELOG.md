@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Claude accounts: `account` now also selects the Claude Code account of a `claude` job, in both directions. `principal` (or `default`) runs the job with `CLAUDE_CONFIG_DIR` removed from its environment, so a server started from another account's session can still reach the main one; any other name resolves to an `AGENTMATE_CLAUDE_ACCOUNTS` entry (`name=/abs/dir,...`) or to `~/.claude-<name>`, which must hold `.claude.json` or `settings.json`. The directory string is passed unchanged, because Claude Code derives the Keychain entry from it. `auto` stays Codex-only; gemini, agy and copilot still refuse `account`. Continuing a job on another account is refused, as for Codex, since the session lives under that account's config directory. Omitting `account` keeps the inherited environment.
 - An adapter's `env()` can now remove an inherited variable by mapping it to `undefined`.
 
+### Fixed
+
+- A copilot job that ran out of its monthly allowance ended `error`: the CLI streams `session.error` "You have exceeded your monthly quota" on stdout (stderr stays empty), and no quota pattern matched `exceeded your … quota`. It now ends `quota_exhausted` with the hand-off hint. A disk quota is still excluded.
+
 ## [0.8.1] - 2026-10-10
 
 ### Added

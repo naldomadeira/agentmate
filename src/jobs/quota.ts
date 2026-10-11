@@ -19,7 +19,8 @@ const STDERR_TAIL_LINES = 20;
  */
 export const QUOTA_PATTERNS: readonly RegExp[] = [
   /\b(usage|weekly|monthly|daily|\d+-hour|session) limit\b.*\b(reached|exceeded|hit)\b/i,
-  /\b(hit|reached|exceeded) your (\w+ )?limit\b/i,
+  // `quota` too: GitHub Copilot says "You have exceeded your monthly quota" (a disk quota is excluded below).
+  /\b(hit|reached|exceeded) your (\w+ )?(limit|quota)\b/i,
   /\bquota\b.*\b(exceeded|exhausted|reached)\b/i,
   /insufficient_quota/i,
   /exceeded your current quota/i,
