@@ -14,7 +14,7 @@ your session -> teamlead job (depth 0, started by you) -> child jobs (depth 1, c
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_teamlead` with `provider` (who leads), `objective`, optional `partner` (the agent it delegates to; default: the first installed other agent, which must be installed), `constraints`, `effort`, `model`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account) and `context`. Read-only by default; pass `mode: write` only if the user authorized edits. It returns the lead's job id.
+1. **MCP (preferred)** — call `mate_teamlead` with `provider` (who leads), `objective`, optional `partner` (the agent it delegates to; default: the first installed other agent, which must be installed), `constraints`, `allowPush` (Claude and Copilot write jobs only), `effort`, `model`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account) and `context`. Read-only by default; pass `mode: write` only if the user authorized edits. It returns the lead's job id.
 2. **CLI fallback**:
 
    ```bash
@@ -44,4 +44,5 @@ your session -> teamlead job (depth 0, started by you) -> child jobs (depth 1, c
 - An `agy` lead (experimental) is likewise accepted only with `mode: write`, because delegating needs the shell, which headless agy allows only with `--dangerously-skip-permissions`; that flag skips every permission check, so tell the user before starting one.
 - The lead calls the CLI pinned to the installed version (`npx -y agentmate@<version> jobs ...`), so an unpublished local checkout must be published or linked for team lead mode to work.
 - At most one `write` job per working tree at a time, across the whole tree of jobs.
+- `allowPush` / `--allow-push` is an off-by-default, per-job write opt-in for Claude and Copilot. It permits only a normal push, disables interactive credential prompts, denies force variants, and requires the worker to report the pushed ref. Codex, Gemini and agy reject it; push from the coordinator after those jobs.
 - A team lead costs several model runs. Use `ask`, `review` or `delegate` when one job is enough.

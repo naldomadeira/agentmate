@@ -197,10 +197,12 @@ describe("cli", () => {
     }
   }, 60_000);
 
-  it("lists max-rounds among the jobs start options and validates it", async () => {
+  it("lists max-rounds and allow-push among the jobs start options and validates max-rounds", async () => {
     const help = await runCli(["jobs", "start", "--help"]);
     expect(help.stdout).toContain("max-rounds");
     expect(help.stdout).toContain("crossreview");
+    expect(help.stdout).toContain("allow-push");
+    expect(help.stdout).toContain("claude or copilot");
 
     const bad = await runCli([
       "jobs",

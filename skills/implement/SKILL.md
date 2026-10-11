@@ -10,11 +10,11 @@ This is the one skill that lets the worker **edit files**. Use it only when the 
 
 ## How to run it
 
-1. **MCP (preferred)** — call `mate_implement` with `provider`, `task`, optional `acceptance` (how to tell it is done), `verify` (one shell command to run after provider success), `effort`, `model`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account) and `context`. It always runs in write mode (read-only is rejected) and returns a job id; collect it with `mate_wait`.
+1. **MCP (preferred)** — call `mate_implement` with `provider`, `task`, optional `acceptance` (how to tell it is done), `verify` (one shell command to run after provider success), `allowPush` (Claude and Copilot only: opt in to a non-force push), `effort`, `model`, `account` (Codex profile or `auto`; Claude `principal` or a `~/.claude-<name>` / `AGENTMATE_CLAUDE_ACCOUNTS` account) and `context`. It always runs in write mode (read-only is rejected) and returns a job id; collect it with `mate_wait`.
 2. **CLI fallback**:
 
    ```bash
-   npx -y agentmate jobs start <provider> "<implementation briefing>" --role implement --mode write --cwd <dir> [--verify "pnpm test"] [--effort <effort>]
+   npx -y agentmate jobs start <provider> "<implementation briefing>" --role implement --mode write --cwd <dir> [--verify "pnpm test"] [--allow-push] [--effort <effort>]
    npx -y agentmate jobs wait <id> --timeout 10m
    ```
 
@@ -39,4 +39,5 @@ This is the one skill that lets the worker **edit files**. Use it only when the 
 - Do not edit the same files while the job runs.
 - Gemini (experimental) runs `--approval-mode auto_edit`: it can edit files but not run shell commands, so it cannot run the tests or the build; run the verification yourself.
 - Antigravity `agy` (experimental) runs `--dangerously-skip-permissions` in write mode, so every tool call is approved without asking; tell the user, and run the verification yourself, because the runtime does not count on its shell.
+- `allowPush` / `--allow-push` is off by default and works only for Claude and Copilot write jobs. It permits normal `git push`, disables interactive credential prompts with `GIT_TERMINAL_PROMPT=0`, and denies `--force`, `-f` and `--force-with-lease`; tell the worker the branch to push and require the pushed ref in its report. Codex, Gemini and agy refuse it, so push from the coordinator after those jobs.
 - The codex sandbox for this role is `workspace-write`; Claude runs with `acceptEdits` plus an allowlist for verification commands (`pnpm`, `npm`, `npx`, `yarn`, `bun`, `make`, `git add`, `git commit`, extendable with `AGENTMATE_CLAUDE_WRITE_TOOLS`). Neither commits or pushes unless the briefing says so, and you should rarely say so.

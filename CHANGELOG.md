@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Per-job `allowPush` / `--allow-push` opt-in for Claude and Copilot write jobs. It adds narrowly scoped non-force `git push` permission, disables interactive credential prompts, denies force variants, and is exposed by `mate_implement` and `mate_teamlead`; Codex, Gemini and agy explain why the coordinator must push instead.
 - Follow-up reviews: `mate_review(followUp)` and `agentmate jobs start --role review --follow-up <id>` check an earlier terminal review's findings and regressions from the fix instead of restarting the audit. Jobs record `followUpOf`, review prompts retain the tail of the earlier result, and crossreview uses this mode from round 2.
 - Post-run verification for write jobs: `mate_implement(verify)` and `agentmate jobs start --verify <command>` run a shell command after a provider reports success. Its command, exit code, timeout flag and output tail are retained as `verifyResult`; a failed or timed-out check leaves the agent result intact but ends terminal `needs_attention`, visible under **Verify** in results and counted as failed work. Cross-review and write split implementer children inherit `verify`.
 
