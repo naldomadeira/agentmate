@@ -26,7 +26,7 @@ describe("plugin package", () => {
 
     expect(manifest).toMatchObject({
       name: "mate",
-      version: "0.11.0",
+      version: "0.12.0",
       skills: "./skills/",
       mcpServers: "./.mcp.json",
     });
@@ -151,8 +151,8 @@ describe("plugin package", () => {
     const pkg = json<{ version: string }>("package.json");
     const source = readFileSync(resolve(root, "src/lib/version.ts"), "utf8");
 
-    expect(pkg.version).toBe("0.11.0");
-    expect(source).toMatch(/VERSION\s*=\s*"0\.11\.0"/);
+    expect(pkg.version).toBe("0.12.0");
+    expect(source).toMatch(/VERSION\s*=\s*"0\.12\.0"/);
   });
 
   it("points package metadata at the public repository", () => {
@@ -216,12 +216,14 @@ const SKILLS = [
   "claude",
   "gemini",
   "agy",
+  "grok",
+  "cursor",
   "init",
 ];
 const AGENTS = ["codex-teammate", "codex-reviewer", "codex-researcher", "codex-teamlead"];
 
 describe("skills", () => {
-  it("ships the sixteen skills", () => {
+  it("ships the eighteen skills", () => {
     const names = readdirSync(resolve(root, "skills"), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
@@ -257,7 +259,9 @@ describe("skills", () => {
       expect(hint, path).toContain("agy");
     }
     // Where one hint lists the providers, it lists them in the registry order.
-    const listed = naming.filter(([, hint]) => hint.includes("<codex|claude|gemini|agy|copilot>"));
+    const listed = naming.filter(([, hint]) =>
+      hint.includes("<codex|claude|gemini|agy|copilot|grok|cursor>"),
+    );
     expect(listed.length).toBeGreaterThan(15);
   });
 

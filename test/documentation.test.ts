@@ -188,6 +188,7 @@ describe("project documentation", () => {
     const words: Record<string, [string, string]> = {
       "15": ["fifteen", "quinze"],
       "16": ["sixteen", "dezesseis"],
+      "18": ["eighteen", "dezoito"],
     };
     const [english, portuguese] = words[String(count)] ?? ["?", "?"];
     expect(read("docs/INSTALL_FOR_AGENTS.md")).toContain(`packages ${english} skills`);
@@ -196,7 +197,7 @@ describe("project documentation", () => {
       const content = read(guide);
       expect(content, guide).not.toContain("ten skills");
       expect(content, guide).not.toContain("dez skills");
-      expect(content, guide).toMatch(/`codex`, `claude`, `gemini`, `agy` (or|ou) `copilot`/);
+      expect(content, guide).toMatch(/`codex`, `claude`, `gemini`, `agy`(, | or | ou )`copilot`/);
     }
   });
 
