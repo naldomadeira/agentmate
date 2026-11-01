@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-01
+
+### Added
+
+- `/mate:grok` and `/mate:cursor` skills, so Claude Code, Codex and Grok route a plain request to the right role with `provider: grok` or `cursor` already set. `argument-hint` of every skill and template now lists `grok|cursor`.
+- README and install guides document both agents; the Cursor CLI flags the adapter uses (`-p`, `--output-format stream-json`, `--mode ask`, `--force`, `--resume`, `--model`) were checked against the real `cursor-agent` 2026.10.22.
+
 ## [0.11.0] - 2026-10-31
 
 ### Added
