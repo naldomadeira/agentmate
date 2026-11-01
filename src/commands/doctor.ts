@@ -64,10 +64,13 @@ const INSTALL_HINTS: Record<AgentId, string> = {
   agy: "Install the Antigravity CLI (curl -fsSL https://antigravity.google/cli/install.sh | bash) to delegate to agy.",
   copilot:
     "Install the GitHub Copilot CLI (npm install -g @github/copilot, or brew install copilot-cli) and run copilot login to delegate to copilot.",
+  grok: "Install Grok Build (https://x.ai/cli) and run grok login to delegate to grok.",
+  cursor:
+    "Install the Cursor CLI (curl https://cursor.com/install -fsS | bash) and run cursor-agent login to delegate to cursor.",
 };
 
 /** Agents whose absence is normal: a missing one is `ok`, not a warning. */
-const OPTIONAL_AGENTS: readonly AgentId[] = ["gemini", "agy", "copilot"];
+const OPTIONAL_AGENTS: readonly AgentId[] = ["gemini", "agy", "copilot", "grok", "cursor"];
 
 async function checkAgent(id: AgentId): Promise<Check> {
   const agent = getAgent(id);
@@ -191,7 +194,7 @@ export default defineCommand({
   meta: {
     name: "doctor",
     description:
-      "Check the installation: Node, the agent CLIs (codex, claude, gemini, agy, copilot), job state, legacy setups",
+      "Check the installation: Node, the agent CLIs (codex, claude, gemini, agy, copilot, grok, cursor), job state, legacy setups",
   },
   run: userFacing(async () => {
     const checks = await collectChecks();

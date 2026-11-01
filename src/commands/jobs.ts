@@ -48,7 +48,9 @@ const idArg = { id: { type: "positional", required: true, description: "Job id" 
 
 const parseProvider = (value: string, name = "provider"): Provider => {
   if (!isAgentId(value))
-    throw new Error(`${name} must be codex or claude (or gemini/agy/copilot, experimental)`);
+    throw new Error(
+      `${name} must be codex or claude (or gemini/agy/copilot/grok/cursor, experimental)`,
+    );
   return value;
 };
 
@@ -97,7 +99,7 @@ export default defineCommand({
         provider: {
           type: "positional",
           required: true,
-          description: "codex, claude, gemini, agy or copilot (experimental)",
+          description: "codex, claude, gemini, agy, copilot, grok or cursor (experimental)",
         },
         prompt: { type: "positional", required: true, description: "Task briefing" },
         cwd: { type: "string", description: "Working directory" },
@@ -216,13 +218,13 @@ export default defineCommand({
       meta: {
         name: "ask",
         description:
-          "Ask codex, claude, gemini, agy or copilot a question and print the answer; exit 2 if still running",
+          "Ask codex, claude, gemini, agy, copilot, grok or cursor a question and print the answer; exit 2 if still running",
       },
       args: {
         provider: {
           type: "positional",
           required: true,
-          description: "codex, claude, gemini, agy or copilot (experimental)",
+          description: "codex, claude, gemini, agy, copilot, grok or cursor (experimental)",
         },
         question: { type: "positional", required: true, description: "The question" },
         wait: { type: "string", description: "Max wait, e.g. 90s or 2m (default 120s)" },

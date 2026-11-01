@@ -18,3 +18,6 @@ process.env["AGENTMATE_SKIP_MODEL_CHECK"] = "1";
 // The developer's own Copilot CLI must not count as installed: the availability and default-partner
 // tests enumerate agents. test/copilot.test.ts points AGENTMATE_COPILOT_BIN at a fake binary.
 process.env["AGENTMATE_COPILOT_BIN"] = "/nonexistent/agentmate-test/copilot";
+// Same for Grok and Cursor: test/grok.test.ts and test/cursor.test.ts use fake binaries.
+process.env["AGENTMATE_GROK_BIN"] = "/nonexistent/agentmate-test/grok";
+process.env["AGENTMATE_CURSOR_BIN"] = "/nonexistent/agentmate-test/cursor-agent";

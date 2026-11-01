@@ -1,6 +1,6 @@
 import type { Job } from "../jobs/store.js";
 
-export type AgentId = "codex" | "claude" | "gemini" | "agy" | "copilot";
+export type AgentId = "codex" | "claude" | "gemini" | "agy" | "copilot" | "grok" | "cursor";
 
 export interface AgentCapabilities {
   /** Supports `write` mode. */
