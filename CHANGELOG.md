@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-31
+
+### Added
+
+- `grok` agent (xAI Grok Build, `grok -p --output-format streaming-json`), verified against the real CLI: write jobs, `--resume`, usage and cost from the final `end` event, reasoning effort. Read-only jobs deny the write and shell tools (the reviewer gets the diff inline); write jobs run with `--always-approve`, so `allowPush` is not offered. Override the binary with `AGENTMATE_GROK_BIN`.
+- `cursor` agent (Cursor CLI, `cursor-agent -p --output-format stream-json`), experimental: written against the documented format and tested with fixtures, never against the real CLI. Read-only jobs use `--mode ask`, write jobs `--force`; `--resume` is unverified, so continuing a job is refused. Override the binary with `AGENTMATE_CURSOR_BIN`.
+- Both agents are optional in `agentmate doctor` and accepted wherever a provider is (`mate_ask`, `mate_review`, `mate_implement`, `jobs start`, ...).
+
 ## [0.10.0] - 2026-10-11
 
 ### Added
