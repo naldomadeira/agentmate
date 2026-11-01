@@ -167,6 +167,16 @@ export function listModels(provider: Provider, options: ListModelsOptions = {}):
       );
     case "gemini":
       return unavailable("gemini", "Headless Gemini CLI has no model list command.");
+    case "grok":
+      return unavailable(
+        "grok",
+        "Grok has no machine-readable model list; run `grok models` to see them (grok-4.7 is the default). An unknown model fails with Grok's own message.",
+      );
+    case "cursor":
+      return unavailable(
+        "cursor",
+        "Cursor has no stable model list for headless use; run `cursor-agent models` to see what your plan enables. An unknown model fails with Cursor's own message.",
+      );
     case "copilot":
       return unavailable(
         "copilot",
